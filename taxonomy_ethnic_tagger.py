@@ -52,9 +52,12 @@ OUTPUT_ETHNIC_3 = "Ethnic 3 - FR"
 # Keywords to look for (automatically mapped for other origin keywords)
 BIPOC_KEYWORDS = [
     "bipoc",
+    "qtbipoc",
     "people of color",
+    "black african",
     "poc",
-    "racialized",
+    "racialized", # what about 'marginalized'?
+    "grassroots", # what about 'Ethnocultural'?
 ]
 
 # TODO

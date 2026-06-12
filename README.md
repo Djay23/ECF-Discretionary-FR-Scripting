@@ -70,6 +70,11 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
     - "African and Caribbean youth"
     - "Somali and Ethiopian Families"
 
+### Case 9, BIPOC and Another group mentioned":
+    Example:
+    - "BIPOC and Asian" 
+*Anything that includes 'BIPOC' and another ethnic group is automatically BIPOC
+
 ### Case 9, Broad Identity Labels:
     Example:
     - "Black youth"
@@ -92,8 +97,14 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
 
 ## Workflow:
 - Loop through 'Taxonomy - Defintions.xlsx' and create future accessible mapping of Taxonomy definitions using column D 'All Items'. 
-- 
-- 
+- Once mapping has been created, Concactenate columns "Final_Project_Description" + "Final_Summary_Description" + "Purpose" + "Funding Request Name" before beginning keyword search. 
+    - Priority Listing:
+        - Final Project Description & Final Summary Description
+        - Purpose 
+        - Funding Request Name
+    *These are the orders we will search for keywords first (as a result there might not be a need for contactenation, and instead store as different indices in a list to loop through).
+- Upon keyword search, go through case-by-case analysis and perform ranking to group ethnicities.
+- After ethnicity grouping, go through manually to confirm accuracy, placing emphasis on "General Population" section.
 
 
     

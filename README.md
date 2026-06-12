@@ -26,23 +26,23 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
 
 ## Case Breakdown (with examples)
 ### Case 1, Exact Match (Best Case):
-    Example
+    Example:
     - "Somali youth"
     - "Punjabi community"
     - "Cree families"
 
 ### Case 2, Level 2 Match (Subregion):
-    Example
+    Example:
     - "East African Students"
     - "South Asian Population"
     
 ### Case 3, Level 1 Match (Broad category):
-    Example
+    Example:
     - "African Communities"
     - "Asian Families"
 
 ### Case 4, Structured Phrase (Modifier + Children)
-    Example
+    Example:
     - "South African"
     - "West African"
     - "North African"
@@ -52,7 +52,7 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
     Example:
     - "Kenyan"
     - "Ethiopian"
-    - "Hatian"
+    - "Haitian"
 
 ### Case 6, Country/Nationality NOT in taxonomy:
     Example:
@@ -90,7 +90,10 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
     - Level 3 terms: Nigerian, Somali, Ethopian
 -->
 
-
+## Workflow:
+- Loop through 'Taxonomy - Defintions.xlsx' and create future accessible mapping of Taxonomy definitions using column D 'All Items'. 
+- 
+- 
 
 
     

@@ -84,6 +84,14 @@ def build_taxonomy(tax_df):
     Depth 2 = Entry 1 + Entry 2 present, Entry 3 empty
     Depth 1 = Entry 1 only
     """
+    
+    def clean(val):
+            if not val:
+                return ""
+            val = str(val).lower().strip()
+            val = val.replace("origins", "")
+            return val.strip()
+
     entries = []
 
     for _, row in tax_df.iterrows():
@@ -114,7 +122,7 @@ def build_taxonomy(tax_df):
             "depth":   depth,
         })
 
-    # Sort longest first so we favour longer matches (Eg. 'African' should not match 'Southern and East African Origins' OR 'South African' should match before 'African')
+    # Sort longest first so we favour longer matches (Eg. 'African' should not match 'Southern and East African Origins' OR 'Southern African' should match before 'African')
     entries.sort(key=lambda x: (-x["depth"], -len(x["keyword"])))
     return entries
 

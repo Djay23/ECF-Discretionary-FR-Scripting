@@ -57,7 +57,8 @@ BIPOC_KEYWORDS = [
     "black african",
     "poc",
     "racialized", # what about 'marginalized'?
-    "grassroots", # what about 'Ethnocultural'?
+    "marginalized",
+    "grassroots", # what about 'Ethnocultural'. Some examples list 'grassroots' and 'indigenous' but only refer to indigenous ethnic group : "grassroots organizers" line 329
 ]
 
 # TODO

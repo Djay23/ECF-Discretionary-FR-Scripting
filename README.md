@@ -26,23 +26,23 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
 
 ## Case Breakdown (with examples)
 ### Case 1, Exact Match (Best Case):
-    Example
+    Example:
     - "Somali youth"
     - "Punjabi community"
     - "Cree families"
 
 ### Case 2, Level 2 Match (Subregion):
-    Example
+    Example:
     - "East African Students"
     - "South Asian Population"
     
 ### Case 3, Level 1 Match (Broad category):
-    Example
+    Example:
     - "African Communities"
     - "Asian Families"
 
 ### Case 4, Structured Phrase (Modifier + Children)
-    Example
+    Example:
     - "South African"
     - "West African"
     - "North African"
@@ -52,7 +52,7 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
     Example:
     - "Kenyan"
     - "Ethiopian"
-    - "Hatian"
+    - "Haitian"
 
 ### Case 6, Country/Nationality NOT in taxonomy:
     Example:
@@ -69,6 +69,15 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
     Example:
     - "African and Caribbean youth"
     - "Somali and Ethiopian Families"
+    -  "As families from increasingly diverse cultural backgrounds turn to BCW for support beyond its original focus on Black communities"
+    *How do we handle cases like this where it mentions a specific ethnic group but is actually targetting a more diverse and broader population?
+
+### Case 9, BIPOC and Another group mentioned":
+    Example:
+    - "BIPOC and Asian" 
+    *Anything that includes 'BIPOC' and another ethnic group is automatically BIPOC
+    * This might not be the best way to handle this case because of examples like this:
+    "This project will foster long-term community impact by building sustainable creative practices, supporting emerging Asian Canadian artists, advancing equity in technical stagecraft", but BIPOC is also mentioned in the project purpose and Summary description: "To develop a new performance fostering BIPOC visibility, mentorship, and cultural understanding"
 
 ### Case 9, Broad Identity Labels:
     Example:
@@ -76,7 +85,18 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
     - "Arab communities"
     - "Jewish population"
 
-### Case 10, General/No Specific Group:
+### Case 10, Bent Arrow mention:
+    Example:
+    - "Bent Arrow Traditional Medicine"
+    This corresponds with 'North American Indigenous Origins'
+    *TO NOTE: This is often in the Account name, and needs to be the final point of lookup --If the current conclusion falls under 'General Population'
+    - 'Treaty 6' as indigenous
+
+### Case 11, Grassroots:
+    - Grassroots can be assembled for environmental or ethnic reasons. (These are two different sectors).
+    - When grassroots exists in our data bank, look for other ethnic keywords, this will indicate ethnic origin. Else, is general.
+
+### Case 12, General/No Specific Group:
     Example:
     - "All communities"
     - "Open to everyone"
@@ -90,7 +110,16 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
     - Level 3 terms: Nigerian, Somali, Ethopian
 -->
 
-
+## Workflow:
+- Loop through 'Taxonomy - Defintions.xlsx' and create future accessible mapping of Taxonomy definitions using column D 'All Items'. 
+- Once mapping has been created, Concactenate columns "Final_Project_Description" + "Final_Summary_Description" + "Purpose" + "Funding Request Name" before beginning keyword search. 
+    - Priority Listing:
+        - Final Project Description & Final Summary Description
+        - Purpose 
+        - Funding Request Name
+    *These are the orders we will search for keywords first (as a result there might not be a need for contactenation, and instead store as different indices in a list to loop through).
+- Upon keyword search, go through case-by-case analysis and perform ranking to group ethnicities.
+- After ethnicity grouping, go through manually to confirm accuracy, placing emphasis on "General Population" section.
 
 
     

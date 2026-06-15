@@ -10,7 +10,7 @@ ethnic_tagger.py
 - For each row in the funding sheet, searches Purpose, Project Final Description
 - and Project Summary Description for ethnic origin keywords defined in the taxonomy
 
-Fills Ethnic 1, Ethnic 2, Ethnic 3 columns based on the deepest match found (this case needs to be revised per Bianca's input)
+Fills Ethnic 1, Ethnic 2, Ethnic 3 columns based on the longest match found (this case needs to be revised per Bianca's input)
 
 To Run:
     python ethnic_tagger.py "C:\Users\oadode\OneDrive - Edmonton Community Foundation\Desktop\Discretionary FR working Folder - Oreva\Discretionary FR Working - 2025 (Oreva).xlsx"
@@ -38,10 +38,10 @@ TAXONOMY__DEF_ENTRY3 = "Ethnic and Cultural Origins Level 3"
 
 # Input columns to read keywords from
 INPUT_COLS = [
-    "Funding Request Name",
     "Purpose",
     "Final_Project_Description",
     "Final_Summary_Description",
+    "Funding Request Name",
 ]
 
 # Ouput columns to write ethnic group identified from Taxonomy definitions sheet
@@ -73,13 +73,17 @@ we would extract:
 """
 
 def clean(text):
-    """Lowercase and strip a string, return empty string if not a string or if NaN"""
+    """
+    Lowercase and strip a string, return empty string if not a string or if NaN
+    """
     if pd.isna(text) or not isinstance(text, str):
         return ""
+    
     return text.strip().lower()
 
-
-#-- Taxonomy Definitions Sheet Processing --
+# --------------------------------------
+# Taxonomy Definitions Sheet Processing:
+# --------------------------------------
 def build_taxonomy(tax_df):
     """
     Build a list of taxonomy entries sorted by depth (deepest first)
@@ -94,6 +98,7 @@ def build_taxonomy(tax_df):
                 return ""
             val = str(val).lower().strip()
             val = val.replace("origins", "")
+
             return val.strip()
 
     entries = []
@@ -128,11 +133,34 @@ def build_taxonomy(tax_df):
 
     # Sort longest first so we favour longer matches (Eg. 'African' should not match 'Southern and East African Origins' OR 'Southern African' should match before 'African')
     entries.sort(key=lambda x: (-x["depth"], -len(x["keyword"])))
+
     return entries
 
-#-- Discretionary Funding Requests Sheet Processing --
+# ------------------------------------------------
+# Discretionary Funding Requests Sheet Processing:
+# ------------------------------------------------
 def get_search_text(row):
-    """Combine all input columns into one lowercase search string"""
+    """
+    Combine all input columns into one lowercase search string
+    """
+    texts = []
+    for col in INPUT_COLS: 
+        col_name = row.get(col, "")
+        if pd.isna(col_name) or not isinstance(col_name, str):
+            continue
+        texts.append(col_name.strip().lower())
+
+    return " ".join(texts)
+
+# --------------
+# Case Analysis:
+# --------------
+
+"""
+This helper function will handle the various case by case scenarios for matching taxonomy keywords to the funding request text
+"""
+def handle_cases():
+    # Case 1 - Exact Match
     pass
 
 def main():

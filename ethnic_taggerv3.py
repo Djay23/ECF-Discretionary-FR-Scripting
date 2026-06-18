@@ -55,9 +55,10 @@ from openpyxl import load_workbook
 TAXONOMY_SHEET  = "Ethnic and Cultural Origins"
 DATA_SHEET      = "Discretionary Funding Requests"
 
-TAXONOMY_ENTRY1 = "Ethnic and Cultural Origins Level 1"
-TAXONOMY_ENTRY2 = "Ethnic and Cultural Origins Level 2"
-TAXONOMY_ENTRY3 = "Ethnic and Cultural Origins Level 3"
+TAXONOMY_ENTRY1   = "Ethnic and Cultural Origins Level 1"
+TAXONOMY_ENTRY2   = "Ethnic and Cultural Origins Level 2"
+TAXONOMY_ENTRY3   = "Ethnic and Cultural Origins Level 3"
+TAXONOMY_ALL_TERMS = "All Terms"
 
 # Search priority order — all 4 are aggregated, but this order
 # determines which match "wins" on ties (first column listed wins)
@@ -363,28 +364,89 @@ def is_example_mention(keyword, text):
 # from matching before "Southern and East African".
 # ============================================================
 
+# ============================================================
+# TAXONOMY BUILDER (Case 1-3 source data)
+#
+# Sourced from Column D "All Terms" — a flat concatenation of
+# Level 1 + Level 2 + Level 3 with the literal word "Origins" acting
+# as the implicit separator after L1 and L2 (no separator after L3,
+# since specific terms like "Somali" don't carry an "Origins" suffix).
+#
+# Example: "African OriginsSouthern and East African OriginsSomali"
+#   -> split on "Origins" -> ["African", "Southern and East African", "Somali"]
+#
+# This matches the parsing method already used in the team's production
+# script (Bianca's skeleton) rather than reading Level 1/2/3 columns
+# directly, so taxonomy updates only need to be made in one place
+# (the All Terms formula) to propagate correctly here.
+#
+# Falls back to reading Level 1/2/3 columns directly if All Terms is
+# blank or missing for a given row, for resilience against a broken
+# formula cell.
+#
+# Sort: deepest first, then LONGEST keyword first within the same
+# depth. This is the fix from the production skeleton — prevents
+# "African" from matching before "Southern and East African".
+# ============================================================
+
+def parse_all_terms(all_terms_value):
+    """Split the 'All Terms' cell on the literal word 'Origins' into
+    its component level strings, stripped of whitespace. Empty trailing
+    fragments (the cell usually ends right after "Origins" for L1/L2-only
+    rows) are dropped."""
+    if pd.isna(all_terms_value) or not isinstance(all_terms_value, str):
+        return []
+    parts = all_terms_value.split("Origins")
+    parts = [p.strip() for p in parts if p.strip()]
+    return parts
+
+
 def build_taxonomy(tax_df):
     entries = []
     for _, row in tax_df.iterrows():
-        e1 = clean_taxonomy_value(row.get(TAXONOMY_ENTRY1, ""))
-        e2 = clean_taxonomy_value(row.get(TAXONOMY_ENTRY2, ""))
-        e3 = clean_taxonomy_value(row.get(TAXONOMY_ENTRY3, ""))
+        all_terms_raw = row.get(TAXONOMY_ALL_TERMS, "")
+        parts = parse_all_terms(all_terms_raw)
 
-        if not e1:
-            continue
+        if parts:
+            # Primary path: parsed from All Terms column.
+            # The split strips the literal word "Origins" from every
+            # fragment, but in the real taxonomy, Level 1 and Level 2
+            # display values legitimately INCLUDE the "Origins" suffix
+            # (e.g. "African Origins", "Southern and East African Origins").
+            # Only Level 3 specific identity terms (e.g. "Somali",
+            # "Mozambican") are bare. So we re-append " Origins" to L1/L2
+            # for display, while keeping the bare term for keyword matching
+            # (funding descriptions say "Somali", not "Somali Origins").
+            bare_l1 = parts[0] if len(parts) >= 1 else ""
+            bare_l2 = parts[1] if len(parts) >= 2 else ""
+            bare_l3 = parts[2] if len(parts) >= 3 else ""
 
-        if e3:
-            depth, keyword = 3, e3
-        elif e2:
-            depth, keyword = 2, e2
+            level1 = f"{bare_l1} Origins" if bare_l1 else ""
+            level2 = f"{bare_l2} Origins" if bare_l2 else ""
+            level3 = bare_l3
+
+            depth   = len(parts)
+            keyword = (bare_l3 or bare_l2 or bare_l1).strip().lower()
         else:
-            depth, keyword = 1, e1
+            # Fallback: read Level 1/2/3 columns directly if All Terms
+            # is blank/missing for this row. These already include the
+            # "Origins" suffix where appropriate, so no re-appending needed.
+            level1 = safe_display(row.get(TAXONOMY_ENTRY1, ""))
+            level2 = safe_display(row.get(TAXONOMY_ENTRY2, ""))
+            level3 = safe_display(row.get(TAXONOMY_ENTRY3, ""))
+            if not level1:
+                continue
+            depth   = 3 if level3 else (2 if level2 else 1)
+            keyword = clean_taxonomy_value(level3 or level2 or level1)
+
+        if not level1:
+            continue
 
         entries.append({
             "keyword": keyword,
-            "level1":  safe_display(row.get(TAXONOMY_ENTRY1, "")),
-            "level2":  safe_display(row.get(TAXONOMY_ENTRY2, "")),
-            "level3":  safe_display(row.get(TAXONOMY_ENTRY3, "")),
+            "level1":  level1,
+            "level2":  level2,
+            "level3":  level3,
             "depth":   depth,
         })
 
@@ -582,6 +644,19 @@ def classify_row(row, taxonomy_entries):
     if country_result:
         l1, l2, l3, depth = country_result
         candidates.append((l1, l2, l3, depth, "country"))
+
+    # Dedupe by actual (level1, level2, level3) outcome — two different
+    # detection methods (e.g. pattern rule + country map) landing on the
+    # exact same conclusion is a single confirmed answer, not a multi-
+    # group signal. Keeps the first-seen source label for the flag text.
+    seen_outcomes = set()
+    deduped_candidates = []
+    for c in candidates:
+        outcome_key = (c[0], c[1], c[2])
+        if outcome_key not in seen_outcomes:
+            seen_outcomes.add(outcome_key)
+            deduped_candidates.append(c)
+    candidates = deduped_candidates
 
     # --- Case 9: BIPOC (context-aware) ---
     # Checked here (after candidates are gathered) so we can tell whether

@@ -1,3 +1,9 @@
+import sys
+import re
+import pandas as pd
+from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
+
 """
 ethnic_tagger_v3.py
 --------------------
@@ -13,7 +19,7 @@ Final_Summary_Description, Purpose, Funding Request Name), then resolves
 using the case hierarchy below.
 
 To Run:
-    python ethnic_tagger_v3.py "C:\Users\oadode\OneDrive - Edmonton Community Foundation\Desktop\Discretionary FR Scripting\FR testing.xlsx"
+    python ethnic_taggerv3.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"
 
 Case coverage (see README):
     1.  Exact match (deepest taxonomy term)
@@ -42,11 +48,6 @@ Also handles:
     - Strict word-boundary matching (no "blacksmith" -> "black")
 """
 
-import sys
-import re
-import pandas as pd
-from openpyxl import load_workbook
-
 # =============
 # CONFIGURATION 
 # =============
@@ -68,9 +69,9 @@ INPUT_COLS_PRIORITY = [
     "Funding Request Name",
 ]
 
-OUTPUT_ETHNIC1 = "Ethnic 1 - FR"
-OUTPUT_ETHNIC2 = "Ethnic 2 - FR"
-OUTPUT_ETHNIC3 = "Ethnic 3 - FR"
+OUTPUT_ETHNIC1 = "Ethnic 1 - FR6"
+OUTPUT_ETHNIC2 = "Ethnic 2 - FR7"
+OUTPUT_ETHNIC3 = "Ethnic 3 - FR8"
 OUTPUT_FLAG = "Classification Flag"
 
 MULTIPLE_ETHNIC = "Multiple Ethnic and Cultural Origins"
@@ -124,8 +125,8 @@ BROAD_IDENTITY_KEYWORDS = [
 # otherwise be General Population.
 # ========================================================
 ORG_NAME_ETHNICITY_MAP = {
-    "bent arrow":            ("North American Indigenous Origins", "", ""),
-    "treaty 6":               ("North American Indigenous Origins", "", ""),
+    "bent arrow": ("North American Indigenous Origins", "", ""),
+    "treaty 6": ("North American Indigenous Origins", "", ""),
     # Add more known organization name -> ethnicity mappings here as identified
 }
 
@@ -712,7 +713,7 @@ def classify_row(row, taxonomy_entries):
 # =====
 def main():
     if len(sys.argv) < 3:
-        print('Usage: python ethnic_tagger_v3.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\FR testing.xlsx"')
+        print('Usage: python ethnic_taggerv3.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"')
         sys.exit(1)
  
     taxonomy_filepath = sys.argv[1]
@@ -793,10 +794,12 @@ def main():
         ws.cell(row=i, column=headers[OUTPUT_FLAG],    value=data_df.at[idx, OUTPUT_FLAG])
  
     wb.save(funding_filepath)
- 
+    
     print("\nResults:")
     for k, v in stats.items():
         print(f"  {k}: {v}")
+        # print(f"  {k}: {v}; Column #: {get_column_letter(headers[OUTPUT_ETHNIC1])} - {get_column_letter(headers[OUTPUT_ETHNIC3])}, Flag: {get_column_letter(headers[OUTPUT_FLAG])}")
+
     print(f"\nOutput written to: {funding_filepath}")
  
 if __name__ == "__main__":

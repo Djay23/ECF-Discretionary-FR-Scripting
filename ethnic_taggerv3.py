@@ -1,19 +1,19 @@
 """
 ethnic_tagger_v3.py
 --------------------
-Deterministic, rule-based ethnic origin classifier for ECF Discretionary
+Rule-based ethnic origin classifier for ECF Discretionary
 Funding Requests.
 
 Reads:
-    "Taxonomy - Definitions.xlsx"  -> sheet "Ethnic and Cultural Origins"
-    Funding requests workbook       -> sheet "Discretionary Funding Requests"
+    "Taxonomy - Definitions.xlsx" -> sheet "Ethnic and Cultural Origins"
+    "Discretionary FR working -2025 (Oreva).xlsx" -> sheet "Discretionary Funding Requests"
 
 Aggregates matches across all 4 input columns (Final_Project_Description,
 Final_Summary_Description, Purpose, Funding Request Name), then resolves
 using the case hierarchy below.
 
 To Run:
-    python ethnic_tagger_v3.py "<path to funding requests workbook>"
+    python ethnic_tagger_v3.py "C:\Users\oadode\OneDrive - Edmonton Community Foundation\Desktop\Discretionary FR Scripting\FR testing.xlsx"
 
 Case coverage (see README):
     1.  Exact match (deepest taxonomy term)
@@ -33,8 +33,7 @@ Case coverage (see README):
         ethnic keyword; otherwise ignored entirely
     12. General Population (fallback / no signal)
 
-Also handles (from earlier edge-case discussion, kept generic across
-ALL ethnic groups, not group-specific):
+Also handles:
     - Context override ("beyond its original focus on X")
     - Historical reference ("historically served X")
     - Negation ("not targeting X", "does not serve X")
@@ -48,19 +47,19 @@ import re
 import pandas as pd
 from openpyxl import load_workbook
 
-# ============================================================
-# CONFIGURATION — matches actual ECF workbook structure
-# ============================================================
+# =============
+# CONFIGURATION 
+# =============
 
-TAXONOMY_SHEET  = "Ethnic and Cultural Origins"
-DATA_SHEET      = "Discretionary Funding Requests"
+TAXONOMY_SHEET = "Ethnic and Cultural Origins"
+DATA_SHEET = "Discretionary Funding Requests"
 
-TAXONOMY_ENTRY1   = "Ethnic and Cultural Origins Level 1"
-TAXONOMY_ENTRY2   = "Ethnic and Cultural Origins Level 2"
-TAXONOMY_ENTRY3   = "Ethnic and Cultural Origins Level 3"
+TAXONOMY_ENTRY1 = "Ethnic and Cultural Origins Level 1"
+TAXONOMY_ENTRY2 = "Ethnic and Cultural Origins Level 2"
+TAXONOMY_ENTRY3 = "Ethnic and Cultural Origins Level 3"
 TAXONOMY_ALL_TERMS = "All Terms"
 
-# Search priority order — all 4 are aggregated, but this order
+# Search priority order — all 4 are concatenated, but this order
 # determines which match "wins" on ties (first column listed wins)
 INPUT_COLS_PRIORITY = [
     "Final_Project_Description",
@@ -72,15 +71,15 @@ INPUT_COLS_PRIORITY = [
 OUTPUT_ETHNIC1 = "Ethnic 1 - FR"
 OUTPUT_ETHNIC2 = "Ethnic 2 - FR"
 OUTPUT_ETHNIC3 = "Ethnic 3 - FR"
-OUTPUT_FLAG    = "Classification Flag"
+OUTPUT_FLAG = "Classification Flag"
 
 MULTIPLE_ETHNIC = "Multiple Ethnic and Cultural Origins"
-OTHER_ETHNIC    = "Other Ethnic and Cultural Origins"
-GENERAL_POP     = "General Population (No specific ethnic and cultural origin group served)"
+OTHER_ETHNIC = "Other Ethnic and Cultural Origins"
+GENERAL_POP = "General Population (No specific ethnic and cultural origin group served)"
 
-# ============================================================
-# CASE 9 — BIPOC keywords (context-aware, see is_bipoc_real_target)
-# ============================================================
+# =======================
+# CASE 9 — BIPOC keywords 
+# =======================
 BIPOC_KEYWORDS = [
     r"\bbipoc\b",
     r"\bqtbipoc\b",
@@ -91,8 +90,9 @@ BIPOC_KEYWORDS = [
 ]
 
 # Words that, on their own, should NOT trigger BIPOC/Multiple classification
-# unless paired with an actual ethnic signal. Handled separately from
+# unless paired with an actual ethnic 'hint'. Handled separately from
 # BIPOC_KEYWORDS because the rule is different (Case 11).
+
 AMBIGUOUS_EQUITY_WORDS = [
     r"\bmarginalized\b",
     r"\bgrassroots\b",
@@ -118,43 +118,42 @@ BROAD_IDENTITY_KEYWORDS = [
     r"\bmulti[\-\s]ethnic\b",
 ]
 
-# ============================================================
+# =========================================================
 # CASE 10 — Known organization name -> ethnicity lookup
 # Only consulted as a LAST RESORT if classification would
 # otherwise be General Population.
-# ============================================================
+# ========================================================
 ORG_NAME_ETHNICITY_MAP = {
     "bent arrow":            ("North American Indigenous Origins", "", ""),
     "treaty 6":               ("North American Indigenous Origins", "", ""),
-    # Add more known organization name -> ethnicity mappings here as
-    # they are identified in the data.
+    # Add more known organization name -> ethnicity mappings here as identified
 }
 
-# ============================================================
+# ==================================================
 # CASE 4 — Structured / directional phrase patterns
 # Applied only if no direct taxonomy match found.
-# ============================================================
+# ==================================================
 PATTERN_RULES = [
-    (r"\bnorth[\s\-]?african\b",            "African Origins", "North African Origins", ""),
-    (r"\bsouth[\s\-]?african\b",            "African Origins", "Southern and East African Origins", ""),
-    (r"\beast[\s\-]?african\b",             "African Origins", "Southern and East African Origins", ""),
-    (r"\bwest[\s\-]?african\b",             "African Origins", "Central and West African Origins", ""),
-    (r"\bcentral[\s\-]?african\b",          "African Origins", "Central and West African Origins", ""),
-    (r"\bsub[\s\-]?saharan\b",              "African Origins", "Central and West African Origins", ""),
-    (r"\bsoutheast[\s\-]?asian\b",          "Asian Origins", "East and Southeast Asian Origins", ""),
-    (r"\bsouth[\s\-]?asian\b",              "Asian Origins", "South Asian Origins", ""),
-    (r"\beast[\s\-]?asian\b",               "Asian Origins", "East and Southeast Asian Origins", ""),
-    (r"\bmiddle[\s\-]?eastern\b",           "Asian Origins", "West and Central Asian and Middle Eastern Origins", ""),
-    (r"\bfirst nations\b",                  "North American Indigenous Origins", "", ""),
-    (r"\bmetis\b",                          "North American Indigenous Origins", "", ""),
-    (r"\binuit\b",                          "North American Indigenous Origins", "", ""),
-    (r"\baboriginal\b",                     "North American Indigenous Origins", "", ""),
-    (r"\bindigenous canadian\b",            "North American Indigenous Origins", "", ""),
-    (r"\btreaty 6\b",                       "North American Indigenous Origins", "", ""),
-    (r"\bnorthern european\b",              "European Origins", "Northern European Origins", ""),
-    (r"\bsouthern european\b",              "European Origins", "Southern European Origins", ""),
-    (r"\beast(ern)? european\b",            "European Origins", "Eastern European Origins", ""),
-    (r"\bwest(ern)? european\b",            "European Origins", "Western European Origins", ""),
+    (r"\bnorth[\s\-]?african\b", "African Origins", "North African Origins", ""),
+    (r"\bsouth[\s\-]?african\b", "African Origins", "Southern and East African Origins", ""),
+    (r"\beast[\s\-]?african\b", "African Origins", "Southern and East African Origins", ""),
+    (r"\bwest[\s\-]?african\b", "African Origins", "Central and West African Origins", ""),
+    (r"\bcentral[\s\-]?african\b", "African Origins", "Central and West African Origins", ""),
+    (r"\bsub[\s\-]?saharan\b", "African Origins", "Central and West African Origins", ""),
+    (r"\bsoutheast[\s\-]?asian\b", "Asian Origins", "East and Southeast Asian Origins", ""),
+    (r"\bsouth[\s\-]?asian\b", "Asian Origins", "South Asian Origins", ""),
+    (r"\beast[\s\-]?asian\b", "Asian Origins", "East and Southeast Asian Origins", ""),
+    (r"\bmiddle[\s\-]?eastern\b", "Asian Origins", "West and Central Asian and Middle Eastern Origins", ""),
+    (r"\bfirst nations\b", "North American Indigenous Origins", "", ""),
+    (r"\bmetis\b", "North American Indigenous Origins", "", ""),
+    (r"\binuit\b", "North American Indigenous Origins", "", ""),
+    (r"\baboriginal\b","North American Indigenous Origins", "", ""),
+    (r"\bindigenous canadian\b", "North American Indigenous Origins", "", ""),
+    (r"\btreaty 6\b", "North American Indigenous Origins", "", ""),
+    (r"\bnorthern european\b", "European Origins", "Northern European Origins", ""),
+    (r"\bsouthern european\b", "European Origins", "Southern European Origins", ""),
+    (r"\beast(ern)? european\b", "European Origins", "Eastern European Origins", ""),
+    (r"\bwest(ern)? european\b", "European Origins", "Western European Origins", ""),
 ]
 
 # ============================================================
@@ -162,32 +161,32 @@ PATTERN_RULES = [
 # Covers both "Jamaican" (nationality) and "from Jamaica" (Case 7)
 # ============================================================
 COUNTRY_REGION_MAP = {
-    "jamaican":     ("Caribbean Origins", "", ""),
-    "jamaica":      ("Caribbean Origins", "", ""),
-    "trinidadian":  ("Caribbean Origins", "", ""),
-    "trinidad":     ("Caribbean Origins", "", ""),
-    "barbadian":    ("Caribbean Origins", "", ""),
-    "barbados":     ("Caribbean Origins", "", ""),
-    "haitian":      ("Caribbean Origins", "", ""),
-    "haiti":        ("Caribbean Origins", "", ""),
-    "guyanese":     ("Caribbean Origins", "", ""),
-    "guyana":       ("Caribbean Origins", "", ""),
-    "brazilian":    ("Latin American Origins", "", ""),
-    "brazil":       ("Latin American Origins", "", ""),
-    "colombian":    ("Latin American Origins", "", ""),
-    "colombia":     ("Latin American Origins", "", ""),
-    "mexican":      ("Latin American Origins", "", ""),
-    "mexico":       ("Latin American Origins", "", ""),
-    "salvadoran":   ("Latin American Origins", "", ""),
-    "el salvador":  ("Latin American Origins", "", ""),
-    "guatemalan":   ("Latin American Origins", "", ""),
-    "guatemala":    ("Latin American Origins", "", ""),
-    "peruvian":     ("Latin American Origins", "", ""),
-    "peru":         ("Latin American Origins", "", ""),
-    "venezuelan":   ("Latin American Origins", "", ""),
-    "venezuela":    ("Latin American Origins", "", ""),
-    "indian":       ("Asian Origins", "South Asian Origins", ""),
-    "india":        ("Asian Origins", "South Asian Origins", ""),
+    "jamaican": ("Caribbean Origins", "", ""),
+    "jamaica": ("Caribbean Origins", "", ""),
+    "trinidadian": ("Caribbean Origins", "", ""),
+    "trinidad": ("Caribbean Origins", "", ""),
+    "barbadian": ("Caribbean Origins", "", ""),
+    "barbados": ("Caribbean Origins", "", ""),
+    "haitian": ("Caribbean Origins", "", ""),
+    "haiti": ("Caribbean Origins", "", ""),
+    "guyanese": ("Caribbean Origins", "", ""),
+    "guyana": ("Caribbean Origins", "", ""),
+    "brazilian": ("Latin American Origins", "", ""),
+    "brazil": ("Latin American Origins", "", ""),
+    "colombian": ("Latin American Origins", "", ""),
+    "colombia": ("Latin American Origins", "", ""),
+    "mexican": ("Latin American Origins", "", ""),
+    "mexico": ("Latin American Origins", "", ""),
+    "salvadoran": ("Latin American Origins", "", ""),
+    "el salvador": ("Latin American Origins", "", ""),
+    "guatemalan": ("Latin American Origins", "", ""),
+    "guatemala": ("Latin American Origins", "", ""),
+    "peruvian": ("Latin American Origins", "", ""),
+    "peru": ("Latin American Origins", "", ""),
+    "venezuelan": ("Latin American Origins", "", ""),
+    "venezuela": ("Latin American Origins", "", ""),
+    "indian": ("Asian Origins", "South Asian Origins", ""),
+    "india": ("Asian Origins", "South Asian Origins", ""),
 }
 
 # ============================================================
@@ -260,40 +259,40 @@ EXAMPLE_PHRASES = [
     r"as (opposed|compared) to",
 ]
 
+"""
+-- Not Necessary to be handled right now for processing sakes.
+
 # Common typos / nationality-vs-canonical-term variants.
 KEYWORD_ALIASES = {
-    "somalian":         "somali",
-    "ethopian":         "ethiopian",
-    "ethipian":         "ethiopian",
-    "rwandese":         "rwandan",
-    "congolaise":       "congolese",
-    "congolais":        "congolese",
-    "mozambiquean":     "mozambican",
-    "tanzanean":        "tanzanian",
-    "ugandese":         "ugandan",
-    "burundaise":       "burundian",
-    "filippino":        "filipino",
-    "phillipine":       "filipino",
-    "philippine":       "filipino",
-    "viet":             "vietnamese",
-    "indo-canadian":    "south asian",
-    "indo canadian":    "south asian",
-    "south-asian":      "south asian",
-    "middle eastern":   "west and central asian and middle eastern",
-    "middle-eastern":   "west and central asian and middle eastern",
+    "somalian": "somali",
+    "ethopian": "ethiopian",
+    "ethipian": "ethiopian",
+    "rwandese": "rwandan",
+    "congolaise": "congolese",
+    "congolais": "congolese",
+    "mozambiquean": "mozambican",
+    "tanzanean": "tanzanian",
+    "ugandese": "ugandan",
+    "burundaise": "burundian",
+    "filippino": "filipino",
+    "phillipine": "filipino",
+    "philippine": "filipino",
+    "viet": "vietnamese",
+    "indo-canadian": "south asian",
+    "indo canadian": "south asian",
+    "south-asian": "south asian",
+    "middle eastern": "west and central asian and middle eastern",
+    "middle-eastern": "west and central asian and middle eastern",
 }
+"""
 
-
-# ============================================================
+# =======
 # HELPERS
-# ============================================================
+# =======
 
 def clean_taxonomy_value(val):
-    """Lowercase, strip, and remove the literal word 'origins' (matches
-    the production script's normalization so keyword matching behaves
-    the same way against the real taxonomy sheet). Treats NaN/None as
-    empty — pandas reads blank Excel cells as float('nan'), which is
-    truthy in Python, so an explicit pd.isna() check is required here."""
+    """Lowercase, strip, and remove the literal word 'origins'. Treats NaN/None as
+    empty. Pandas reads blank Excel cells as float('nan'), so an explicit pd.isna() check is required here."""
     if val is None or (isinstance(val, float) and pd.isna(val)) or pd.isna(val):
         return ""
     val = str(val).strip()
@@ -303,7 +302,6 @@ def clean_taxonomy_value(val):
     val = val.replace("origins", "")
     return val.strip()
 
-
 def safe_display(val):
     """Return the original display value for level1/level2/level3,
     treating NaN as empty string instead of the literal 'nan'."""
@@ -311,7 +309,6 @@ def safe_display(val):
         return ""
     val = str(val).strip()
     return "" if val.lower() == "nan" else val
-
 
 def normalize_text(text):
     """Lowercase, strip punctuation, collapse whitespace. Used on the
@@ -324,16 +321,15 @@ def normalize_text(text):
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
-
-def apply_aliases(text):
-    for alias, canonical in KEYWORD_ALIASES.items():
-        text = re.sub(r'\b' + re.escape(alias) + r'\b', canonical, text)
-    return text
-
+# UNCOMMENT : For implementation of alias check
+# ------
+# def apply_aliases(text):
+#     for alias, canonical in KEYWORD_ALIASES.items():
+#         text = re.sub(r'\b' + re.escape(alias) + r'\b', canonical, text)
+#     return text
 
 def matches_any(patterns, text):
     return any(re.search(p, text, re.IGNORECASE) for p in patterns)
-
 
 def keyword_context_window(keyword, text, window=80):
     """Return the text immediately preceding the first occurrence of
@@ -346,39 +342,30 @@ def keyword_context_window(keyword, text, window=80):
     start = max(0, m.start() - window)
     return text[start:m.start()]
 
-
 def is_negated(keyword, text):
     snippet = keyword_context_window(keyword, text)
     return snippet is not None and matches_any(NEGATION_PHRASES, snippet)
-
 
 def is_example_mention(keyword, text):
     snippet = keyword_context_window(keyword, text)
     return snippet is not None and matches_any(EXAMPLE_PHRASES, snippet)
 
-
 # ============================================================
 # TAXONOMY BUILDER (Case 1-3 source data)
-# Sort: deepest first, then LONGEST keyword first within same depth.
-# This is the fix from the production skeleton — prevents "African"
+# Sort: deepest first, then LONGEST keyword first within same depth. Prevents "African"
 # from matching before "Southern and East African".
 # ============================================================
 
 # ============================================================
 # TAXONOMY BUILDER (Case 1-3 source data)
 #
-# Sourced from Column D "All Terms" — a flat concatenation of
+# Pulled from Column D "All Terms", a flat concatenation of
 # Level 1 + Level 2 + Level 3 with the literal word "Origins" acting
-# as the implicit separator after L1 and L2 (no separator after L3,
+# as the delimiter after L1 and L2 (no separator after L3,
 # since specific terms like "Somali" don't carry an "Origins" suffix).
 #
 # Example: "African OriginsSouthern and East African OriginsSomali"
 #   -> split on "Origins" -> ["African", "Southern and East African", "Somali"]
-#
-# This matches the parsing method already used in the team's production
-# script (Bianca's skeleton) rather than reading Level 1/2/3 columns
-# directly, so taxonomy updates only need to be made in one place
-# (the All Terms formula) to propagate correctly here.
 #
 # Falls back to reading Level 1/2/3 columns directly if All Terms is
 # blank or missing for a given row, for resilience against a broken
@@ -390,16 +377,15 @@ def is_example_mention(keyword, text):
 # ============================================================
 
 def parse_all_terms(all_terms_value):
-    """Split the 'All Terms' cell on the literal word 'Origins' into
-    its component level strings, stripped of whitespace. Empty trailing
-    fragments (the cell usually ends right after "Origins" for L1/L2-only
-    rows) are dropped."""
+    """
+    Split the 'All Terms' cell on the literal word 'Origins' into
+    its component level strings, stripped of whitespace. Trailing chars removed.
+    """
     if pd.isna(all_terms_value) or not isinstance(all_terms_value, str):
         return []
     parts = all_terms_value.split("Origins")
     parts = [p.strip() for p in parts if p.strip()]
     return parts
-
 
 def build_taxonomy(tax_df):
     entries = []
@@ -411,10 +397,10 @@ def build_taxonomy(tax_df):
             # Primary path: parsed from All Terms column.
             # The split strips the literal word "Origins" from every
             # fragment, but in the real taxonomy, Level 1 and Level 2
-            # display values legitimately INCLUDE the "Origins" suffix
+            # display values INCLUDE the "Origins" suffix
             # (e.g. "African Origins", "Southern and East African Origins").
             # Only Level 3 specific identity terms (e.g. "Somali",
-            # "Mozambican") are bare. So we re-append " Origins" to L1/L2
+            # "Mozambican") are bare. So re-append " Origins" to L1/L2
             # for display, while keeping the bare term for keyword matching
             # (funding descriptions say "Somali", not "Somali Origins").
             bare_l1 = parts[0] if len(parts) >= 1 else ""
@@ -428,9 +414,9 @@ def build_taxonomy(tax_df):
             depth   = len(parts)
             keyword = (bare_l3 or bare_l2 or bare_l1).strip().lower()
         else:
-            # Fallback: read Level 1/2/3 columns directly if All Terms
+            # Fallback: read Level 1/2/3 columns directly if 'All Terms'
             # is blank/missing for this row. These already include the
-            # "Origins" suffix where appropriate, so no re-appending needed.
+            # "Origins" suffix, so no re-appending needed.
             level1 = safe_display(row.get(TAXONOMY_ENTRY1, ""))
             level2 = safe_display(row.get(TAXONOMY_ENTRY2, ""))
             level3 = safe_display(row.get(TAXONOMY_ENTRY3, ""))
@@ -454,14 +440,15 @@ def build_taxonomy(tax_df):
     entries.sort(key=lambda x: (-x["depth"], -len(x["keyword"])))
     return entries
 
-
-# ============================================================
+# ==============================
 # CASE-BY-CASE DETECTION LAYERS
-# ============================================================
+# ==============================
 
 def find_taxonomy_matches(text, taxonomy_entries):
-    """Cases 1-3: direct taxonomy keyword matches, respecting negation
-    and example-mention guards. Returns ALL valid matches found."""
+    """
+    Cases 1-3: direct taxonomy keyword matches, respecting negation
+    and example-mention guards. Returns ALL valid matches found.
+    """
     matched = []
     for entry in taxonomy_entries:
         kw = entry["keyword"]
@@ -475,10 +462,11 @@ def find_taxonomy_matches(text, taxonomy_entries):
         matched.append(entry)
     return matched
 
-
 def find_pattern_match(text):
-    """Case 4: structured/directional phrases not directly in taxonomy.
-    Returns (l1, l2, l3, depth) or None."""
+    """
+    Case 4: structured/directional phrases not directly in taxonomy.
+    Returns (l1, l2, l3, depth) or None.
+    """
     for pattern, l1, l2, l3 in PATTERN_RULES:
         m = re.search(pattern, text, re.IGNORECASE)
         if not m:
@@ -490,10 +478,11 @@ def find_pattern_match(text):
         return (l1, l2, l3, depth)
     return None
 
-
 def find_country_match(text):
-    """Cases 6 & 7: nationality OR 'from <country>' phrasing.
-    Returns (l1, l2, l3, depth) or None."""
+    """
+    Cases 6 & 7: nationality OR 'from <country>' phrasing.
+    Returns (l1, l2, l3, depth) or None.
+    """
     for country, (l1, l2, l3) in COUNTRY_REGION_MAP.items():
         direct = re.search(r'\b' + re.escape(country) + r'\b', text, re.IGNORECASE)
         from_phrase = re.search(r'\bfrom\s+' + re.escape(country) + r'\b', text, re.IGNORECASE)
@@ -507,11 +496,13 @@ def find_country_match(text):
         return (l1, l2, l3, depth)
     return None
 
-
 def has_real_ethnic_signal(text, taxonomy_entries):
-    """Used by Case 11 (grassroots) to check whether an ACTUAL ethnic
+    """
+    Used by Case 11 (grassroots) to check whether an ACTUAL ethnic
     keyword exists elsewhere in the text, independent of the ambiguous
-    equity words."""
+    equity words.
+    """
+    # This will later be revised, as grassroots can benfit any ethnic group
     if find_taxonomy_matches(text, taxonomy_entries):
         return True
     if find_pattern_match(text):
@@ -519,7 +510,6 @@ def has_real_ethnic_signal(text, taxonomy_entries):
     if find_country_match(text):
         return True
     return False
-
 
 def is_bipoc_real_target(text):
     """Case 9 with context awareness: BIPOC mentioned as the actual
@@ -529,7 +519,7 @@ def is_bipoc_real_target(text):
     it's wrapped in example-mention or override phrasing, or unless
     it appears alongside language suggesting it's an aspirational/
     values statement rather than a description of who is served.
-    NOTE: per your own example, this is genuinely ambiguous — flagged
+    NOTE: This is ambiguous so: flagged
     for review rather than silently resolved either way.
     """
     found = False
@@ -545,11 +535,12 @@ def is_bipoc_real_target(text):
             break
     return found
 
-
 def check_grassroots_case(text, taxonomy_entries):
-    """Case 11: 'grassroots' / 'marginalized' / 'ethnocultural' alone
+    """
+    Case 11: 'grassroots' / 'marginalized' / 'ethnocultural' alone
     should NOT trigger ethnic classification. Only relevant if paired
-    with a real ethnic signal elsewhere in the text."""
+    with a real ethnic signal elsewhere in the text.
+    """
     has_ambiguous = matches_any(AMBIGUOUS_EQUITY_WORDS, text)
     if not has_ambiguous:
         return None  # not relevant, no opinion
@@ -557,34 +548,30 @@ def check_grassroots_case(text, taxonomy_entries):
         return "has_signal"  # let normal matching proceed
     return "no_signal"  # ambiguous word present but no real ethnic keyword
 
-
 def check_org_name_lookup(text):
-    """Case 10: known organization names. Only called as last resort."""
+    """
+    Case 10: known organization names. Only called as last resort.
+    """
     for org_name, (l1, l2, l3) in ORG_NAME_ETHNICITY_MAP.items():
         if re.search(r'\b' + re.escape(org_name) + r'\b', text, re.IGNORECASE):
             return (l1, l2, l3)
     return None
 
-
 def detect_broad_identity(text):
     return matches_any(BROAD_IDENTITY_KEYWORDS, text)
-
 
 def context_is_overridden(text):
     return matches_any(EXPANSION_PHRASES, text)
 
-
 def context_is_historical(text):
     return matches_any(HISTORICAL_PHRASES, text)
-
 
 def context_is_aspirational(text):
     return matches_any(ASPIRATIONAL_PHRASES, text)
 
-
-# ============================================================
-# TEXT EXTRACTION — aggregate across all 4 columns
-# ============================================================
+# =================================================
+# TEXT EXTRACTION — concatenate across all 4 columns
+# =================================================
 
 def get_column_texts(row):
     texts = []
@@ -595,10 +582,9 @@ def get_column_texts(row):
         texts.append(raw)
     return texts
 
-
-# ============================================================
-# MAIN CLASSIFICATION PIPELINE
-# ============================================================
+# ==========================
+# MAIN CLASSIFICATION LOGIC
+# =============================
 
 def classify_row(row, taxonomy_entries):
     col_texts = get_column_texts(row)
@@ -607,7 +593,7 @@ def classify_row(row, taxonomy_entries):
     if not combined.strip():
         return (GENERAL_POP, "", "", "Empty input")
 
-    # --- Highest priority: context override / historical reference ---
+    # Highest priority: context override / historical reference
     if context_is_overridden(combined):
         return (GENERAL_POP, "", "", "Context override: expansion phrase detected")
     if context_is_historical(combined):
@@ -615,7 +601,7 @@ def classify_row(row, taxonomy_entries):
 
     aspirational = context_is_aspirational(combined)
 
-    # --- Cases 1-3: direct taxonomy matches, aggregated across columns ---
+    # Cases 1-3: direct taxonomy matches, across FR columns
     all_matches = []
     for col_text in col_texts:
         if col_text.strip():
@@ -628,7 +614,7 @@ def classify_row(row, taxonomy_entries):
             seen.add(m["keyword"])
             unique_matches.append(m)
 
-    # --- Build a unified candidate pool: taxonomy + pattern + country ---
+    # Build a unified candidate pool: taxonomy + pattern + country 
     # Each candidate: (level1, level2, level3, depth, source)
     candidates = []
     for m in unique_matches:
@@ -645,7 +631,7 @@ def classify_row(row, taxonomy_entries):
         l1, l2, l3, depth = country_result
         candidates.append((l1, l2, l3, depth, "country"))
 
-    # Dedupe by actual (level1, level2, level3) outcome — two different
+    # Dedupe by actual (level1, level2, level3) outcome; two different
     # detection methods (e.g. pattern rule + country map) landing on the
     # exact same conclusion is a single confirmed answer, not a multi-
     # group signal. Keeps the first-seen source label for the flag text.
@@ -658,17 +644,16 @@ def classify_row(row, taxonomy_entries):
             deduped_candidates.append(c)
     candidates = deduped_candidates
 
-    # --- Case 9: BIPOC (context-aware) ---
+    # Case 9: BIPOC (context-aware) 
     # Checked here (after candidates are gathered) so we can tell whether
-    # BIPOC is mentioned ALONGSIDE a real specific group (the genuinely
-    # ambiguous nuance from the README) vs. BIPOC being the only signal.
+    # BIPOC is mentioned ALONGSIDE a real specific group (the ambiguous nuance from the README) vs. BIPOC being the only signal.
     bipoc_present = is_bipoc_real_target(combined)
     if bipoc_present:
         if candidates:
-            # BIPOC + a specific named group both present — exactly the
+            # BIPOC + a specific named group both present. Exactly the
             # ambiguous case flagged in the README (e.g. "BIPOC visibility"
             # alongside "Asian Canadian artists"). Do not silently resolve;
-            # surface both signals for manual review.
+            # flag for manual review.
             other_groups = sorted(set(c[0] for c in candidates))
             flag = ("Ambiguous: BIPOC mentioned alongside specific group(s) ("
                     + ", ".join(other_groups) + ") - verify manually")
@@ -676,12 +661,12 @@ def classify_row(row, taxonomy_entries):
             flag = "BIPOC target detected"
         return (MULTIPLE_ETHNIC, "", "", flag)
 
-    # --- Case 11: grassroots / ambiguous equity words ---
+    # Case 11: grassroots / ambiguous equity words 
     grassroots_state = check_grassroots_case(combined, taxonomy_entries)
     if grassroots_state == "no_signal":
         return (GENERAL_POP, "", "", "Ambiguous equity term (e.g. grassroots) with no paired ethnic signal")
 
-    # --- Resolve candidates by DEPTH, not by which method found them ---
+    # Resolve candidates by DEPTH, not by which method found them
     # This is what allows "South African" (pattern, depth 2) to beat a
     # shallow "African" (taxonomy, depth 1) match found in the same text.
     if candidates:
@@ -708,27 +693,26 @@ def classify_row(row, taxonomy_entries):
             flag = (flag + "; " if flag else "") + "Review: aspirational language - future intent, not current population"
         return (l1, l2, l3, flag)
 
-    # --- Case 9b: broad identity labels ---
+    # Case 9b: broad identity labels
     if detect_broad_identity(combined):
         return (OTHER_ETHNIC, "", "", "Broad identity term - review recommended")
 
-    # --- Case 10: organization name lookup (LAST RESORT before General) ---
+    # Case 10: organization name lookup (LAST RESORT before General)
     org_result = check_org_name_lookup(combined)
     if org_result:
         l1, l2, l3 = org_result
         return (l1, l2, l3, "Matched via known organization name lookup")
 
-    # --- Case 12: fallback ---
+    # Case 12: fallback
     return (GENERAL_POP, "", "", "")
 
-
-# ============================================================
+# =====
 # MAIN
-# ============================================================
+# =====
 
 def main():
     if len(sys.argv) < 2:
-        print('Usage: python ethnic_tagger_v3.py "<path to funding requests workbook>"')
+        print('Usage: python ethnic_tagger_v3.py "C:\Users\oadode\OneDrive - Edmonton Community Foundation\Desktop\Discretionary FR Scripting\FR testing.xlsx"')
         sys.exit(1)
 
     filepath = sys.argv[1]
@@ -812,7 +796,6 @@ def main():
     for k, v in stats.items():
         print(f"  {k}: {v}")
     print(f"\nOutput written to: {filepath}")
-
 
 if __name__ == "__main__":
     main()

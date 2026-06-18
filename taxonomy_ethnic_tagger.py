@@ -2,6 +2,7 @@ import sys
 import re
 import pandas as pd
 from openpyxl import load_workbook
+import match
 
 """
 ethnic_tagger.py
@@ -159,9 +160,12 @@ def get_search_text(row):
 """
 This helper function will handle the various case by case scenarios for matching taxonomy keywords to the funding request text
 """
-def handle_cases():
-    # Case 1 - Exact Match
-    pass
+# def handle_cases(text: str):
+#     # Case 1 - Exact Match
+#     match text: 
+#         case text in BIPOC_KEYWORDS:
+#              print("This group belongs BIPOC")
+
 
 def main():
     pass

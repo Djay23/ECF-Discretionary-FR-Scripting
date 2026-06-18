@@ -59,7 +59,7 @@ TAXONOMY_ENTRY2 = "Ethnic and Cultural Origins Level 2"
 TAXONOMY_ENTRY3 = "Ethnic and Cultural Origins Level 3"
 TAXONOMY_ALL_TERMS = "All Terms"
 
-# Search priority order — all 4 are concatenated, but this order
+# Search priority order. All 4 are concatenated, but this order
 # determines which match "wins" on ties (first column listed wins)
 INPUT_COLS_PRIORITY = [
     "Final_Project_Description",
@@ -578,7 +578,8 @@ def get_column_texts(row):
     for col in INPUT_COLS_PRIORITY:
         val = row.get(col, "")
         raw = normalize_text(val)
-        raw = apply_aliases(raw)
+        # Commented out for alias check implementation.
+        #raw = apply_aliases(raw)
         texts.append(raw)
     return texts
 
@@ -709,47 +710,48 @@ def classify_row(row, taxonomy_entries):
 # =====
 # MAIN
 # =====
-
 def main():
-    if len(sys.argv) < 2:
-        print('Usage: python ethnic_tagger_v3.py "C:\Users\oadode\OneDrive - Edmonton Community Foundation\Desktop\Discretionary FR Scripting\FR testing.xlsx"')
+    if len(sys.argv) < 3:
+        print('Usage: python ethnic_tagger_v3.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\FR testing.xlsx"')
         sys.exit(1)
-
-    filepath = sys.argv[1]
-    print(f"Loading: {filepath}")
-
+ 
+    taxonomy_filepath = sys.argv[1]
+    funding_filepath  = sys.argv[2]
+ 
+    print(f"Loading taxonomy from: {taxonomy_filepath}")
     try:
-        tax_df = pd.read_excel(filepath, sheet_name=TAXONOMY_SHEET, dtype=str)
+        tax_df = pd.read_excel(taxonomy_filepath, sheet_name=TAXONOMY_SHEET, dtype=str)
     except Exception as e:
-        print(f"Error loading taxonomy sheet '{TAXONOMY_SHEET}': {e}")
+        print(f"Error loading taxonomy sheet '{TAXONOMY_SHEET}' from '{taxonomy_filepath}': {e}")
         sys.exit(1)
-
+ 
+    print(f"Loading funding requests from: {funding_filepath}")
     try:
-        data_df = pd.read_excel(filepath, sheet_name=DATA_SHEET, dtype=str)
+        data_df = pd.read_excel(funding_filepath, sheet_name=DATA_SHEET, dtype=str)
     except Exception as e:
-        print(f"Error loading data sheet '{DATA_SHEET}': {e}")
+        print(f"Error loading data sheet '{DATA_SHEET}' from '{funding_filepath}': {e}")
         sys.exit(1)
-
+ 
     print(f"Taxonomy rows: {len(tax_df)} | Data rows: {len(data_df)}")
-
+ 
     taxonomy_entries = build_taxonomy(tax_df)
     print(f"Taxonomy entries parsed: {len(taxonomy_entries)}")
-
+ 
     for col in [OUTPUT_ETHNIC1, OUTPUT_ETHNIC2, OUTPUT_ETHNIC3, OUTPUT_FLAG]:
         if col not in data_df.columns:
             data_df[col] = ""
-
+ 
     stats = {"3-level": 0, "2-level": 0, "1-level": 0, "multiple": 0,
               "other": 0, "general": 0, "flagged": 0, "pattern": 0,
               "country": 0, "org_lookup": 0, "grassroots_filtered": 0}
-
+ 
     for idx, row in data_df.iterrows():
         e1, e2, e3, flag = classify_row(row, taxonomy_entries)
         data_df.at[idx, OUTPUT_ETHNIC1] = e1
         data_df.at[idx, OUTPUT_ETHNIC2] = e2
         data_df.at[idx, OUTPUT_ETHNIC3] = e3
         data_df.at[idx, OUTPUT_FLAG]    = flag
-
+ 
         if e1 == MULTIPLE_ETHNIC:
             stats["multiple"] += 1
         elif e1 == OTHER_ETHNIC:
@@ -762,7 +764,7 @@ def main():
             stats["2-level"] += 1
         else:
             stats["1-level"] += 1
-
+ 
         if "pattern rule" in flag.lower():
             stats["pattern"] += 1
         if "country" in flag.lower():
@@ -773,29 +775,29 @@ def main():
             stats["grassroots_filtered"] += 1
         if flag:
             stats["flagged"] += 1
-
-    wb = load_workbook(filepath)
+ 
+    wb = load_workbook(funding_filepath)
     ws = wb[DATA_SHEET]
     headers = {cell.value: cell.column for cell in ws[1]}
-
+ 
     for col_name in [OUTPUT_ETHNIC1, OUTPUT_ETHNIC2, OUTPUT_ETHNIC3, OUTPUT_FLAG]:
         if col_name not in headers:
             new_col = ws.max_column + 1
             ws.cell(row=1, column=new_col, value=col_name)
             headers[col_name] = new_col
-
+ 
     for i, (idx, row) in enumerate(data_df.iterrows(), start=2):
         ws.cell(row=i, column=headers[OUTPUT_ETHNIC1], value=data_df.at[idx, OUTPUT_ETHNIC1])
         ws.cell(row=i, column=headers[OUTPUT_ETHNIC2], value=data_df.at[idx, OUTPUT_ETHNIC2])
         ws.cell(row=i, column=headers[OUTPUT_ETHNIC3], value=data_df.at[idx, OUTPUT_ETHNIC3])
         ws.cell(row=i, column=headers[OUTPUT_FLAG],    value=data_df.at[idx, OUTPUT_FLAG])
-
-    wb.save(filepath)
-
+ 
+    wb.save(funding_filepath)
+ 
     print("\nResults:")
     for k, v in stats.items():
         print(f"  {k}: {v}")
-    print(f"\nOutput written to: {filepath}")
-
+    print(f"\nOutput written to: {funding_filepath}")
+ 
 if __name__ == "__main__":
     main()

@@ -88,7 +88,7 @@ BIPOC_KEYWORDS = [
     r"\bpoc\b",
     r"\bpeople of colou?r\b",
     r"\bblack african\b",
-    r"\bracialized\b", # Change to flag if "racialized" is detected
+    #r"\bracialized\b", # Change to flag if "racialized" is detected
 ]
 
 # Words that, on their own, should NOT trigger BIPOC/Multiple classification
@@ -99,6 +99,7 @@ AMBIGUOUS_EQUITY_WORDS = [
     r"\bmarginalized\b",
     r"\bgrassroots\b",
     r"\bethnocultural\b",
+    r"\bracialized\b",
 ]
 
 # ============================================================
@@ -662,7 +663,7 @@ def classify_row(row, taxonomy_entries):
             flag = ("Ambiguous: BIPOC mentioned alongside specific group(s) ("
                     + ", ".join(other_groups) + ") - verify manually")
         else:
-            flag = "BIPOC target detected"
+            flag = "BIPOC signal detected"
         return (MULTIPLE_ETHNIC, "", "", flag)
 
     # Case 11: grassroots / ambiguous equity words 

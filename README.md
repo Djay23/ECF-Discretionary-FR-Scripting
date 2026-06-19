@@ -139,6 +139,7 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
 ## Classification Phrase Expansion:
 > [!NOTE]
 > Include the highlighting of what phrase was targetted in the Classification Flag Notes section.
+> Need to Highlight Black Canadian Women for flagging.
 - **Context Override**: 
     * Historical Reference Detected (including these phrases): 
         + Historically; Formerly; Previously; Originally; Used to serve (focus, target, support); Once (Served, Focused, Targeted, Supported); Founded; Established; Created; Was, Were, etc. 
@@ -148,9 +149,16 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
 
 - **Ambiguous**: 
     * Equity Term with no paired ethnic signal (including these phrases):
-        + Marginalized, Grassroots, Ethnocultural, Racialized
-    * BIPOC mentioned alongside specific groups(s) {Ethnic Origin} (including these phrases):
-        + Bipoc; QTBipoc; Bpoc; People of Colour; Black African + (Another Ethnic Origin) --> needs to be expanded to include Level 2 & 3. (other_groups) currently only selects Level 1
+        + Marginalized, Grassroots, Ethnocultural, Racialized.
+    * BIPOC mentioned alongside specific groups(s) [Ethnic Origin] (including these phrases):
+        + Bipoc; QTBipoc; Bpoc; People of Colour; Black African + (Another Ethnic Origin). 
+        <!-- needs to be expanded to include Level 2 & 3. `other_groups` currently only selects Level 1 -->
+
+- **BIPOC Target Detected**:
+    * Bipoc; QTBipoc; Bpoc; People of Colour; Black African.
+    > **Note:** Include what indicators led to this classification.
+
+> Implement Semantic RAG/Chunking
 
 
 

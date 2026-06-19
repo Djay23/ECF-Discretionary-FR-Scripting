@@ -100,6 +100,7 @@ AMBIGUOUS_EQUITY_WORDS = [
     r"\bgrassroots\b",
     r"\bethnocultural\b",
     r"\bracialized\b",
+    r"\underrrepresented\b",
 ]
 
 # ============================================================
@@ -702,7 +703,7 @@ def classify_row(row, taxonomy_entries):
     if detect_broad_identity(combined):
         return (OTHER_ETHNIC, "", "", "Broad identity term - review recommended")
 
-    # Case 10: organization name lookup (LAST RESORT before General)
+    # Case 10: organization name lookup (LAST RESORT before General) NOTE: Need to highlight Black Canadian Women to flag
     org_result = check_org_name_lookup(combined)
     if org_result:
         l1, l2, l3 = org_result

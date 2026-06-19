@@ -9,6 +9,23 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
 - Configuration of output to ethnic columns in FR sheet
 - Taxonomy mapping created for keywords from 'Taxonomy - Definitions.xlsx'
 - Ranking system based on longer matches favoured first (eg. 'Southern African' matches before 'African')
+- Ranking and tie breaking system implemented to now 'accurately' map the correct ethnic groups to funding requests.
+
+#### TO DO:
+- Fix mapping net to handle cases discussed by rob & Bianca. More flagging
+- More descriptive language for flagging
+- Flag BIPOC --> Some 'BIPOC' Language might be used loosely, as well as: Marginalized, multicultural, grassroots, etc.
+
+### Some changes:
+- Black Canadian/African Canadian --> Other, Black
+- Flag:
+    - Ethnocultural, Multicultural, Racialized, Indigenous, Marginalized, grassroots
+    Typically grouped within **Multiple Ethnic Groups**
+- Black Francophones --> Other, Black
+- Flag treaty 6, 7, 8. 
+- If two groups are within the same general level 2, can be grouped in the same level 3: like Ukrainian & Eastern European mentioned. What about a case where it is 'Filipino' & 'West and Central Asian and Middle Eastern Origins', or 'Filipino' and 'Syrian'
+    - Group with its most common sector if they have a sector level in common.
+- African Canadian ignored and grouped with --> Other, Black (flag)
 
 -----------------------------
 
@@ -16,8 +33,6 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
 - 'South African' should map to 'Southern and East African Origins'.
     - First check description concatenation for if any words from 'All Terms' column D appear. (eg. 'South African' is in description but not in Taxonomy Definitions excel, so how do we handle possible cases like these)
 - How do we handle a country like Jamaica or trinidad who dont have a specific level 2 or 3 but are grouped in caribbean origins? -->
-
------------------------------
 
 1. Look for known terms by level (deepest first)
 2. If nothing matches then interpret phrase structure. (For eg. "this funding is for the south african children in elementary schools, teaching them to read and write.")
@@ -110,7 +125,7 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
     - Level 3 terms: Nigerian, Somali, Ethopian
 -->
 
-## Workflow:
+<!-- ## Workflow:
 - Loop through 'Taxonomy - Defintions.xlsx' and create future accessible mapping of Taxonomy definitions using column D 'All Items'. 
 - Once mapping has been created, Concactenate columns "Final_Project_Description" + "Final_Summary_Description" + "Purpose" + "Funding Request Name" before beginning keyword search. 
     - Priority Listing:
@@ -119,7 +134,17 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
         - Funding Request Name
     *These are the orders we will search for keywords first (as a result there might not be a need for contactenation, and instead store as different indices in a list to loop through).
 - Upon keyword search, go through case-by-case analysis and perform ranking to group ethnicities.
-- After ethnicity grouping, go through manually to confirm accuracy, placing emphasis on "General Population" section.
+- After ethnicity grouping, go through manually to confirm accuracy, placing emphasis on "General Population" section. -->
+
+## Classification Phrase Expansion:
+> [!NOTE]
+> Include the highlighting of what phrase was targetted in the Classification Flag Notes section.
+- **Context Override**: 
+    * Historical Reference Detected (including these phrases): 
+        + Historically; Formerly; Previously; Originally; Used to serve (focus, target, support); Once (Served, Focused, Targeted, Supported); Founded; Established; Created; Was, Were
+    * Expansion Phrases (including these phrases): 
+        + Expanding beyond; Expansion; Beyond its...; Regardless of ethnic background; Irrespective of...
+
 
 
     

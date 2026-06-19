@@ -158,9 +158,34 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
     * Bipoc; QTBipoc; Bpoc; People of Colour; Black African.
     > **Note:** Include what indicators led to this classification.
 
-> Implement Semantic RAG/Chunking
+> Implement Semantic similarity matching --> This will go through anything classified as General or other and take a closer look, acting as a tighter knit net for ethnic signals. 
+
+> Layer 1:
+    - Current model of looking at taxonomy definitions to match ethnic group.
+> Layer 2:
+    - Semantic Similarity Searching (Safety Net).
+        - Nearest Neighbour Classification.
+        - Confidence threshold and pick highest confidence match.
+        - Tries to answer "What taxonomy entry is this text most semantically similar to?"
 
 
+## Current Rule Engine Handles:
+* Exact Matches
+* Pattern Rules
+* Country Mappings
+* Negation
+* Historical References
+* Aspirational Language
+* BIPOC Handling
+* Organization lookup
 
+*Layer 2 to handle when text contains implicit ethnic signals that aren't in keyword system.
 
+## Current Flow:
+* Run ethnic tagger script
+* Loads Taxonomy - Definitions.xlsx
+* Loads FR Testing.xlsx
+* Build Taxonomy Entries
+* Load Embedding Model
+* Creates Vectors (Turns text into vectors: "Supporting Newcomers from the horn of africa --> )
     

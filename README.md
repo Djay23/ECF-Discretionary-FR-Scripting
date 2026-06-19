@@ -141,9 +141,17 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
 > Include the highlighting of what phrase was targetted in the Classification Flag Notes section.
 - **Context Override**: 
     * Historical Reference Detected (including these phrases): 
-        + Historically; Formerly; Previously; Originally; Used to serve (focus, target, support); Once (Served, Focused, Targeted, Supported); Founded; Established; Created; Was, Were
+        + Historically; Formerly; Previously; Originally; Used to serve (focus, target, support); Once (Served, Focused, Targeted, Supported); Founded; Established; Created; Was, Were, etc. 
     * Expansion Phrases (including these phrases): 
-        + Expanding beyond; Expansion; Beyond its...; Regardless of ethnic background; Irrespective of...
+        + Expanding beyond; Expansion; Beyond its...; Regardless of ethnic background; Irrespective of..., etc.
+    > **Note:** See code for more in-depth exploration of Historical Phrases.
+
+- **Ambiguous**: 
+    * Equity Term with no paired ethnic signal (including these phrases):
+        + Marginalized, Grassroots, Ethnocultural, Racialized
+    * BIPOC mentioned alongside specific groups(s) {Ethnic Origin} (including these phrases):
+        + Bipoc; QTBipoc; Bpoc; People of Colour; Black African + (Another Ethnic Origin) --> needs to be expanded to include Level 2 & 3. (other_groups) currently only selects Level 1
+
 
 
 

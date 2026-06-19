@@ -49,6 +49,13 @@ Also handles:
     - Strict word-boundary matching (no "blacksmith" -> "black")
 """
 
+# Semantic-similarity fallback (see semantic_fallback.py).
+try:
+    import semantic_fallback
+    SEMANTIC_AVAILABLE = True
+except ImportError:
+    SEMANTIC_AVAILABLE = False
+
 # =============
 # CONFIGURATION 
 # =============
@@ -60,6 +67,7 @@ TAXONOMY_ENTRY1 = "Ethnic and Cultural Origins Level 1"
 TAXONOMY_ENTRY2 = "Ethnic and Cultural Origins Level 2"
 TAXONOMY_ENTRY3 = "Ethnic and Cultural Origins Level 3"
 TAXONOMY_ALL_TERMS = "All Terms"
+TAXONOMY_SCOPE_NOTES = "Definitions and Scope Notes"
 
 # Search priority order. All 4 are concatenated, but this order
 # determines which match "wins" on ties (first column listed wins)
@@ -74,6 +82,7 @@ OUTPUT_ETHNIC1 = "Ethnic 1 - FR6"
 OUTPUT_ETHNIC2 = "Ethnic 2 - FR7"
 OUTPUT_ETHNIC3 = "Ethnic 3 - FR8"
 OUTPUT_FLAG = "Classification Flag"
+OUTPUT_SEMANTIC = "Semantic Suggestion (REVIEW)"
 
 MULTIPLE_ETHNIC = "Multiple Ethnic and Cultural Origins"
 OTHER_ETHNIC = "Other Ethnic and Cultural Origins"
@@ -100,7 +109,7 @@ AMBIGUOUS_EQUITY_WORDS = [
     r"\bgrassroots\b",
     r"\bethnocultural\b",
     r"\bracialized\b",
-    r"\underrrepresented\b",
+    r"\bunderrepresented\b",
 ]
 
 # ============================================================
@@ -741,21 +750,46 @@ def main():
  
     taxonomy_entries = build_taxonomy(tax_df)
     print(f"Taxonomy entries parsed: {len(taxonomy_entries)}")
+
+    # Semantic Fallback - Level 2 Engine
+    semantic_entries = None
+    semantic_embeddings = None
+
+    if SEMANTIC_AVAILABLE:
+        scope_notes = semantic_fallback.build_scope_note_map(
+            tax_df, TAXONOMY_ENTRY1, TAXONOMY_SCOPE_NOTES, safe_display)
+        semantic_entries, semantic_texts = semantic_fallback.build_candidate_texts(
+            taxonomy_entries, scope_notes)
+        semantic_embeddings = semantic_fallback.get_taxonomy_embeddings(semantic_texts)
+    else:
+        print("semantic_fallback not available (sentence-transformers not installed) — skipping semantic suggestions.")
  
-    for col in [OUTPUT_ETHNIC1, OUTPUT_ETHNIC2, OUTPUT_ETHNIC3, OUTPUT_FLAG]:
+    for col in [OUTPUT_ETHNIC1, OUTPUT_ETHNIC2, OUTPUT_ETHNIC3, OUTPUT_FLAG, OUTPUT_SEMANTIC]:
         if col not in data_df.columns:
             data_df[col] = ""
- 
+    # Count how many rows fall into each outcome bucket, for summary stats at the end. Note that these are not mutually exclusive categories (e.g. a row with a pattern match that's also flagged for aspirational language would count in both "pattern" and "flagged"), but they give a general sense of how many hits came from each detection method and how many were flagged for review.
     stats = {"3-level": 0, "2-level": 0, "1-level": 0, "multiple": 0,
               "other": 0, "general": 0, "flagged": 0, "pattern": 0,
-              "country": 0, "org_lookup": 0, "grassroots_filtered": 0}
+              "country": 0, "org_lookup": 0, "grassroots_filtered": 0, "semantic_suggested": 0}
  
     for idx, row in data_df.iterrows():
+        # Initial deterministic engine (level 1) called from taxonomy definitions sheet
         e1, e2, e3, flag = classify_row(row, taxonomy_entries)
         data_df.at[idx, OUTPUT_ETHNIC1] = e1
         data_df.at[idx, OUTPUT_ETHNIC2] = e2
         data_df.at[idx, OUTPUT_ETHNIC3] = e3
-        data_df.at[idx, OUTPUT_FLAG]    = flag
+        data_df.at[idx, OUTPUT_FLAG] = flag
+
+        # Engine 2 - This is our Semantic fallback layer, which only triggers if Engine 1 returns General Population (i.e. no
+        if SEMANTIC_AVAILABLE and e1 == GENERAL_POP:
+            combined_text = " ".join(t for t in get_column_texts(row) if t.strip())
+            suggestion = semantic_fallback.find_semantic_suggestion(
+                combined_text, semantic_entries, semantic_embeddings)
+            if suggestion:
+                sl1, sl2, sl3, score = suggestion
+                parts = [p for p in [sl1, sl2, sl3] if p]
+                data_df.at[idx, OUTPUT_SEMANTIC] = f"{' / '.join(parts)} (similarity: {score:.2f})"
+                stats["semantic_suggested"] += 1
  
         if e1 == MULTIPLE_ETHNIC:
             stats["multiple"] += 1
@@ -785,7 +819,7 @@ def main():
     ws = wb[DATA_SHEET]
     headers = {cell.value: cell.column for cell in ws[1]}
  
-    for col_name in [OUTPUT_ETHNIC1, OUTPUT_ETHNIC2, OUTPUT_ETHNIC3, OUTPUT_FLAG]:
+    for col_name in [OUTPUT_ETHNIC1, OUTPUT_ETHNIC2, OUTPUT_ETHNIC3, OUTPUT_FLAG, OUTPUT_SEMANTIC]:
         if col_name not in headers:
             new_col = ws.max_column + 1
             ws.cell(row=1, column=new_col, value=col_name)
@@ -796,7 +830,7 @@ def main():
         ws.cell(row=i, column=headers[OUTPUT_ETHNIC2], value=data_df.at[idx, OUTPUT_ETHNIC2])
         ws.cell(row=i, column=headers[OUTPUT_ETHNIC3], value=data_df.at[idx, OUTPUT_ETHNIC3])
         ws.cell(row=i, column=headers[OUTPUT_FLAG],    value=data_df.at[idx, OUTPUT_FLAG])
- 
+        ws.cell(row=i, column=headers[OUTPUT_SEMANTIC], value=data_df.at[idx, OUTPUT_SEMANTIC]) # Writes "" for every row that didn't receive a suggestion (General pop.)
     wb.save(funding_filepath)
     
     print("\nResults:")

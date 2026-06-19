@@ -41,7 +41,8 @@ Case coverage (see README):
 
 Also handles:
     - Context override ("beyond its original focus on X")
-    - Historical reference ("historically served X")
+        - Historical reference ("historically served X")
+        - Expansion Phrases ("")
     - Negation ("not targeting X", "does not serve X")
     - Aspirational language ("plans to expand to X") -> flagged for review
     - Example mentions ("such as X", "including X") -> not classified
@@ -87,7 +88,7 @@ BIPOC_KEYWORDS = [
     r"\bpoc\b",
     r"\bpeople of colou?r\b",
     r"\bblack african\b",
-    r"\bracialized\b",
+    r"\bracialized\b", # Change to flag if "racialized" is detected
 ]
 
 # Words that, on their own, should NOT trigger BIPOC/Multiple classification
@@ -126,7 +127,7 @@ BROAD_IDENTITY_KEYWORDS = [
 # ========================================================
 ORG_NAME_ETHNICITY_MAP = {
     "bent arrow": ("North American Indigenous Origins", "", ""),
-    "treaty 6": ("North American Indigenous Origins", "", ""),
+    "treaty 6": ("North American Indigenous Origins", "", ""), # Flag for review, as "Treaty 6" could refer to the geographic region (which would be L1 or L2) rather than the organization (which would be Case 10). Only trigger if "Treaty 6" appears in the funding request name or purpose, not just the description.
     # Add more known organization name -> ethnicity mappings here as identified
 }
 
@@ -197,6 +198,7 @@ COUNTRY_REGION_MAP = {
 EXPANSION_PHRASES = [
     r"beyond (its|their|our|the) (original|previous|former|initial|traditional|historic(al)?)",
     r"expanding beyond",
+    r"expansion",
     r"not (only|exclusively|solely|limited to|just|restricted to)",
     r"no longer (limited|restricted|focused|exclusively)",
     r"open(ing)? (up )?to (all|broader|wider|diverse|other)",
@@ -664,12 +666,12 @@ def classify_row(row, taxonomy_entries):
         return (MULTIPLE_ETHNIC, "", "", flag)
 
     # Case 11: grassroots / ambiguous equity words 
-    grassroots_state = check_grassroots_case(combined, taxonomy_entries)
+    grassroots_state = check_grassroots_case(combined, taxonomy_entries) # Handle 'ethnocultural', 'marginalized' as well, since they have the same rule as 'grassroots'
     if grassroots_state == "no_signal":
         return (GENERAL_POP, "", "", "Ambiguous equity term (e.g. grassroots) with no paired ethnic signal")
 
     # Resolve candidates by DEPTH, not by which method found them
-    # This is what allows "South African" (pattern, depth 2) to beat a
+    # Allows "South African" (pattern, depth 2) to beat a
     # shallow "African" (taxonomy, depth 1) match found in the same text.
     if candidates:
         max_depth = max(c[3] for c in candidates)

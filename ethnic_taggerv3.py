@@ -103,6 +103,8 @@ BIPOC_KEYWORDS = [
 # Words that, on their own, should NOT trigger BIPOC/Multiple classification
 # unless paired with an actual ethnic 'hint'. Handled separately from
 # BIPOC_KEYWORDS because the rule is different (Case 11).
+# Always flagged for review either way now (signal or no signal) --
+# see check_grassroots_case().
 
 AMBIGUOUS_EQUITY_WORDS = [
     r"\bmarginalized\b",
@@ -110,26 +112,44 @@ AMBIGUOUS_EQUITY_WORDS = [
     r"\bethnocultural\b",
     r"\bracialized\b",
     r"\bunderrepresented\b",
+    r"\bmulticultural\b",
+    r"\bdiverse\b",
+    r"\brefugee\b",
+    r"\bimmigrant\b",
+    r"\bfrancophone\b",
+    r"\bnewcomer\b",
+    r"\bculturally\b",
 ]
 
 # ============================================================
 # CASE 9b — Broad identity labels (not in taxonomy directly)
+# Black/Jewish/Arab removed -- these are real Level 2 entries under
+# "Other Ethnic and Cultural Origins" in the taxonomy, matched through
+# find_taxonomy_matches() instead of here now.
 # ============================================================
 BROAD_IDENTITY_KEYWORDS = [
-    r"\bblack\b",
-    r"\barab\b",
-    r"\bjewish\b",
     r"\bhispanic\b",
     r"\blatino\b",
     r"\blatina\b",
     r"\blatinx\b",
-    r"\bafro[\-\s]caribbean\b",
-    r"\bafro[\-\s]latin(o|a|x)?\b",
     r"\bmixed heritage\b",
     r"\bmixed race\b",
     r"\bmultiracial\b",
     r"\bmulti[\-\s]ethnic\b",
 ]
+
+# Afro-Caribbean / Afro-Latino name TWO distinct Level 1 groups at
+# once -- always Multiple, regardless of anything else in the text.
+ALWAYS_MULTIPLE_COMPOUNDS = {
+    r"\bafro[\-\s]caribbean\b": (
+        ("African Origins", "", ""),
+        ("Caribbean Origins", "", ""),
+    ),
+    r"\bafro[\-\s]latin(o|a|x)?\b": (
+        ("African Origins", "", ""),
+        ("Latin American Origins", "", ""),
+    ),
+}
 
 # =========================================================
 # CASE 10 — Known organization name -> ethnicity lookup
@@ -198,8 +218,11 @@ COUNTRY_REGION_MAP = {
     "peru": ("Latin American Origins", "", ""),
     "venezuelan": ("Latin American Origins", "", ""),
     "venezuela": ("Latin American Origins", "", ""),
-    "indian": ("Asian Origins", "South Asian Origins", ""),
-    "india": ("Asian Origins", "South Asian Origins", ""),
+    "indian": ("Asian Origins", "South Asian Origins", "Indian (India)"),
+    "india": ("Asian Origins", "South Asian Origins", "Indian (India)"),
+    "kerala": ("Asian Origins", "South Asian Origins", "Indian (India)"), # state in India, often named directly e.g. "Kerala Cultural Association"
+    "cameroonian": ("African Origins", "Central and West African Origins", ""), # no L3 entry for Cameroon -- falls to L2
+    "cameroon": ("African Origins", "Central and West African Origins", ""),
 }
 
 # ============================================================
@@ -273,6 +296,22 @@ EXAMPLE_PHRASES = [
     r"as (opposed|compared) to",
 ]
 
+# Words suggesting an ethnic term names a CONSULTED PARTY (expert/
+# advisor role) rather than the population served, e.g. "...consult
+# wildlife biologists, conservation experts, and indigenous knowledge
+# holders". Never suppresses a match -- only adds a flag, since there's
+# no reliable way to confirm this either way.
+EXPERT_ROLE_PHRASES = [
+    r"\bexperts?\b",
+    r"\bspecialists?\b",
+    r"\bconsultants?\b",
+    r"\badvisors?\b",
+    r"\bpractitioners?\b",
+    r"\bknowledge holders?\b",
+    r"\bstakeholders?\b",
+    r"\bbiologists?\b",
+]
+
 """
 -- Not Necessary to be handled right now for processing sakes.
 
@@ -323,6 +362,14 @@ def safe_display(val):
         return ""
     val = str(val).strip()
     return "" if val.lower() == "nan" else val
+
+def extract_match_keyword(raw_keyword):
+    """Trim a taxonomy label down to the bare word(s) worth searching
+    for in funding-request text: "black, not otherwise specified" ->
+    "black", "indian (india)" -> "indian"."""
+    keyword = raw_keyword.split(",")[0]
+    keyword = re.sub(r"\s*\([^)]*\)\s*$", "", keyword)
+    return keyword.strip()
 
 def normalize_text(text):
     """Lowercase, strip punctuation, collapse whitespace. Used on the
@@ -411,22 +458,33 @@ def build_taxonomy(tax_df):
             # Primary path: parsed from All Terms column.
             # The split strips the literal word "Origins" from every
             # fragment, but in the real taxonomy, Level 1 and Level 2
-            # display values INCLUDE the "Origins" suffix
-            # (e.g. "African Origins", "Southern and East African Origins").
-            # Only Level 3 specific identity terms (e.g. "Somali",
-            # "Mozambican") are bare. So re-append " Origins" to L1/L2
-            # for display, while keeping the bare term for keyword matching
-            # (funding descriptions say "Somali", not "Somali Origins").
+            # display values usually INCLUDE the "Origins" suffix
+            # (e.g. "African Origins", "Southern and East African Origins")
+            # -- except entries like "Black, not otherwise specified" and
+            # "Jewish" under "Other Ethnic and Cultural Origins", which
+            # only have "Origins" on Level 1. Count actual occurrences of
+            # "Origins" in the source string so we know how many leading
+            # parts really need it re-appended, instead of assuming L1+L2
+            # always do.
+            origins_count = all_terms_raw.count("Origins")
+            display_parts = []
+            for i, p in enumerate(parts):
+                display_parts.append(f"{p} Origins" if i < origins_count else p)
+
             bare_l1 = parts[0] if len(parts) >= 1 else ""
             bare_l2 = parts[1] if len(parts) >= 2 else ""
             bare_l3 = parts[2] if len(parts) >= 3 else ""
 
-            level1 = f"{bare_l1} Origins" if bare_l1 else ""
-            level2 = f"{bare_l2} Origins" if bare_l2 else ""
-            level3 = bare_l3
+            level1 = display_parts[0] if len(display_parts) >= 1 else ""
+            level2 = display_parts[1] if len(display_parts) >= 2 else ""
+            level3 = display_parts[2] if len(display_parts) >= 3 else ""
 
             depth   = len(parts)
-            keyword = (bare_l3 or bare_l2 or bare_l1).strip().lower()
+            # Trim administrative qualifiers (", not otherwise specified",
+            # "(India)") down to the bare searchable word -- funding
+            # descriptions say "Black", never "Black, not otherwise specified".
+            raw_keyword = (bare_l3 or bare_l2 or bare_l1).strip().lower()
+            keyword = extract_match_keyword(raw_keyword)
         else:
             # Fallback: read Level 1/2/3 columns directly if 'All Terms'
             # is blank/missing for this row. These already include the
@@ -437,7 +495,8 @@ def build_taxonomy(tax_df):
             if not level1:
                 continue
             depth   = 3 if level3 else (2 if level2 else 1)
-            keyword = clean_taxonomy_value(level3 or level2 or level1)
+            raw_keyword = clean_taxonomy_value(level3 or level2 or level1)
+            keyword = extract_match_keyword(raw_keyword)
 
         if not level1:
             continue
@@ -551,15 +610,17 @@ def is_bipoc_real_target(text):
 
 def check_grassroots_case(text, taxonomy_entries):
     """
-    Case 11: 'grassroots' / 'marginalized' / 'ethnocultural' alone
-    should NOT trigger ethnic classification. Only relevant if paired
-    with a real ethnic signal elsewhere in the text.
+    Case 11 (expanded): 'grassroots' / 'marginalized' / 'ethnocultural' /
+    'multicultural' / 'refugee' / 'immigrant' etc. never count as a signal
+    on their own. Unlike negation/example-mention, this never suppresses
+    silently either way -- caller flags the result whether a real signal
+    is present alongside the buzzword or not.
     """
     has_ambiguous = matches_any(AMBIGUOUS_EQUITY_WORDS, text)
     if not has_ambiguous:
         return None  # not relevant, no opinion
     if has_real_ethnic_signal(text, taxonomy_entries):
-        return "has_signal"  # let normal matching proceed
+        return "has_signal"  # real signal present -- classify normally, caller still flags
     return "no_signal"  # ambiguous word present but no real ethnic keyword
 
 def check_org_name_lookup(text):
@@ -605,16 +666,41 @@ def classify_row(row, taxonomy_entries):
     col_texts = get_column_texts(row)
     combined  = " ".join(t for t in col_texts if t.strip())
 
+    # Extra notes (buzzword / cultural association mentions) get
+    # appended to whatever flag this function ends up returning, no
+    # matter which branch below resolves the classification.
+    extra_notes = []
+
+    def finalize(e1, e2, e3, flag):
+        if extra_notes:
+            note_text = "; ".join(extra_notes)
+            flag = f"{flag}; {note_text}" if flag else note_text
+        return (e1, e2, e3, flag)
+
     if not combined.strip():
-        return (GENERAL_POP, "", "", "Empty input")
+        return finalize(GENERAL_POP, "", "", "Empty input")
 
     # Highest priority: context override / historical reference
     if context_is_overridden(combined):
-        return (GENERAL_POP, "", "", "Context override: expansion phrase detected")
+        return finalize(GENERAL_POP, "", "", "Context override: expansion phrase detected")
     if context_is_historical(combined):
-        return (GENERAL_POP, "", "", "Context override: historical reference detected")
+        return finalize(GENERAL_POP, "", "", "Context override: historical reference detected")
 
     aspirational = context_is_aspirational(combined)
+
+    # "Cultural Association" often hides a specific named group (e.g.
+    # "Kerala Cultural Association") -- always worth a second look,
+    # regardless of how this row otherwise resolves.
+    if re.search(r"\bcultural association\b", combined, re.IGNORECASE):
+        extra_notes.append("'Cultural Association' detected - verify named group manually")
+
+    # Case 11: grassroots / ambiguous equity words -- never suppress
+    # silently now, always flagged whether or not a real signal is present.
+    grassroots_state = check_grassroots_case(combined, taxonomy_entries) # Handle 'ethnocultural', 'marginalized' as well, since they have the same rule as 'grassroots'
+    if grassroots_state == "no_signal":
+        return finalize(GENERAL_POP, "", "", "Ambiguous equity term (e.g. grassroots, multicultural, refugee) with no paired ethnic signal")
+    if grassroots_state == "has_signal":
+        extra_notes.append("Equity/diversity buzzword present alongside a real signal - verify manually")
 
     # Cases 1-3: direct taxonomy matches, across FR columns
     all_matches = []
@@ -629,12 +715,19 @@ def classify_row(row, taxonomy_entries):
             seen.add(m["keyword"])
             unique_matches.append(m)
 
-    # Build a unified candidate pool: taxonomy + pattern + country 
-    # Each candidate: (level1, level2, level3, depth, source)
+    # Build a unified candidate pool: taxonomy + compound + pattern +
+    # country + broad identity. Each candidate: (level1, level2, level3, depth, source)
     candidates = []
     for m in unique_matches:
         candidates.append((m["level1"], m["level2"] or "", m["level3"] or "",
                             m["depth"], "taxonomy"))
+
+    # Afro-Caribbean / Afro-Latino -- add BOTH halves as candidates so
+    # they combine into Multiple the same way two separate mentions would.
+    for compound_pattern, group_tuples in ALWAYS_MULTIPLE_COMPOUNDS.items():
+        if re.search(compound_pattern, combined, re.IGNORECASE):
+            for (l1, l2, l3) in group_tuples:
+                candidates.append((l1, l2, l3, 1, "compound"))
 
     pattern_result = find_pattern_match(combined)
     if pattern_result:
@@ -645,6 +738,14 @@ def classify_row(row, taxonomy_entries):
     if country_result:
         l1, l2, l3, depth = country_result
         candidates.append((l1, l2, l3, depth, "country"))
+
+    # Broad identity labels with no specific taxonomy entry (Hispanic,
+    # Latino, etc. -- NOT Black/Jewish/Arab, real taxonomy entries now,
+    # already came through find_taxonomy_matches above). Folded into
+    # the same pool so they can combine into Multiple alongside a
+    # separately-named group too.
+    if detect_broad_identity(combined):
+        candidates.append((OTHER_ETHNIC, "", "", 1, "broad_identity"))
 
     # Dedupe by actual (level1, level2, level3) outcome; two different
     # detection methods (e.g. pattern rule + country map) landing on the
@@ -658,6 +759,11 @@ def classify_row(row, taxonomy_entries):
             seen_outcomes.add(outcome_key)
             deduped_candidates.append(c)
     candidates = deduped_candidates
+
+    # Possible consulted-party mention (expert/advisor/biologist role)
+    # rather than the population served -- flagged, never suppressed.
+    if candidates and matches_any(EXPERT_ROLE_PHRASES, combined):
+        extra_notes.append("Possible consulted-party mention (expert/advisor role) rather than served population - verify manually")
 
     # Case 9: BIPOC (context-aware) 
     # Checked here (after candidates are gathered) so we can tell whether
@@ -674,29 +780,33 @@ def classify_row(row, taxonomy_entries):
                     + ", ".join(other_groups) + ") - verify manually")
         else:
             flag = "BIPOC signal detected"
-        return (MULTIPLE_ETHNIC, "", "", flag)
+        return finalize(MULTIPLE_ETHNIC, "", "", flag)
 
-    # Case 11: grassroots / ambiguous equity words 
-    grassroots_state = check_grassroots_case(combined, taxonomy_entries) # Handle 'ethnocultural', 'marginalized' as well, since they have the same rule as 'grassroots'
-    if grassroots_state == "no_signal":
-        return (GENERAL_POP, "", "", "Ambiguous equity term (e.g. grassroots) with no paired ethnic signal")
-
-    # Resolve candidates by DEPTH, not by which method found them
-    # Allows "South African" (pattern, depth 2) to beat a
-    # shallow "African" (taxonomy, depth 1) match found in the same text.
+    # Resolve candidates: distinct Level 1 groups ANYWHERE in the pool
+    # (not just tied at the deepest level) mean Multiple -- lets "African"
+    # (depth 1) combine with "Black" (depth 2, a different L1 branch
+    # under "Other Ethnic and Cultural Origins") instead of the deeper
+    # one silently winning by depth alone.
     if candidates:
+        distinct_l1 = set(c[0] for c in candidates)
+
+        if len(distinct_l1) >= 2:
+            flag = "Review: multiple distinct groups detected"
+            if aspirational:
+                flag += "; aspirational language present"
+            return finalize(MULTIPLE_ETHNIC, "", "", flag)
+
+        # All candidates share one Level 1 -- use depth to pick the most
+        # specific. If several DIFFERENT branches still tie at the
+        # deepest level within this one Level 1, that's still Multiple.
         max_depth = max(c[3] for c in candidates)
         deepest = [c for c in candidates if c[3] == max_depth]
 
-        # Distinct Level 1 groups among the deepest candidates
-        l1_groups = set(c[0] for c in deepest)
-
         if len(deepest) >= 2:
-            flag = "Review: multiple distinct groups detected" if len(l1_groups) >= 2 \
-                else "Review: multiple sub-groups within same origin"
+            flag = "Review: multiple sub-groups within same origin"
             if aspirational:
                 flag += "; aspirational language present"
-            return (MULTIPLE_ETHNIC, "", "", flag)
+            return finalize(MULTIPLE_ETHNIC, "", "", flag)
 
         l1, l2, l3, depth, source = deepest[0]
         flag = ""
@@ -704,22 +814,22 @@ def classify_row(row, taxonomy_entries):
             flag = "Pattern rule match (structured phrase)"
         elif source == "country":
             flag = "Country/nationality mapping match"
+        elif source == "compound":
+            flag = "Compound identity term match"
+        elif source == "broad_identity":
+            flag = "Broad identity term - review recommended"
         if aspirational:
             flag = (flag + "; " if flag else "") + "Review: aspirational language - future intent, not current population"
-        return (l1, l2, l3, flag)
-
-    # Case 9b: broad identity labels
-    if detect_broad_identity(combined):
-        return (OTHER_ETHNIC, "", "", "Broad identity term - review recommended")
+        return finalize(l1, l2, l3, flag)
 
     # Case 10: organization name lookup (LAST RESORT before General) NOTE: Need to highlight Black Canadian Women to flag
     org_result = check_org_name_lookup(combined)
     if org_result:
         l1, l2, l3 = org_result
-        return (l1, l2, l3, "Matched via known organization name lookup")
+        return finalize(l1, l2, l3, "Matched via known organization name lookup")
 
     # Case 12: fallback
-    return (GENERAL_POP, "", "", "")
+    return finalize(GENERAL_POP, "", "", "")
 
 # =====
 # MAIN

@@ -18,15 +18,15 @@ The pipeline splits text execution into two distinct validation layers to balanc
 
 ```mermaid
 graph TD
-    A[Extract & Prioritize Fields] --> B(Layer 1: Deterministic Rule Engine)
-    B -->|Match Found| C[Apply Tag]
-    B -->|No Clear Match| D[Layer 2: Semantic Embeddings]
-    D --> E[Confidence Verification]
-    E -->|Below Threshold| F[Default: General]
-    E -->|Above Threshold| C
+A[Extract & Prioritize Fields] --> B(Layer 1: Deterministic Rule Engine)
+B -->|Match Found| C[Apply Tag]
+B -->|No Clear Match| D[Layer 2: Semantic Embeddings]
+D --> E[Confidence Verification]
+E -->|Below Threshold| F[Default: General]
+E -->|Above Threshold| C
 
-    style C fill:#d4edda,stroke:#28a745,stroke-width:2px
-    style F fill:#f8d7da,stroke:#dc3545,stroke-width:2px
+style C fill:#d4edda,stroke:#28a745,stroke-width:2px
+style F fill:#f8d7da,stroke:#dc3545,stroke-width:2px
 
 
 ### Step 1: Ingestion & Text Prioritization

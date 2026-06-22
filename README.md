@@ -188,4 +188,19 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
 * Build Taxonomy Entries
 * Load Embedding Model
 * Creates Vectors (Turns text into vectors: "Supporting Newcomers from the horn of africa --> )
-    
+
+> Flag anything that has Cultural Association 
+> Black canadians as just black, african canadians should be classified as african origins
+> Classification for refugee? -> General (we don't have classification for this)
+> Ethnocultural, multicultural, refugee, immigrant without any ethnic signal is usually general, but we flag
+> Flag francophone, immigrant, etc. 
+> Afro-Caribbean - Should be classified as caribbean, was grouped with black, so should be black & caribbean which is multiple ethnic.
+> "Kerala Cultural Association" --> India. Anything with cultural association should be flagged.
+
+
+## TO run:
+- Diagnose_semantic_scores.py:
+    + python diagnose_semantic_scores.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"
+
+- Ethnic_taggerv3.py:
+    + python ethnic_taggerv3.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"

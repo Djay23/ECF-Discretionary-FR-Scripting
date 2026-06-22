@@ -88,12 +88,12 @@ def main():
     for score, name, best_label, combined_text in results_sorted[:TOP_N]:
         preview = combined_text[:160] + ("..." if len(combined_text) > 160 else "")
         print(f"{score:.3f}  {name}")
-        print(f"       -> suggested: {best_label}")
-        print(f"       text: {preview}")
+        print(f" -> suggested: {best_label}")
+        print(f" text: {preview}")
         print()
 
     elapsed = time.time() - start_time
     print(f"Diagnostic run completed in {elapsed:.1f} seconds.")
-    
+
 if __name__ == "__main__":
     main()

@@ -22,7 +22,7 @@ A[Extract & Prioritize Fields] --> B(Layer 1: Deterministic Rule Engine)
 B -->|Match Found| C[Apply Tag]
 B -->|No Clear Match| D[Layer 2: Semantic Embeddings]
 D --> E[Confidence Verification]
-E -->|Below Threshold| F[Default: General]
+E -->|Below Threshold| F[Default: General & Flag]
 E -->|Above Threshold| C
 
 style C fill:#d4edda,stroke:#28a745,stroke-width:2px
@@ -123,10 +123,14 @@ Run these files from your system terminal, utilizing absolute paths to maintain 
 
 ### Step A: Verify Vector Embedding Strengths
 Run the semantic diagnostic script to analyze similarity scores and review confidence thresholds before running full production records:
+
 ```bash
 python diagnose_semantic_scores.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"
+```
 
 ### Step B: Run Classification Pipeline
 Run the primary script to execute the rule engines, process the embeddings, apply the logic cases, and output classifications along with flag notes:
+
 ```bash
-python ethnic_taggerv3.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx".
+python ethnic_taggerv3.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"
+```

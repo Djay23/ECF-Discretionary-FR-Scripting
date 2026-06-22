@@ -1,4 +1,3 @@
-
 import os
 import pickle
 import hashlib
@@ -156,4 +155,5 @@ def find_semantic_suggestion(text, unique_entries, taxonomy_embeddings):
         return None
 
     best_entry = unique_entries[best_idx]
+
     return (best_entry["level1"], best_entry["level2"], best_entry["level3"], best_score)

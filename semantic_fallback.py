@@ -148,12 +148,22 @@ def find_semantic_suggestion(text, unique_entries, taxonomy_embeddings):
 
     # Embeddings are normalized
     scores = taxonomy_embeddings @ query_embedding
+
+    # Best match
     best_idx = int(np.argmax(scores))
     best_score = float(scores[best_idx])
+    best_entry = unique_entries[best_idx]
+
+    # Second Best Match
+    sorted_scores = np.sort(scores)
+    second_best_score = float(sorted_scores[-2]) if len(sorted_scores) > 1 else -1.0
+
+    # Similarity margin
+    SIMILARITY_MARGIN = 0.05
 
     if best_score < SIMILARITY_THRESHOLD:
         return None
+    if best_score - second_best_score < SIMILARITY_MARGIN:
+        return (best_entry["level1"], best_entry["level2"], best_entry["level3"], best_score, best_score - second_best_score)
 
-    best_entry = unique_entries[best_idx]
-
-    return (best_entry["level1"], best_entry["level2"], best_entry["level3"], best_score)
+    return (best_entry["level1"], best_entry["level2"], best_entry["level3"], best_score, best_score - second_best_score)

@@ -1,6 +1,8 @@
 import sys
 import re
 import pandas as pd
+import time
+
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 
@@ -141,11 +143,11 @@ BROAD_IDENTITY_KEYWORDS = [
 # Afro-Caribbean / Afro-Latino name TWO distinct Level 1 groups at
 # once -- always Multiple, regardless of anything else in the text.
 ALWAYS_MULTIPLE_COMPOUNDS = {
-    r"\bafro[\-\s]caribbean\b": (
+    r"\bafro[\-\u2010\u2011\u2012\u2013\u2014\s]*caribbean\b": (
         ("African Origins", "", ""),
         ("Caribbean Origins", "", ""),
     ),
-    r"\bafro[\-\s]latin(o|a|x)?\b": (
+    r"\bafro[\-\u2010\u2011\u2012\u2013\u2014\s]*latin(o|a|x)?\b": (
         ("African Origins", "", ""),
         ("Latin American Origins", "", ""),
     ),
@@ -411,6 +413,33 @@ def is_example_mention(keyword, text):
     snippet = keyword_context_window(keyword, text)
     return snippet is not None and matches_any(EXAMPLE_PHRASES, snippet)
 
+SERVING_CONTEXT_WORDS = [
+    r"\bserve(s|d)?\b",
+    r"\bserving\b",
+    r"\bpopulation\b",
+    r"\bcommunit(y|ies)\b",
+    r"\bdemographic(s)?\b",
+    r"\bfocus(ed|es)?\b",
+    r"\btarget(ed|ing)?\b",
+    r"\breach\b",
+    r"\bbeneficiar(y|ies)\b",
+    r"\bclientele\b",
+    r"\bmembership\b",
+    r"\bmembers\b",
+    r"\baudience\b",
+    r"\bclients\b",
+    r"\bresidents\b",
+    r"\bgroups\b",
+]
+
+def phrase_has_serving_context(pattern, text, window=100):
+    for m in re.finditer(pattern, text, re.IGNORECASE):
+        start = max(0, m.start() - window)
+        end = min(len(text), m.end() + window)
+        if matches_any(SERVING_CONTEXT_WORDS, text[start:end]):
+            return True
+    return False
+
 # ============================================================
 # TAXONOMY BUILDER (Case 1-3 source data)
 # Sort: deepest first, then LONGEST keyword first within same depth. Prevents "African"
@@ -582,6 +611,11 @@ def has_real_ethnic_signal(text, taxonomy_entries):
         return True
     if find_country_match(text):
         return True
+    for compound_pattern in ALWAYS_MULTIPLE_COMPOUNDS:
+        if re.search(compound_pattern, text, re.IGNORECASE):
+            return True
+    if detect_broad_identity(text):
+        return True
     return False
 
 def is_bipoc_real_target(text):
@@ -636,10 +670,10 @@ def detect_broad_identity(text):
     return matches_any(BROAD_IDENTITY_KEYWORDS, text)
 
 def context_is_overridden(text):
-    return matches_any(EXPANSION_PHRASES, text)
+    return any(phrase_has_serving_context(p, text) for p in EXPANSION_PHRASES)
 
 def context_is_historical(text):
-    return matches_any(HISTORICAL_PHRASES, text)
+    return any(phrase_has_serving_context(p, text) for p in HISTORICAL_PHRASES)
 
 def context_is_aspirational(text):
     return matches_any(ASPIRATIONAL_PHRASES, text)
@@ -835,6 +869,8 @@ def classify_row(row, taxonomy_entries):
 # MAIN
 # =====
 def main():
+    start_time = time.time()
+
     if len(sys.argv) < 3:
         print('Usage: python ethnic_taggerv3.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"')
         sys.exit(1)
@@ -896,9 +932,9 @@ def main():
             suggestion = semantic_fallback.find_semantic_suggestion(
                 combined_text, semantic_entries, semantic_embeddings)
             if suggestion:
-                sl1, sl2, sl3, score = suggestion
+                sl1, sl2, sl3, score, margin = suggestion
                 parts = [p for p in [sl1, sl2, sl3] if p]
-                data_df.at[idx, OUTPUT_SEMANTIC] = f"{' / '.join(parts)} (similarity: {score:.2f})"
+                data_df.at[idx, OUTPUT_SEMANTIC] = f"{' / '.join(parts)} (similarity: {score:.2f}, margin: {margin:.2f})"
                 stats["semantic_suggested"] += 1
  
         if e1 == MULTIPLE_ETHNIC:
@@ -949,6 +985,8 @@ def main():
         # print(f"  {k}: {v}; Column #: {get_column_letter(headers[OUTPUT_ETHNIC1])} - {get_column_letter(headers[OUTPUT_ETHNIC3])}, Flag: {get_column_letter(headers[OUTPUT_FLAG])}")
 
     print(f"\nOutput written to: {funding_filepath}")
+    elapsed = time.time() - start_time
+    print(f"Ethnic classification completed in {elapsed:.1f} seconds.")
  
 if __name__ == "__main__":
     main()

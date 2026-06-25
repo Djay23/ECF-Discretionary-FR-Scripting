@@ -207,3 +207,40 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
 
 - Ethnic_taggerv3.py:
     + python ethnic_taggerv3.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"
+
+
+
+# Current course of action (2026-06-25)
+### Review General Pop. CLassification:
+Random sample of 50 General pop:
+- Correctly General
+- Missed Ethnic classification
+- Population-specific but outside taxonomy
+- Ambiguous even for a human
+
+### Audit 64 'Ambiguous Equity Term' Rows
+- How many should actually classify?
+- If 50+ truly are General Population, leave the rule
+- If it contains obvious ethnic signals, are we suppressing too aggressively?
+
+### Audit 42 'Multiple Ethnic' rows
+Look at:
+- BIPOC + African
+- BIPOC + Asian
+- BIPOC + Caribbean
+Is this something a human reviewer actually needs to look at?
+
+# Sprints
+## Sprint 1:
+- Add plural normalization
+- Generate diagnostic review workbook
+- Review:
+    - 50 General pop. rows
+    - 64 Ambiguous Equity rows
+    - 42 'Multiple Ethnic' rows
+    
+## Sprint 2:
+- Use findings from real data to decide whether:
+- Reference context rules are needed
+- Additional oranization mappings are needed
+- Semantic Engine thresholds need tuning

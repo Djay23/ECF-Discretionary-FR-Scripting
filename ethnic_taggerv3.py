@@ -109,18 +109,19 @@ BIPOC_KEYWORDS = [
 # see check_grassroots_case().
 
 AMBIGUOUS_EQUITY_WORDS = [
-    r"\bmarginalized\b",
-    r"\bgrassroots\b",
-    r"\bethnocultural\b",
+    #r"\bmarginalized\b", # Can be removed because marginalized can also refer to gender 
+    #r"\bgrassroots\b", # Can be removed
+    #r"\bethnocultural\b",
     r"\bracialized\b",
-    r"\bunderrepresented\b",
-    r"\bmulticultural\b",
-    r"\bdiverse\b",
-    r"\brefugee\b",
-    r"\bimmigrant\b",
-    r"\bfrancophone\b",
-    r"\bnewcomer\b",
+    #r"\bunderrepresented\b", # Possible to overlook as most times refers to gender and sexual identity
+    #r"\bmulticultural\b",
+    #r"\bdiverse\b",
+    #r"\brefugee\b",
+    #r"\bimmigrant\b",
+    #r"\bfrancophone\b",
+    #r"\bnewcomer\b", # Can be overlooked
     r"\bculturally\b",
+    #r"\bminorit(y|ies)\b",
 ]
 
 # ============================================================
@@ -598,26 +599,6 @@ def find_country_match(text):
         return (l1, l2, l3, depth)
     return None
 
-def has_real_ethnic_signal(text, taxonomy_entries):
-    """
-    Used by Case 11 (grassroots) to check whether an ACTUAL ethnic
-    keyword exists elsewhere in the text, independent of the ambiguous
-    equity words.
-    """
-    # This will later be revised, as grassroots can benfit any ethnic group
-    if find_taxonomy_matches(text, taxonomy_entries):
-        return True
-    if find_pattern_match(text):
-        return True
-    if find_country_match(text):
-        return True
-    for compound_pattern in ALWAYS_MULTIPLE_COMPOUNDS:
-        if re.search(compound_pattern, text, re.IGNORECASE):
-            return True
-    if detect_broad_identity(text):
-        return True
-    return False
-
 def is_bipoc_real_target(text):
     """Case 9 with context awareness: BIPOC mentioned as the actual
     target population vs. mentioned only as a general equity/mission
@@ -642,18 +623,27 @@ def is_bipoc_real_target(text):
             break
     return found
 
-def check_grassroots_case(text, taxonomy_entries):
+def check_grassroots_case(text, has_ethnic_signal):
     """
     Case 11 (expanded): 'grassroots' / 'marginalized' / 'ethnocultural' /
     'multicultural' / 'refugee' / 'immigrant' etc. never count as a signal
     on their own. Unlike negation/example-mention, this never suppresses
     silently either way -- caller flags the result whether a real signal
     is present alongside the buzzword or not.
+
+    has_ethnic_signal is computed by the CALLER from the same candidate
+    pool used for final classification in classify_row() -- this used
+    to re-derive its own signal-detection pass via a separate
+    has_real_ethnic_signal() helper, which silently missed BIPOC/POC
+    (and could drift out of sync again the next time a new detection
+    layer gets added to one path but not the other). Taking the
+    already-computed signal as a parameter makes that class of bug
+    structurally impossible -- there is only one detection pass now.
     """
     has_ambiguous = matches_any(AMBIGUOUS_EQUITY_WORDS, text)
     if not has_ambiguous:
         return None  # not relevant, no opinion
-    if has_real_ethnic_signal(text, taxonomy_entries):
+    if has_ethnic_signal:
         return "has_signal"  # real signal present -- classify normally, caller still flags
     return "no_signal"  # ambiguous word present but no real ethnic keyword
 
@@ -700,9 +690,7 @@ def classify_row(row, taxonomy_entries):
     col_texts = get_column_texts(row)
     combined  = " ".join(t for t in col_texts if t.strip())
 
-    # Extra notes (buzzword / cultural association mentions) get
-    # appended to whatever flag this function ends up returning, no
-    # matter which branch below resolves the classification.
+    # Extra notes (buzzword / cultural association mentions) appended to whatever flag this function ends up returning, no matter which branch below resolves the classification.
     extra_notes = []
 
     def finalize(e1, e2, e3, flag):
@@ -725,16 +713,8 @@ def classify_row(row, taxonomy_entries):
     # "Cultural Association" often hides a specific named group (e.g.
     # "Kerala Cultural Association") -- always worth a second look,
     # regardless of how this row otherwise resolves.
-    if re.search(r"\bcultural association\b", combined, re.IGNORECASE):
+    if re.search(r"\bcultural association\b", combined, re.IGNORECASE): # Add check for {group} cultur(e/al) or association
         extra_notes.append("'Cultural Association' detected - verify named group manually")
-
-    # Case 11: grassroots / ambiguous equity words -- never suppress
-    # silently now, always flagged whether or not a real signal is present.
-    grassroots_state = check_grassroots_case(combined, taxonomy_entries) # Handle 'ethnocultural', 'marginalized' as well, since they have the same rule as 'grassroots'
-    if grassroots_state == "no_signal":
-        return finalize(GENERAL_POP, "", "", "Ambiguous equity term (e.g. grassroots, multicultural, refugee) with no paired ethnic signal")
-    if grassroots_state == "has_signal":
-        extra_notes.append("Equity/diversity buzzword present alongside a real signal - verify manually")
 
     # Cases 1-3: direct taxonomy matches, across FR columns
     all_matches = []
@@ -751,6 +731,8 @@ def classify_row(row, taxonomy_entries):
 
     # Build a unified candidate pool: taxonomy + compound + pattern +
     # country + broad identity. Each candidate: (level1, level2, level3, depth, source)
+    # Built BEFORE the buzzword check below so that check has the SAME
+    # evidence the rest of this function uses -- see check_grassroots_case().
     candidates = []
     for m in unique_matches:
         candidates.append((m["level1"], m["level2"] or "", m["level3"] or "",
@@ -794,21 +776,32 @@ def classify_row(row, taxonomy_entries):
             deduped_candidates.append(c)
     candidates = deduped_candidates
 
+    # Case 9: BIPOC (context-aware), computed here -- before the buzzword
+    # check below -- so it can feed into has_ethnic_signal too.
+    bipoc_present = is_bipoc_real_target(combined)
+
+    # Case 11: grassroots / ambiguous equity words -- never suppress
+    # silently now, always flagged whether or not a real signal is present.
+    # has_ethnic_signal reads straight from the candidate pool and
+    # bipoc_present above -- the exact same evidence the rest of this
+    # function uses, by construction. See check_grassroots_case().
+    has_ethnic_signal = bool(candidates) or bipoc_present
+    grassroots_state = check_grassroots_case(combined, has_ethnic_signal) # Handle 'ethnocultural', 'marginalized' as well, since they have the same rule as 'grassroots'
+    if grassroots_state == "no_signal":
+        return finalize(GENERAL_POP, "", "", "Ambiguous equity term (e.g. grassroots, multicultural, refugee) with no paired ethnic signal")
+    if grassroots_state == "has_signal":
+        extra_notes.append("Equity/diversity buzzword present alongside a real signal - verify manually")
+
     # Possible consulted-party mention (expert/advisor/biologist role)
     # rather than the population served -- flagged, never suppressed.
     if candidates and matches_any(EXPERT_ROLE_PHRASES, combined):
         extra_notes.append("Possible consulted-party mention (expert/advisor role) rather than served population - verify manually")
 
-    # Case 9: BIPOC (context-aware) 
     # Checked here (after candidates are gathered) so we can tell whether
     # BIPOC is mentioned ALONGSIDE a real specific group (the ambiguous nuance from the README) vs. BIPOC being the only signal.
-    bipoc_present = is_bipoc_real_target(combined)
     if bipoc_present:
         if candidates:
-            # BIPOC + a specific named group both present. Exactly the
-            # ambiguous case flagged in the README (e.g. "BIPOC visibility"
-            # alongside "Asian Canadian artists"). Do not silently resolve;
-            # flag for manual review.
+            # BIPOC + a specific named group both present. Do not silently resolve, flag for manual review.
             other_groups = sorted(set(c[0] for c in candidates))
             flag = ("Ambiguous: BIPOC mentioned alongside specific group(s) ("
                     + ", ".join(other_groups) + ") - verify manually")
@@ -817,10 +810,8 @@ def classify_row(row, taxonomy_entries):
         return finalize(MULTIPLE_ETHNIC, "", "", flag)
 
     # Resolve candidates: distinct Level 1 groups ANYWHERE in the pool
-    # (not just tied at the deepest level) mean Multiple -- lets "African"
-    # (depth 1) combine with "Black" (depth 2, a different L1 branch
-    # under "Other Ethnic and Cultural Origins") instead of the deeper
-    # one silently winning by depth alone.
+    # (not just tied at the deepest level) mean Multiple -- lets "African" (depth 1) combine with "Black" (depth 2, a different L1 branch
+    # under "Other Ethnic and Cultural Origins") instead of the deeper one silently winning by depth alone.
     if candidates:
         distinct_l1 = set(c[0] for c in candidates)
 

@@ -2,6 +2,7 @@
 *.xlsx
 *.xls
 
+
 # --- Python Environment & Runtime Caches ---
 __pycache__/
 *.py[cod]
@@ -10,8 +11,9 @@ __pycache__/
 venv/
 ENV/
 
-# --- Semantic Search & Embeddings Cache ---
+# --- Semantic Search, claude & Embeddings Cache ---
 .semantic_cache/
+.claude/
 
 # --- IDEs & Code Editors ---
 .vscode/

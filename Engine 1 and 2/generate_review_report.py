@@ -40,7 +40,7 @@ Tabs produced:
        can see what's actually being triggered most often.
 
 To Run:
-    python generate_review_report.py "<path to Taxonomy - Definitions.xlsx>" "<path to funding requests workbook>"
+    python generate_review_report.py
 
 Output:
     review_report.xlsx, written to the current directory.
@@ -48,18 +48,14 @@ Output:
 
 SAMPLE_SIZE = 100
 RANDOM_SEED = 42  # fixed so the same sample comes up
-OUTPUT_FILE = "review_report.xlsx"
-
 
 def main():
-    if len(sys.argv) < 3:
-        print('Usage: python generate_review_report.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"')
-        sys.exit(1)
 
     SCRIPT_DIR = Path(__file__).resolve().parent
 
-    taxonomy_filepath = SCRIPT_DIR.parent / "Data Sheets" / "Taxonomy - Definitions.xlsx"
+    taxonomy_filepath = SCRIPT_DIR.parent / "Taxonomy" / "Taxonomy - Definitions.xlsx"
     funding_filepath = SCRIPT_DIR.parent / "Data Sheets" / "FR testing.xlsx"
+    OUTPUT_FILE = SCRIPT_DIR.parent / "Data Sheets" / "review_report.xlsx"
 
     tax_df = pd.read_excel(taxonomy_filepath, sheet_name=et.TAXONOMY_SHEET, dtype=str)
     data_df = pd.read_excel(funding_filepath, sheet_name=et.DATA_SHEET, dtype=str)

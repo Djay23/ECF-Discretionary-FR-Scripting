@@ -5,6 +5,7 @@ import time
 
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
+from pathlib import Path
 
 """
 ethnic_tagger_v3.py
@@ -109,19 +110,19 @@ BIPOC_KEYWORDS = [
 # see check_grassroots_case().
 
 AMBIGUOUS_EQUITY_WORDS = [
-    #r"\bmarginalized\b", # Can be removed because marginalized can also refer to gender 
-    #r"\bgrassroots\b", # Can be removed
-    #r"\bethnocultural\b",
+    r"\bmarginalized\b", # Can be removed because marginalized can also refer to gender 
+    r"\bgrassroots\b", # Can be removed
+    r"\bethnocultural\b",
     r"\bracialized\b",
-    #r"\bunderrepresented\b", # Possible to overlook as most times refers to gender and sexual identity
-    #r"\bmulticultural\b",
-    #r"\bdiverse\b",
-    #r"\brefugee\b",
-    #r"\bimmigrant\b",
-    #r"\bfrancophone\b",
-    #r"\bnewcomer\b", # Can be overlooked
+    r"\bunderrepresented\b", # Possible to overlook as most times refers to gender and sexual identity
+    r"\bmulticultural\b",
+    r"\bdiverse\b",
+    r"\brefugee\b",
+    r"\bimmigrant\b",
+    r"\bfrancophone\b",
+    r"\bnewcomer\b", # Can be overlooked
     r"\bculturally\b",
-    #r"\bminorit(y|ies)\b",
+    r"\bminorit(y|ies)\b",
 ]
 
 # ============================================================
@@ -226,6 +227,8 @@ COUNTRY_REGION_MAP = {
     "kerala": ("Asian Origins", "South Asian Origins", "Indian (India)"), # state in India, often named directly e.g. "Kerala Cultural Association"
     "cameroonian": ("African Origins", "Central and West African Origins", ""), # no L3 entry for Cameroon -- falls to L2
     "cameroon": ("African Origins", "Central and West African Origins", ""),
+    "nigerian": ("African Origins", "Central and West African Origins", ""), # safety net -- if "Nigerian" is a real L3 entry in the taxonomy, that match wins anyway via depth priority
+    "nigeria": ("African Origins", "Central and West African Origins", ""),
 }
 
 # ============================================================
@@ -551,13 +554,16 @@ def find_taxonomy_matches(text, taxonomy_entries):
     """
     Cases 1-3: direct taxonomy keyword matches, respecting negation
     and example-mention guards. Returns ALL valid matches found.
+    The trailing s? allows plural forms ("Somalis", "Africans") to
+    match the same singular taxonomy keyword without needing a
+    separate entry for every pluralized variant.
     """
     matched = []
     for entry in taxonomy_entries:
         kw = entry["keyword"]
         if not kw:
             continue
-        pattern = re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
+        pattern = re.compile(r'\b' + re.escape(kw) + r's?\b', re.IGNORECASE)
         if not pattern.search(text):
             continue
         if is_negated(kw, text) or is_example_mention(kw, text):
@@ -584,11 +590,13 @@ def find_pattern_match(text):
 def find_country_match(text):
     """
     Cases 6 & 7: nationality OR 'from <country>' phrasing.
-    Returns (l1, l2, l3, depth) or None.
+    Returns (l1, l2, l3, depth) or None. The trailing s? allows plural
+    forms ("Jamaicans", "Mexicans") to match without a separate entry
+    for every pluralized variant.
     """
     for country, (l1, l2, l3) in COUNTRY_REGION_MAP.items():
-        direct = re.search(r'\b' + re.escape(country) + r'\b', text, re.IGNORECASE)
-        from_phrase = re.search(r'\bfrom\s+' + re.escape(country) + r'\b', text, re.IGNORECASE)
+        direct = re.search(r'\b' + re.escape(country) + r's?\b', text, re.IGNORECASE)
+        from_phrase = re.search(r'\bfrom\s+' + re.escape(country) + r's?\b', text, re.IGNORECASE)
         m = direct or from_phrase
         if not m:
             continue
@@ -672,11 +680,51 @@ def context_is_aspirational(text):
 # TEXT EXTRACTION — concatenate across all 4 columns
 # =================================================
 
+# Some compound identity phrases mean something specific that's
+# different from their literal sub-words. "African Canadian" names the
+# Black Canadian identity (-> Other Ethnic and Cultural Origins / Black,
+# not otherwise specified) -- it is NOT the same as "African" alone
+# (-> African Origins), but the bare word "african" matches that
+# taxonomy entry on its own regardless of what follows it, so the
+# phrase was getting silently reduced to the wrong, broader category.
+# Rewriting the phrase to the word that already has a correct taxonomy
+# entry means it flows through the EXISTING matching pipeline (negation
+# guards, multi-group detection, depth resolution) automatically --
+# no separate override system needed, and a second distinct group
+# mentioned elsewhere in the same text (e.g. "African Canadian and
+# Somali") still correctly produces Multiple instead of silently
+# picking one and ignoring the other.
+IDENTITY_PHRASE_REWRITES = [
+    (r"\bafrican canadian\b", "black"),
+    (r"\bafrican american\b", "black"),
+]
+
+# A directional/regional qualifier immediately before "African" (East
+# African, West African, etc.) means the phrase keeps its literal,
+# specific meaning -- "East African Canadian" should still resolve via
+# the existing East African pattern rule, not get swallowed by the
+# African Canadian/American rewrite just because "african canadian"
+# happens to be a literal substring of it. Only BARE "African" paired
+# with Canadian/American carries the special idiomatic meaning (Black
+# identity) the rewrite above is for.
+DIRECTIONAL_AFRICAN_PREFIXES = ["north", "south", "east", "west", "central", "saharan"]
+
+def apply_identity_phrase_rewrites(text):
+    for pattern, replacement in IDENTITY_PHRASE_REWRITES:
+        def _replace(m, text=text):
+            preceding = text[max(0, m.start()-12):m.start()].strip(" -")
+            if any(preceding.endswith(prefix) for prefix in DIRECTIONAL_AFRICAN_PREFIXES):
+                return m.group(0)  # leave a regional phrase like "East African Canadian" untouched
+            return replacement
+        text = re.sub(pattern, _replace, text, flags=re.IGNORECASE)
+    return text
+
 def get_column_texts(row):
     texts = []
     for col in INPUT_COLS_PRIORITY:
         val = row.get(col, "")
         raw = normalize_text(val)
+        raw = apply_identity_phrase_rewrites(raw)
         # Commented out for alias check implementation.
         #raw = apply_aliases(raw)
         texts.append(raw)
@@ -866,8 +914,10 @@ def main():
         print('Usage: python ethnic_taggerv3.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"')
         sys.exit(1)
  
-    taxonomy_filepath = sys.argv[1]
-    funding_filepath  = sys.argv[2]
+    SCRIPT_DIR = Path(__file__).resolve().parent
+
+    taxonomy_filepath = SCRIPT_DIR.parent / "Data Sheets" / "Taxonomy - Definitions.xlsx"
+    funding_filepath = SCRIPT_DIR.parent / "Data Sheets" / "FR testing.xlsx"
  
     print(f"Loading taxonomy from: {taxonomy_filepath}")
     try:
@@ -973,7 +1023,6 @@ def main():
     print("\nResults:")
     for k, v in stats.items():
         print(f"  {k}: {v}")
-        # print(f"  {k}: {v}; Column #: {get_column_letter(headers[OUTPUT_ETHNIC1])} - {get_column_letter(headers[OUTPUT_ETHNIC3])}, Flag: {get_column_letter(headers[OUTPUT_FLAG])}")
 
     print(f"\nOutput written to: {funding_filepath}")
     elapsed = time.time() - start_time

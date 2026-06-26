@@ -1,0 +1,31 @@
+# --- Excel & Data Sheets ---
+*.xlsx
+*.xls
+
+# --- Python Environment & Runtime Caches ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# --- Semantic Search & Embeddings Cache ---
+.semantic_cache/
+
+# --- IDEs & Code Editors ---
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# --- Operating System Junk ---
+.DS_Store
+Thumbs.db
+
+# --- Security & Credentials ---
+.env
+*.env
+secrets.json

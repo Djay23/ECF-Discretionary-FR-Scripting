@@ -25,7 +25,7 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
 - Flag treaty 6, 7, 8. 
 - If two groups are within the same general level 2, can be grouped in the same level 3: like Ukrainian & Eastern European mentioned. What about a case where it is 'Filipino' & 'West and Central Asian and Middle Eastern Origins', or 'Filipino' and 'Syrian'
     - Group with its most common sector if they have a sector level in common.
-- African Canadian ignored and grouped with --> Other, Black (flag)
+- African Canadian ignored and grouped with --> Other, Black (flag)??
 
 -----------------------------
 
@@ -158,9 +158,89 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
     * Bipoc; QTBipoc; Bpoc; People of Colour; Black African.
     > **Note:** Include what indicators led to this classification.
 
-> Implement Semantic RAG/Chunking
+> Implement Semantic similarity matching --> This will go through anything classified as General or other and take a closer look, acting as a tighter knit net for ethnic signals. 
+
+> Layer 1:
+    - Current model of looking at taxonomy definitions to match ethnic group.
+> Layer 2:
+    - Semantic Similarity Searching (Safety Net).
+        - Nearest Neighbour Classification.
+        - Confidence threshold and pick highest confidence match.
+        - Tries to answer "What taxonomy entry is this text most semantically similar to?"
+
+
+## Current Rule Engine Handles:
+* Exact Matches
+* Pattern Rules
+* Country Mappings
+* Negation
+* Historical References
+* Aspirational Language
+* BIPOC Handling
+* Organization lookup
+
+*Layer 2 to handle when text contains implicit ethnic signals that aren't in keyword system.
+
+## Current Flow:
+* Run ethnic tagger script
+* Loads Taxonomy - Definitions.xlsx
+* Loads FR Testing.xlsx
+* Build Taxonomy Entries
+* Load Embedding Model
+* Creates Vectors (Turns text into vectors: "Supporting Newcomers from the horn of africa --> )
+
+> Flag anything that has Cultural Association 
+> Black canadians as just black, african canadians should be classified as african origins
+> Classification for refugee? -> General (we don't have classification for this)
+> Ethnocultural, multicultural, refugee, immigrant without any ethnic signal is usually general, but we flag
+> Flag francophone, immigrant, etc. 
+> Afro-Caribbean - Should be classified as caribbean, was grouped with black, so should be black & caribbean which is multiple ethnic.
+> "Kerala Cultural Association" --> India. Anything with cultural association should be flagged.
+
+## To Note for EMbedding (ENGINE 2):
+- Inspect the gap between the top two matches. we currently only look at the single best score: `best_idx = np.argmax[scores]`; to now: best_score >= threshold && (best_score - second_best_score) >= margin
+
+
+## To run Files:
+- Diagnose_semantic_scores.py:
+    + python diagnose_semantic_scores.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"
+
+- Ethnic_taggerv3.py:
+    + python ethnic_taggerv3.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"
 
 
 
+# Current course of action (2026-06-25)
+### Review General Pop. CLassification:
+Random sample of 50 General pop:
+- Correctly General
+- Missed Ethnic classification
+- Population-specific but outside taxonomy
+- Ambiguous even for a human
 
+### Audit 64 'Ambiguous Equity Term' Rows
+- How many should actually classify?
+- If 50+ truly are General Population, leave the rule
+- If it contains obvious ethnic signals, are we suppressing too aggressively?
+
+### Audit 42 'Multiple Ethnic' rows
+Look at:
+- BIPOC + African
+- BIPOC + Asian
+- BIPOC + Caribbean
+Is this something a human reviewer actually needs to look at?
+
+# Sprints
+## Sprint 1:
+- Add plural normalization
+- Generate diagnostic review workbook
+- Review:
+    - 50 General pop. rows
+    - 64 Ambiguous Equity rows
+    - 42 'Multiple Ethnic' rows
     
+## Sprint 2:
+- Use findings from real data to decide whether:
+- Reference context rules are needed
+- Additional oranization mappings are needed
+- Semantic Engine thresholds need tuning

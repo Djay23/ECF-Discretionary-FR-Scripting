@@ -110,17 +110,17 @@ BIPOC_KEYWORDS = [
 # see check_grassroots_case().
 
 AMBIGUOUS_EQUITY_WORDS = [
-    r"\bmarginalized\b", # Can be removed because marginalized can also refer to gender 
-    r"\bgrassroots\b", # Can be removed
-    r"\bethnocultural\b",
+    #r"\bmarginalized\b", # Can be removed because marginalized can also refer to gender 
+    #r"\bgrassroots\b", # Can be removed
+    #r"\bethnocultural\b",
     r"\bracialized\b",
-    r"\bunderrepresented\b", # Possible to overlook as most times refers to gender and sexual identity
+    #r"\bunderrepresented\b", # Possible to overlook as most times refers to gender and sexual identity
     r"\bmulticultural\b",
-    r"\bdiverse\b",
-    r"\brefugee\b",
-    r"\bimmigrant\b",
-    r"\bfrancophone\b",
-    r"\bnewcomer\b", # Can be overlooked
+    #r"\bdiverse\b",
+    #r"\brefugee\b",
+    #r"\bimmigrant\b",
+    #r"\bfrancophone\b",
+    #r"\bnewcomer\b", # Can be overlooked
     r"\bculturally\b",
     r"\bminorit(y|ies)\b",
 ]
@@ -132,10 +132,10 @@ AMBIGUOUS_EQUITY_WORDS = [
 # find_taxonomy_matches() instead of here now.
 # ============================================================
 BROAD_IDENTITY_KEYWORDS = [
-    r"\bhispanic\b",
-    r"\blatino\b",
-    r"\blatina\b",
-    r"\blatinx\b",
+    # "hispanic" removed — real L2 taxonomy keyword under "Latin, Central, and South American Origins";
+    # keeping it here caused taxonomy + broad-identity to produce two different L1s → spurious Multiple.
+    # Same fix already applied to Black/Jewish/Arab (see comment above).
+    # "latino"/"latina"/"latinx" removed — moved to PATTERN_RULES with the correct L1.
     r"\bmixed heritage\b",
     r"\bmixed race\b",
     r"\bmultiracial\b",
@@ -151,7 +151,7 @@ ALWAYS_MULTIPLE_COMPOUNDS = {
     ),
     r"\bafro[\-\u2010\u2011\u2012\u2013\u2014\s]*latin(o|a|x)?\b": (
         ("African Origins", "", ""),
-        ("Latin American Origins", "", ""),
+        ("Latin, Central, and South American Origins", "", ""),
     ),
 }
 
@@ -191,6 +191,11 @@ PATTERN_RULES = [
     (r"\bsouthern european\b", "European Origins", "Southern European Origins", ""),
     (r"\beast(ern)? european\b", "European Origins", "Eastern European Origins", ""),
     (r"\bwest(ern)? european\b", "European Origins", "Western European Origins", ""),
+    (r"\blatino\b", "Latin, Central, and South American Origins", "", ""),
+    (r"\blatina\b", "Latin, Central, and South American Origins", "", ""),
+    (r"\blatinx\b", "Latin, Central, and South American Origins", "", ""),
+    (r"\bsouth[\s\-]?american\b", "Latin, Central, and South American Origins", "", ""),
+    (r"\bcentral[\s\-]?american\b", "Latin, Central, and South American Origins", "", ""),
 ]
 
 # ============================================================
@@ -208,20 +213,20 @@ COUNTRY_REGION_MAP = {
     "haiti": ("Caribbean Origins", "", ""),
     "guyanese": ("Caribbean Origins", "", ""),
     "guyana": ("Caribbean Origins", "", ""),
-    "brazilian": ("Latin American Origins", "", ""),
-    "brazil": ("Latin American Origins", "", ""),
-    "colombian": ("Latin American Origins", "", ""),
-    "colombia": ("Latin American Origins", "", ""),
-    "mexican": ("Latin American Origins", "", ""),
-    "mexico": ("Latin American Origins", "", ""),
-    "salvadoran": ("Latin American Origins", "", ""),
-    "el salvador": ("Latin American Origins", "", ""),
-    "guatemalan": ("Latin American Origins", "", ""),
-    "guatemala": ("Latin American Origins", "", ""),
-    "peruvian": ("Latin American Origins", "", ""),
-    "peru": ("Latin American Origins", "", ""),
-    "venezuelan": ("Latin American Origins", "", ""),
-    "venezuela": ("Latin American Origins", "", ""),
+    "brazilian": ("Latin, Central, and South American Origins", "", ""),
+    "brazil": ("Latin, Central, and South American Origins", "", ""),
+    "colombian": ("Latin, Central, and South American Origins", "", ""),
+    "colombia": ("Latin, Central, and South American Origins", "", ""),
+    "mexican": ("Latin, Central, and South American Origins", "", ""),
+    "mexico": ("Latin, Central, and South American Origins", "", ""),
+    "salvadoran": ("Latin, Central, and South American Origins", "", ""),
+    "el salvador": ("Latin, Central, and South American Origins", "", ""),
+    "guatemalan": ("Latin, Central, and South American Origins", "", ""),
+    "guatemala": ("Latin, Central, and South American Origins", "", ""),
+    "peruvian": ("Latin, Central, and South American Origins", "", ""),
+    "peru": ("Latin, Central, and South American Origins", "", ""),
+    "venezuelan": ("Latin, Central, and South American Origins", "", ""),
+    "venezuela": ("Latin, Central, and South American Origins", "", ""),
     "indian": ("Asian Origins", "South Asian Origins", "Indian (India)"),
     "india": ("Asian Origins", "South Asian Origins", "Indian (India)"),
     "kerala": ("Asian Origins", "South Asian Origins", "Indian (India)"), # state in India, often named directly e.g. "Kerala Cultural Association"
@@ -239,7 +244,7 @@ EXPANSION_PHRASES = [
     r"beyond (its|their|our|the) (original|previous|former|initial|traditional|historic(al)?)",
     r"expanding beyond",
     r"expansion",
-    r"not (only|exclusively|solely|limited to|just|restricted to)",
+    r"not (exclusively|solely|limited to|just|restricted to)",
     r"no longer (limited|restricted|focused|exclusively)",
     r"open(ing)? (up )?to (all|broader|wider|diverse|other)",
     r"(increasingly|more) diverse",
@@ -677,6 +682,35 @@ def context_is_aspirational(text):
     return matches_any(ASPIRATIONAL_PHRASES, text)
 
 # =================================================
+# CONTEXT SIGNAL LAYER
+# Detects soft discourse signals in the full combined text.
+# Results are annotations only — they MUST NOT affect classification decisions.
+# =================================================
+
+def extract_context_signals(text):
+    return {
+        "historical":   matches_any(HISTORICAL_PHRASES, text),
+        "expansion":    matches_any(EXPANSION_PHRASES, text),
+        "aspirational": matches_any(ASPIRATIONAL_PHRASES, text),
+        "negation":     matches_any(NEGATION_PHRASES, text),
+        "example":      matches_any(EXAMPLE_PHRASES, text),
+    }
+
+def build_context_notes(signals):
+    notes = []
+    if signals["historical"]:
+        notes.append("Historical framing detected - may refer to past service scope only")
+    if signals["expansion"]:
+        notes.append("Scope expansion language detected - indicates broadened or non-exclusive targeting")
+    if signals["aspirational"]:
+        notes.append("Aspirational/future-oriented language detected - may not reflect current service population")
+    if signals["negation"]:
+        notes.append("Negation detected - verify exclusion vs inclusion intent")
+    if signals["example"]:
+        notes.append("Example-based phrasing detected - referenced group may not be primary target")
+    return notes
+
+# =================================================
 # TEXT EXTRACTION — concatenate across all 4 columns
 # =================================================
 
@@ -750,13 +784,11 @@ def classify_row(row, taxonomy_entries):
     if not combined.strip():
         return finalize(GENERAL_POP, "", "", "Empty input")
 
-    # Highest priority: context override / historical reference
-    if context_is_overridden(combined):
-        return finalize(GENERAL_POP, "", "", "Context override: expansion phrase detected")
-    if context_is_historical(combined):
-        return finalize(GENERAL_POP, "", "", "Context override: historical reference detected")
-
-    aspirational = context_is_aspirational(combined)
+    # Context signal layer — annotation only, no control flow.
+    # All discourse signals (historical, expansion, aspirational, negation, example)
+    # are recorded as flags. Classification is never branched on them.
+    context_signals = extract_context_signals(combined)
+    extra_notes = build_context_notes(context_signals)
 
     # "Cultural Association" often hides a specific named group (e.g.
     # "Kerala Cultural Association") -- always worth a second look,
@@ -836,7 +868,7 @@ def classify_row(row, taxonomy_entries):
     has_ethnic_signal = bool(candidates) or bipoc_present
     grassroots_state = check_grassroots_case(combined, has_ethnic_signal) # Handle 'ethnocultural', 'marginalized' as well, since they have the same rule as 'grassroots'
     if grassroots_state == "no_signal":
-        return finalize(GENERAL_POP, "", "", "Ambiguous equity term (e.g. grassroots, multicultural, refugee) with no paired ethnic signal")
+        extra_notes.append("Ambiguous equity term with no paired ethnic signal")
     if grassroots_state == "has_signal":
         extra_notes.append("Equity/diversity buzzword present alongside a real signal - verify manually")
 
@@ -864,10 +896,7 @@ def classify_row(row, taxonomy_entries):
         distinct_l1 = set(c[0] for c in candidates)
 
         if len(distinct_l1) >= 2:
-            flag = "Review: multiple distinct groups detected"
-            if aspirational:
-                flag += "; aspirational language present"
-            return finalize(MULTIPLE_ETHNIC, "", "", flag)
+            return finalize(MULTIPLE_ETHNIC, "", "", "Review: multiple distinct groups detected")
 
         # All candidates share one Level 1 -- use depth to pick the most
         # specific. If several DIFFERENT branches still tie at the
@@ -876,10 +905,7 @@ def classify_row(row, taxonomy_entries):
         deepest = [c for c in candidates if c[3] == max_depth]
 
         if len(deepest) >= 2:
-            flag = "Review: multiple sub-groups within same origin"
-            if aspirational:
-                flag += "; aspirational language present"
-            return finalize(MULTIPLE_ETHNIC, "", "", flag)
+            return finalize(MULTIPLE_ETHNIC, "", "", "Review: multiple sub-groups within same origin")
 
         l1, l2, l3, depth, source = deepest[0]
         flag = ""
@@ -891,8 +917,6 @@ def classify_row(row, taxonomy_entries):
             flag = "Compound identity term match"
         elif source == "broad_identity":
             flag = "Broad identity term - review recommended"
-        if aspirational:
-            flag = (flag + "; " if flag else "") + "Review: aspirational language - future intent, not current population"
         return finalize(l1, l2, l3, flag)
 
     # Case 10: organization name lookup (LAST RESORT before General) NOTE: Need to highlight Black Canadian Women to flag
@@ -909,14 +933,10 @@ def classify_row(row, taxonomy_entries):
 # =====
 def main():
     start_time = time.time()
-
-    if len(sys.argv) < 3:
-        print('Usage: python ethnic_taggerv3.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"')
-        sys.exit(1)
  
     SCRIPT_DIR = Path(__file__).resolve().parent
 
-    taxonomy_filepath = SCRIPT_DIR.parent / "Data Sheets" / "Taxonomy - Definitions.xlsx"
+    taxonomy_filepath = SCRIPT_DIR.parent / "Taxonomy" / "Taxonomy - Definitions.xlsx"
     funding_filepath = SCRIPT_DIR.parent / "Data Sheets" / "FR testing.xlsx"
  
     print(f"Loading taxonomy from: {taxonomy_filepath}")

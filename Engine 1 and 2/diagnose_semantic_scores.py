@@ -35,9 +35,9 @@ TOP_N = 20  # how many of the highest-scoring rows to print in full for manual r
 def main():
     start_time = time.time()
 
-    if len(sys.argv) < 3:
-        print('Usage: python diagnose_semantic_scores.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"')
-        sys.exit(1)
+    # if len(sys.argv) < 3:
+    #     print('Usage: python diagnose_semantic_scores.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"')
+    #     sys.exit(1)
     
     SCRIPT_DIR = Path(__file__).resolve().parent
 

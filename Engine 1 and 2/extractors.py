@@ -1,3 +1,14 @@
+import re
+
+from ethnic_taggerv3 import (
+    PATTERN_RULES,
+    COUNTRY_REGION_MAP,
+    ALWAYS_MULTIPLE_COMPOUNDS,
+    BROAD_IDENTITY_KEYWORDS,
+    ORG_NAME_ETHNICITY_MAP,
+    OTHER_ETHNIC,
+)
+
 """
 extractors.py
 -------------
@@ -20,18 +31,6 @@ NOTE on imports:
     layer is implemented.
 """
 
-import re
-
-from ethnic_taggerv3 import (
-    PATTERN_RULES,
-    COUNTRY_REGION_MAP,
-    ALWAYS_MULTIPLE_COMPOUNDS,
-    BROAD_IDENTITY_KEYWORDS,
-    ORG_NAME_ETHNICITY_MAP,
-    OTHER_ETHNIC,
-)
-
-
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -44,7 +43,6 @@ def _candidate(level1: str, level2: str, level3: str, depth: int, source: str) -
         "depth":  depth,
         "source": source,
     }
-
 
 # ---------------------------------------------------------------------------
 # Public extraction functions
@@ -77,7 +75,6 @@ def extract_taxonomy_candidates(text: str, taxonomy_entries: list) -> list:
         ))
     return candidates
 
-
 def extract_pattern_candidates(text: str) -> list:
     """
     Case 4: structured/directional phrase scan.
@@ -96,7 +93,6 @@ def extract_pattern_candidates(text: str) -> list:
             candidates.append(_candidate(l1, l2, l3, depth, "pattern"))
     return candidates
 
-
 def extract_country_candidates(text: str) -> list:
     """
     Cases 6 & 7: nationality and 'from <country>' phrase scan.
@@ -109,13 +105,12 @@ def extract_country_candidates(text: str) -> list:
     """
     candidates = []
     for country, (l1, l2, l3) in COUNTRY_REGION_MAP.items():
-        direct     = re.search(r'\b' + re.escape(country) + r's?\b',          text, re.IGNORECASE)
+        direct     = re.search(r'\b' + re.escape(country) + r's?\b', text, re.IGNORECASE)
         from_phrase = re.search(r'\bfrom\s+' + re.escape(country) + r's?\b',  text, re.IGNORECASE)
         if direct or from_phrase:
             depth = 3 if l3 else (2 if l2 else 1)
             candidates.append(_candidate(l1, l2, l3, depth, "country"))
     return candidates
-
 
 def extract_compound_candidates(text: str) -> list:
     """
@@ -132,7 +127,6 @@ def extract_compound_candidates(text: str) -> list:
                 candidates.append(_candidate(l1, l2, l3, 1, "compound"))
     return candidates
 
-
 def extract_broad_identity_candidates(text: str) -> list:
     """
     Case 9b: broad identity label scan (mixed heritage, multiracial, etc.).
@@ -145,7 +139,6 @@ def extract_broad_identity_candidates(text: str) -> list:
         if re.search(kw_pattern, text, re.IGNORECASE):
             return [_candidate(OTHER_ETHNIC, "", "", 1, "broad_identity")]
     return []
-
 
 def extract_org_candidates(text: str) -> list:
     """

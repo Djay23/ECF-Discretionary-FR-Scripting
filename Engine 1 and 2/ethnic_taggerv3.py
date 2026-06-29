@@ -121,7 +121,7 @@ AMBIGUOUS_EQUITY_WORDS = [
     #r"\bimmigrant\b",
     #r"\bfrancophone\b",
     #r"\bnewcomer\b", # Can be overlooked
-    r"\bculturally\b",
+    #r"\bculturally\b",
     r"\bminorit(y|ies)\b",
 ]
 
@@ -182,10 +182,11 @@ PATTERN_RULES = [
     (r"\beast[\s\-]?asian\b", "Asian Origins", "East and Southeast Asian Origins", ""),
     (r"\bmiddle[\s\-]?eastern\b", "Asian Origins", "West and Central Asian and Middle Eastern Origins", ""),
     (r"\bfirst nations\b", "North American Indigenous Origins", "", ""),
-    (r"\bmetis\b", "North American Indigenous Origins", "", ""),
+    (r"\bmetis\b", "North American Indigenous Origins", "Métis", ""),
     (r"\binuit\b", "North American Indigenous Origins", "", ""),
     (r"\baboriginal\b","North American Indigenous Origins", "", ""),
     (r"\bindigenous canadian\b", "North American Indigenous Origins", "", ""),
+    (r"\b(?<!non )indigenous\b", "North American Indigenous Origins", "", ""),
     (r"\btreaty 6\b", "North American Indigenous Origins", "", ""),
     (r"\bnorthern european\b", "European Origins", "Northern European Origins", ""),
     (r"\bsouthern european\b", "European Origins", "Southern European Origins", ""),
@@ -276,8 +277,8 @@ NEGATION_PHRASES = [
     r"no longer (target(ing)?|serv(ing|e)|focus(ing|ed))",
     r"exclud(es?|ing)",
     r"except(ing)?",
-    r"other than",
-    r"outside of",
+    #r"other than",
+    #r"outside of",
     r"not the (primary|main|sole|only) (focus|target|group|population)",
 ]
 
@@ -697,6 +698,29 @@ def extract_context_signals(text):
     }
 
 def build_context_notes(signals):
+    """
+    Production annotation notes.
+
+    Only negation is surfaced — it directly affects how confident a reviewer
+    should be in the ethnic evidence found (a negated term may or may not
+    indicate the population served).
+
+    Historical, expansion, aspirational, and example signals are omitted here
+    because they are extremely common in nonprofit funding language and create
+    alert fatigue when surfaced on every request.  They remain detectable via
+    extract_context_signals() and are available in full via
+    build_debug_context_notes() for debug overlay use.
+    """
+    notes = []
+    if signals["negation"]:
+        notes.append("Negation detected - verify exclusion vs inclusion intent")
+    return notes
+
+def build_debug_context_notes(signals):
+    """
+    Full context annotation notes including discourse-framing signals.
+    For debug overlay use only — NOT emitted in production output.
+    """
     notes = []
     if signals["historical"]:
         notes.append("Historical framing detected - may refer to past service scope only")
@@ -709,6 +733,88 @@ def build_context_notes(signals):
     if signals["example"]:
         notes.append("Example-based phrasing detected - referenced group may not be primary target")
     return notes
+
+# =================================================
+# CASE 13 — Potential Ethnocultural Organization Name
+#
+# Safety-net detector for unknown ethnocultural org names in the
+# Funding Request Name column.  Only fires when Engine 1 produced zero
+# candidates and BIPOC is absent — i.e. the row would otherwise fall
+# through to General Population with no ethnic signal at all.
+#
+# NEVER classifies. NEVER overrides. Review flag only.
+# =================================================
+
+CASE_13_PATTERNS = [
+    r"^([a-z][a-z\s\-']+?)\s+cultural\s+association\b",
+    r"^([a-z][a-z\s\-']+?)\s+cultural\s+group\b",
+    r"^([a-z][a-z\s\-']+?)\s+cultural\s+society\b",
+    r"^([a-z][a-z\s\-']+?)\s+community\s+association\b",
+    r"^([a-z][a-z\s\-']+?)\s+community\s+organization\b",
+    r"^([a-z][a-z\s\-']+?)\s+association\b",
+]
+
+
+def is_known_taxonomy_keyword(group_name, taxonomy_entries):
+    """Return True if group_name contains a recognized taxonomy keyword."""
+    for entry in taxonomy_entries:
+        kw = entry.get("keyword", "")
+        if not kw:
+            continue
+        if re.search(r'\b' + re.escape(kw) + r's?\b', group_name, re.IGNORECASE):
+            return True
+    return False
+
+
+def matches_pattern_rule(group_name):
+    """Return True if group_name matches any PATTERN_RULES entry."""
+    for pattern, *_ in PATTERN_RULES:
+        if re.search(pattern, group_name, re.IGNORECASE):
+            return True
+    return False
+
+
+def detect_ethnocultural_org_name(funding_request_name, candidates, bipoc_present, taxonomy_entries):
+    """
+    Case 13 — low-recall, high-precision safety net.
+
+    Detects potential ethnocultural organization names in the Funding Request
+    Name that Engine 1 did not already classify.
+
+    Guard clause (Step 1): if ANY Engine 1 candidate exists or BIPOC is
+    present, the row is already being handled — return None immediately.
+    This ensures Case 13 only triggers as a true last resort.
+
+    Negative filters (Step 6): even when the title matches the org-name
+    pattern, do NOT flag if the extracted group token is:
+      - a recognized taxonomy keyword
+      - a known country/region/nationality in COUNTRY_REGION_MAP
+      - matched by any PATTERN_RULES entry (directional ethnonyms etc.)
+    """
+    if candidates or bipoc_present:
+        return None
+
+    title = normalize_text(funding_request_name or "")
+    if not title:
+        return None
+
+    for pattern in CASE_13_PATTERNS:
+        match = re.search(pattern, title, re.IGNORECASE)
+        if not match:
+            continue
+
+        group_name = match.group(1).strip()
+
+        if is_known_taxonomy_keyword(group_name, taxonomy_entries):
+            return None
+        if group_name in COUNTRY_REGION_MAP:
+            return None
+        if matches_pattern_rule(group_name):
+            return None
+
+        return "Potential ethnocultural organization name detected - verify group identity manually"
+
+    return None
 
 # =================================================
 # TEXT EXTRACTION — concatenate across all 4 columns

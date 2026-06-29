@@ -43,7 +43,7 @@ To Run:
     python generate_review_report.py
 
 Output:
-    review_report.xlsx, written to the current directory.
+    review_reportV2.xlsx, written to the current directory.
 """
 
 SAMPLE_SIZE = 100
@@ -55,7 +55,7 @@ def main():
 
     taxonomy_filepath = SCRIPT_DIR.parent / "Taxonomy" / "Taxonomy - Definitions.xlsx"
     funding_filepath = SCRIPT_DIR.parent / "Data Sheets" / "FR testing.xlsx"
-    OUTPUT_FILE = SCRIPT_DIR.parent / "Data Sheets" / "review_report.xlsx"
+    OUTPUT_FILE = SCRIPT_DIR.parent / "Data Sheets" / "review_reportV2.xlsx"
 
     tax_df = pd.read_excel(taxonomy_filepath, sheet_name=et.TAXONOMY_SHEET, dtype=str)
     data_df = pd.read_excel(funding_filepath, sheet_name=et.DATA_SHEET, dtype=str)

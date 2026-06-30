@@ -244,3 +244,11 @@ Is this something a human reviewer actually needs to look at?
 - Reference context rules are needed
 - Additional oranization mappings are needed
 - Semantic Engine thresholds need tuning
+
+
+# 2026-06-30
+- Continued auditing of script classification for correctness. 
+### Sprint 1:
+- 100 General pop. rows sample
+- 11 Ambiguous equity rows with no paired ethnic signal
+- 55 'Multiple Ethnic' rows

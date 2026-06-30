@@ -186,7 +186,7 @@ PATTERN_RULES = [
     (r"\binuit\b", "North American Indigenous Origins", "", ""),
     (r"\baboriginal\b","North American Indigenous Origins", "", ""),
     (r"\bindigenous canadian\b", "North American Indigenous Origins", "", ""),
-    (r"\b(?<!non )indigenous\b", "North American Indigenous Origins", "", ""),
+    (r"\bindigenous\b", "North American Indigenous Origins", "", ""),
     (r"\btreaty 6\b", "North American Indigenous Origins", "", ""),
     (r"\bnorthern european\b", "European Origins", "Northern European Origins", ""),
     (r"\bsouthern european\b", "European Origins", "Southern European Origins", ""),
@@ -277,6 +277,7 @@ NEGATION_PHRASES = [
     r"no longer (target(ing)?|serv(ing|e)|focus(ing|ed))",
     r"exclud(es?|ing)",
     r"except(ing)?",
+    r"\bnon[- ]?$", # handles non-indigenous, non-black, non indigenous, etc.
     #r"other than",
     #r"outside of",
     r"not the (primary|main|sole|only) (focus|target|group|population)",

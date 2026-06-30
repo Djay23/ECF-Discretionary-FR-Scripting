@@ -98,8 +98,9 @@ BIPOC_KEYWORDS = [
     r"\bbipoc\b",
     r"\bqtbipoc\b",
     r"\bpoc\b",
+    r"\bibpoc\b"
     r"\bpeople of colou?r\b",
-    r"\bblack african\b",
+    #r"\bblack african\b",
     #r"\bracialized\b", # Change to flag if "racialized" is detected
 ]
 
@@ -231,10 +232,18 @@ COUNTRY_REGION_MAP = {
     "indian": ("Asian Origins", "South Asian Origins", "Indian (India)"),
     "india": ("Asian Origins", "South Asian Origins", "Indian (India)"),
     "kerala": ("Asian Origins", "South Asian Origins", "Indian (India)"), # state in India, often named directly e.g. "Kerala Cultural Association"
+    "uyghur": ("Asian Origins", "West and Central Asian and Middle Eastern Origins", ""),
     "cameroonian": ("African Origins", "Central and West African Origins", ""), # no L3 entry for Cameroon -- falls to L2
     "cameroon": ("African Origins", "Central and West African Origins", ""),
+    "sierra leone": ("African Origins", "Central and West African Origins", ""),
     "nigerian": ("African Origins", "Central and West African Origins", ""), # safety net -- if "Nigerian" is a real L3 entry in the taxonomy, that match wins anyway via depth priority
     "nigeria": ("African Origins", "Central and West African Origins", ""),
+    "ghana": ("African Origins", "Central and West African Origins", ""),
+    "djibouti": ("African Origins", "Southern and East African Origins", ""),
+    "namibia": ("African Origins", "Southern and East African Origins", ""),
+    "botswana": ("African Origins", "Southern and East African Origins", ""),
+    "zimbabwe": ("African Origins", "Southern and East African Origins", ""),
+    "egyptian": ("African Origins", "North African Origins", ""),
 }
 
 # ============================================================
@@ -428,19 +437,18 @@ SERVING_CONTEXT_WORDS = [
     r"\bserve(s|d)?\b",
     r"\bserving\b",
     r"\bpopulation\b",
-    r"\bcommunit(y|ies)\b",
+    #r"\bcommunit(y|ies)\b",
     r"\bdemographic(s)?\b",
     r"\bfocus(ed|es)?\b",
     r"\btarget(ed|ing)?\b",
     r"\breach\b",
     r"\bbeneficiar(y|ies)\b",
-    r"\bclientele\b",
-    r"\bmembership\b",
-    r"\bmembers\b",
-    r"\baudience\b",
-    r"\bclients\b",
-    r"\bresidents\b",
-    r"\bgroups\b",
+    #r"\bclientele\b",
+    #r"\bmembership\b",
+    #r"\bmembers\b",
+    #r"\baudience\b",
+    #r"\bclients\b",
+    ##r"\bgroups\b",
 ]
 
 def phrase_has_serving_context(pattern, text, window=100):
@@ -838,6 +846,8 @@ def detect_ethnocultural_org_name(funding_request_name, candidates, bipoc_presen
 IDENTITY_PHRASE_REWRITES = [
     (r"\bafrican canadian\b", "black"),
     (r"\bafrican american\b", "black"),
+    (r"\black american\b", "black"),
+    (r"\black canadian\b", "black"),
 ]
 
 # A directional/regional qualifier immediately before "African" (East
@@ -988,7 +998,7 @@ def classify_row(row, taxonomy_entries):
     # BIPOC is mentioned ALONGSIDE a real specific group (the ambiguous nuance from the README) vs. BIPOC being the only signal.
     if bipoc_present:
         if candidates:
-            # BIPOC + a specific named group both present. Do not silently resolve, flag for manual review.
+            # BIPOC + a specific named group both present. Do not silently resolve, flag for manual review. # We can set this as a generic 'Ambiguous: BIPOC mentioned alongside specific group(s) flag so number of unique classification flags are smaller
             other_groups = sorted(set(c[0] for c in candidates))
             flag = ("Ambiguous: BIPOC mentioned alongside specific group(s) ("
                     + ", ".join(other_groups) + ") - verify manually")
@@ -1017,7 +1027,7 @@ def classify_row(row, taxonomy_entries):
         l1, l2, l3, depth, source = deepest[0]
         flag = ""
         if source == "pattern":
-            flag = "Pattern rule match (structured phrase)"
+            flag = "Pattern rule match (Direction phrase, e.g. North African)"
         elif source == "country":
             flag = "Country/nationality mapping match"
         elif source == "compound":

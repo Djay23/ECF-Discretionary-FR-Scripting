@@ -1,4 +1,5 @@
 from typing import List, Tuple
+from collections import Counter
 
 """
 resolver.py
@@ -129,8 +130,7 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
     if bipoc_present:
         if primary:
             groups = sorted(set(s["level1"] for s in primary))
-            flag = ("Ambiguous: BIPOC mentioned alongside specific group(s) (" + ", ".join(groups) + ") - verify manually"
-            )
+            flag = ("Note (low priority): BIPOC keyword alongside specific group(s) (" + ", ".join(groups) + ") - verify manually")
         else:
             flag = "BIPOC signal detected"
         return build_output(MULTIPLE_ETHNIC, "", "", flag, context_flags)
@@ -148,6 +148,34 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
                 context_flags,
             )
         return build_output(GENERAL_POP, "", "", "", context_flags)
+
+    # -----------------------------------------------------------------------
+    # Step 2b — Black + Indigenous / Black + African co-occurrence checks
+    #
+    # Black is L2 under "Other Ethnic and Cultural Origins", not its own L1.
+    # These checks must run BEFORE Step 3 so they emit the correct flag text
+    # rather than the generic "multiple distinct groups detected".
+    # -----------------------------------------------------------------------
+    is_black = any(
+        "black" in s["level2"].lower()
+        for s in primary if s["level1"] == OTHER_ETHNIC
+    )
+    is_indigenous = any(s["level1"] == "North American Indigenous Origins" for s in primary)
+    is_african    = any(s["level1"] == "African Origins" for s in primary)
+
+    if is_black and is_indigenous and not bipoc_present:
+        return build_output(
+            MULTIPLE_ETHNIC, "", "",
+            "BIPOC signal detected (Black and Indigenous co-present — verify served population)",
+            context_flags,
+        )
+
+    if is_black and is_african:
+        return build_output(
+            MULTIPLE_ETHNIC, "", "",
+            "Review: multiple distinct groups detected; possible umbrella term (Black) alongside specific group — verify served population",
+            context_flags,
+        )
 
     # -----------------------------------------------------------------------
     # Step 3 — Multiple distinct Level 1 groups
@@ -172,11 +200,15 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
     deepest = [s for s in primary if s["depth"] == max_depth]
 
     if len(deepest) >= 2:
-        return build_output(
-            MULTIPLE_ETHNIC, "", "",
-            "Review: multiple sub-groups within same origin",
-            context_flags,
-        )
+        # All same L1 (guaranteed by Step 3). Roll up to the most common L2
+        # rather than classifying as Multiple within one origin.
+        # e.g. Indian+Pakistani → South Asian Origins; Kenyan+Ghanaian → African Origins L1.
+        shared_l1 = deepest[0]["level1"]
+        l2_counts = Counter(s["level2"] for s in deepest)
+        most_common_l2, _ = l2_counts.most_common(1)[0]
+        if most_common_l2:
+            return build_output(shared_l1, most_common_l2, "", "", context_flags)
+        return build_output(shared_l1, "", "", "", context_flags)
 
     # -----------------------------------------------------------------------
     # Step 5 — Single best candidate

@@ -12,6 +12,8 @@ from ethnic_taggerv3 import (
     GENERAL_POP,
 )
 
+from constants import LANGUAGE_ACCOMMODATION_PATTERNS, FRENCH_ETHNIC_KEEP_PATTERNS
+
 from extractors import (
     extract_taxonomy_candidates,
     extract_compound_candidates,
@@ -35,6 +37,35 @@ Classification orchestration layer — wires the 3-layer pipeline:
 This module contains NO classification logic. All ethnic origin decisions
 live in resolver.py. This function is pure orchestration.
 """
+
+# ---------------------------------------------------------------------------
+# P2-1 — French language accommodation filter
+# ---------------------------------------------------------------------------
+
+def filter_french_language_accommodation(candidates, combined):
+    """
+    If text signals language accommodation (french-speaking, in French and English,
+    official-language minority, francophone) and does NOT match an ethnic keep-pattern
+    (French Canadian Association, Francophone Cultural Society, etc.), drop any
+    French/European ethnic candidates and return an annotation note.
+
+    Prevents spurious Multiple when "in French and English" + Indigenous appears.
+    """
+    if not matches_any(LANGUAGE_ACCOMMODATION_PATTERNS, combined):
+        return candidates, None
+    if matches_any(FRENCH_ETHNIC_KEEP_PATTERNS, combined):
+        return candidates, None
+    filtered = [
+        c for c in candidates
+        if not (
+            c["level1"] == "European Origins"
+            and "french" in (c["level2"] + c["level3"]).lower()
+        )
+    ]
+    if len(filtered) == len(candidates):
+        return candidates, None
+    return filtered, "French reference treated as language accommodation — verify ethnic identity"
+
 
 # ---------------------------------------------------------------------------
 # Annotation helpers — no classification logic, annotation text only
@@ -67,6 +98,12 @@ def extra_annotation_notes(combined, states, bipoc_present):
 
     if primary_states and matches_any(EXPERT_ROLE_PHRASES, combined):
         notes.append("Possible consulted-party mention (expert/advisor role) rather than served population - verify manually")
+
+    if primary_states and re.search(r"\b(especially|particularly)\b", combined, re.IGNORECASE):
+        notes.append("Emphasis phrase ('especially'/'particularly') detected — verify specificity of population served")
+
+    if re.search(r"\bhindu\b", combined, re.IGNORECASE):
+        notes.append("'Hindu' detected — may imply South Asian/Indian origin; verify as religion vs. ethnicity")
 
     return notes
 
@@ -118,6 +155,17 @@ def classify_row(row, taxonomy_entries):
     bipoc_present = is_bipoc_real_target(combined)
 
     # ------------------------------------------------------------------
+    # Step 4b — French language accommodation filter (P2-1)
+    # Drop French/European candidates when text is about language access,
+    # not ethnic identity. Annotation note collected into pre_notes so it
+    # is appended alongside the resolver flag in Step 8.
+    # ------------------------------------------------------------------
+    pre_notes = []
+    candidates, french_note = filter_french_language_accommodation(candidates, combined)
+    if french_note:
+        pre_notes.append(french_note)
+
+    # ------------------------------------------------------------------
     # Step 5 — Build states
     # Candidates from extractors are already in resolver-ready format:
     # { level1, level2, level3, depth, source }
@@ -135,7 +183,7 @@ def classify_row(row, taxonomy_entries):
     # Step 7 — Build extra annotation notes
     # Equity-word, expert-role, cultural association checks.
     # ------------------------------------------------------------------
-    notes = extra_annotation_notes(combined, states, bipoc_present)
+    notes = pre_notes + extra_annotation_notes(combined, states, bipoc_present)
 
     # ------------------------------------------------------------------
     # Step 7b — Case 13: potential ethnocultural org name in title

@@ -1,6 +1,6 @@
 import re
 
-from ethnic_taggerv3 import (
+from constants import (
     PATTERN_RULES,
     COUNTRY_REGION_MAP,
     ALWAYS_MULTIPLE_COMPOUNDS,

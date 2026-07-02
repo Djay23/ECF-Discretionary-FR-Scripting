@@ -844,10 +844,12 @@ def detect_ethnocultural_org_name(funding_request_name, candidates, bipoc_presen
 # Somali") still correctly produces Multiple instead of silently
 # picking one and ignoring the other.
 IDENTITY_PHRASE_REWRITES = [
-    (r"\bafrican canadian\b", "black"),
-    (r"\bafrican american\b", "black"),
-    (r"\black american\b", "black"),
-    (r"\black canadian\b", "black"),
+    # "african canadian/canadians" masked to synthetic token; resolves to African Origins
+    # via COUNTRY_REGION_MAP in constants.py (P1-1). Plural-safe.
+    (r"\bafrican canadians?\b", "africancanadian"),
+    (r"\bafrican american\b",   "black"),
+    (r"\black american\b",      "black"),
+    (r"\black canadian\b",      "black"),
 ]
 
 # A directional/regional qualifier immediately before "African" (East
@@ -1049,8 +1051,11 @@ def classify_row(row, taxonomy_entries):
 # MAIN
 # =====
 def main():
+    # Deferred import avoids circular dependency: classify_pipeline imports from this module.
+    from classify_pipeline import classify_row as pipeline_classify_row
+
     start_time = time.time()
- 
+
     SCRIPT_DIR = Path(__file__).resolve().parent
 
     taxonomy_filepath = SCRIPT_DIR.parent / "Taxonomy" / "Taxonomy - Definitions.xlsx"
@@ -1097,8 +1102,8 @@ def main():
               "country": 0, "org_lookup": 0, "grassroots_filtered": 0, "semantic_suggested": 0}
  
     for idx, row in data_df.iterrows():
-        # Initial deterministic engine (level 1) called from taxonomy definitions sheet
-        e1, e2, e3, flag = classify_row(row, taxonomy_entries)
+        # Route through the canonical refactored pipeline (classify_pipeline → resolver)
+        e1, e2, e3, flag = pipeline_classify_row(row, taxonomy_entries)
         data_df.at[idx, OUTPUT_ETHNIC1] = e1
         data_df.at[idx, OUTPUT_ETHNIC2] = e2
         data_df.at[idx, OUTPUT_ETHNIC3] = e3

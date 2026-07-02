@@ -3,6 +3,7 @@ import random
 import pandas as pd
 
 import ethnic_taggerv3 as et
+from classify_pipeline import classify_row as pipeline_classify_row
 from pathlib import Path
 
 """
@@ -43,7 +44,7 @@ To Run:
     python generate_review_report.py
 
 Output:
-    review_reportV2.xlsx, written to the current directory.
+    review_reportV3(new pipeline).xlsx, written to the current directory.
 """
 
 SAMPLE_SIZE = 100
@@ -55,7 +56,7 @@ def main():
 
     taxonomy_filepath = SCRIPT_DIR.parent / "Taxonomy" / "Taxonomy - Definitions.xlsx"
     funding_filepath = SCRIPT_DIR.parent / "Data Sheets" / "FR testing.xlsx"
-    OUTPUT_FILE = SCRIPT_DIR.parent / "Data Sheets" / "review_reportV2.xlsx"
+    OUTPUT_FILE = SCRIPT_DIR.parent / "Data Sheets" / "review_reportV3(new pipeline).xlsx"
 
     tax_df = pd.read_excel(taxonomy_filepath, sheet_name=et.TAXONOMY_SHEET, dtype=str)
     data_df = pd.read_excel(funding_filepath, sheet_name=et.DATA_SHEET, dtype=str)
@@ -64,7 +65,7 @@ def main():
 
     rows = []
     for idx, row in data_df.iterrows():
-        e1, e2, e3, flag = et.classify_row(row, taxonomy_entries)
+        e1, e2, e3, flag = pipeline_classify_row(row, taxonomy_entries)
         rows.append({
             "Funding Request Name": row.get("Funding Request Name", f"row {idx}"),
             "Final_Project_Description": row.get("Final_Project_Description", ""),

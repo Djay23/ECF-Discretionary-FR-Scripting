@@ -205,7 +205,7 @@ class TestClassifyPipeline(unittest.TestCase):
         self.assertEqual(e1, MULTIPLE_ETHNIC)
         self.assertEqual(e2, "")
         self.assertEqual(e3, "")
-        self.assertIn("BIPOC mentioned alongside", flag)
+        self.assertIn("BIPOC keyword alongside", flag)
         self.assertIn("African Origins", flag)
 
     # ------------------------------------------------------------------
@@ -411,6 +411,221 @@ class TestClassifyPipeline(unittest.TestCase):
         self.assertEqual(e3, "Somali")
         # Guard fired — Case 13 flag must NOT appear
         self.assertNotIn("Potential ethnocultural organization name", flag)
+
+
+
+# ---------------------------------------------------------------------------
+# Sprint 2 taxonomy fixture (extends TAXONOMY with entries needed for new tests)
+# ---------------------------------------------------------------------------
+TAXONOMY_S2 = TAXONOMY + [
+    {
+        "keyword": "kenyan",
+        "level1": "African Origins",
+        "level2": "Southern and East African Origins",
+        "level3": "Kenyan",
+        "depth": 3,
+    },
+    {
+        "keyword": "ethiopian",
+        "level1": "African Origins",
+        "level2": "Southern and East African Origins",
+        "level3": "Ethiopian",
+        "depth": 3,
+    },
+    {
+        "keyword": "pakistani",
+        "level1": "Asian Origins",
+        "level2": "South Asian Origins",
+        "level3": "Pakistani",
+        "depth": 3,
+    },
+    {
+        "keyword": "black",
+        "level1": "Other Ethnic and Cultural Origins",
+        "level2": "Black, not otherwise specified",
+        "level3": "",
+        "depth": 2,
+    },
+    {
+        "keyword": "french",
+        "level1": "European Origins",
+        "level2": "Western European Origins",
+        "level3": "French",
+        "depth": 3,
+    },
+]
+
+
+class TestSprint2Fixes(unittest.TestCase):
+    """Regression tests for Sprint 2 classification fixes."""
+
+    # ------------------------------------------------------------------
+    # S1. African Canadians (plural) → African Origins
+    # ------------------------------------------------------------------
+    def test_african_canadians_plural_resolves_to_african_origins(self):
+        """
+        "african canadians" (plural) previously escaped the singular rewrite
+        → bare "african" matched taxonomy → inconsistent with singular form.
+        After P1-1 fix, both forms mask to "africancanadian" → African Origins.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="Advancement of African Canadians in Edmonton."),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "African Origins")
+        self.assertEqual(e2, "")
+
+    # ------------------------------------------------------------------
+    # S2. African Canadian (singular) → African Origins (not Black)
+    # ------------------------------------------------------------------
+    def test_african_canadian_singular_resolves_to_african_origins(self):
+        """After P1-1, "african canadian" no longer rewrites to black."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="The organization supports the advancement of African Canadian communities."),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "African Origins")
+
+    # ------------------------------------------------------------------
+    # S3. African Canadian + Nigerian → Nigerian (country depth wins)
+    # ------------------------------------------------------------------
+    def test_african_canadian_plus_nigerian_resolves_to_nigerian(self):
+        """
+        "africancanadian" (depth 1) + "nigerian" (COUNTRY_REGION_MAP depth 2)
+        → depth resolution picks Nigerian → Central and West African Origins.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="Supporting African Canadian and Nigerian families in the city."),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "African Origins")
+        self.assertEqual(e2, "Central and West African Origins")
+
+    # ------------------------------------------------------------------
+    # S4. Indian + Pakistani → South Asian Origins (rollup, not Multiple)
+    # ------------------------------------------------------------------
+    def test_indian_and_pakistani_rolls_up_to_south_asian(self):
+        """
+        Two L3 candidates under South Asian Origins → P0-2 rollup → L2 South Asian.
+        Must NOT produce Multiple Ethnic.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="Serving Indian and Pakistani communities in Edmonton."),
+            TAXONOMY_S2,
+        )
+        self.assertNotEqual(e1, MULTIPLE_ETHNIC)
+        self.assertEqual(e1, "Asian Origins")
+        self.assertEqual(e2, "South Asian Origins")
+
+    # ------------------------------------------------------------------
+    # S5. Kenyan + Ghanaian → African Origins L1 (different L2, same L1 rollup)
+    # ------------------------------------------------------------------
+    def test_kenyan_and_ghanaian_rolls_up_to_african_origins(self):
+        """
+        Kenyan (Southern/East) + Ghanaian (Central/West) → different L2s within
+        African Origins → P0-2 rollup → African Origins L1, not Multiple.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="For African youth from diverse backgrounds including Kenyan and Ghanaian communities."),
+            TAXONOMY_S2,
+        )
+        self.assertNotEqual(e1, MULTIPLE_ETHNIC)
+        self.assertEqual(e1, "African Origins")
+
+    # ------------------------------------------------------------------
+    # S6. Black + African Origins → Multiple + umbrella sub-flag (P0-3 Part B)
+    # ------------------------------------------------------------------
+    def test_black_and_african_origins_produces_multiple_with_umbrella_flag(self):
+        """
+        "Black African newcomers" — Black (Other Ethnic L2) + African Origins (L1)
+        → Multiple + umbrella sub-flag noting Black may be the umbrella term.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="Programming for Black African newcomers in the city."),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, MULTIPLE_ETHNIC)
+        self.assertIn("umbrella term (Black)", flag)
+
+    # ------------------------------------------------------------------
+    # S7. Somali + Black → Multiple + umbrella sub-flag
+    # ------------------------------------------------------------------
+    def test_somali_and_black_produces_multiple_with_umbrella_flag(self):
+        """
+        "Somali project for Black Muslim communities" — Somali (African Origins)
+        + Black (Other Ethnic) → umbrella sub-flag, not generic "distinct groups".
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="Somali project aims to strengthen cultural pride for Black Muslim communities."),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, MULTIPLE_ETHNIC)
+        self.assertIn("umbrella term (Black)", flag)
+
+    # ------------------------------------------------------------------
+    # S8. Black + Indigenous → BIPOC signal (not "multiple distinct groups")
+    # ------------------------------------------------------------------
+    def test_black_and_indigenous_produces_bipoc_signal_flag(self):
+        """
+        Black + Indigenous together → P0-3 Part A fires → MULTIPLE_ETHNIC
+        with "BIPOC signal detected", not "multiple distinct groups detected".
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="Programs for Black and Indigenous youth in Edmonton."),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, MULTIPLE_ETHNIC)
+        self.assertIn("BIPOC signal detected", flag)
+        self.assertNotIn("multiple distinct groups", flag)
+
+    # ------------------------------------------------------------------
+    # S9. Namibian demonym → African Origins (P1-2 demonym fix)
+    # ------------------------------------------------------------------
+    def test_namibian_demonym_resolves_to_african_origins(self):
+        """
+        "Namibian" was missing from COUNTRY_REGION_MAP. After P1-2 fix it
+        resolves to African Origins / Southern and East African Origins.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="Services for Namibian newcomers and their families."),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "African Origins")
+        self.assertEqual(e2, "Southern and East African Origins")
+        self.assertIn("Country/nationality", flag)
+
+    # ------------------------------------------------------------------
+    # S10. "French Canadian Association" → ethnic kept (not language flag)
+    # ------------------------------------------------------------------
+    def test_french_canadian_association_keeps_ethnic_signal(self):
+        """
+        A named French ethnic/cultural org matches FRENCH_ETHNIC_KEEP_PATTERNS
+        → the French filter does NOT drop the candidate.
+        French taxonomy match should survive → European Origins.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(name="French Canadian Association of Alberta"),
+            TAXONOMY_S2,
+        )
+        self.assertNotEqual(e1, GENERAL_POP)
+        self.assertNotIn("language accommodation", flag)
+
+    # ------------------------------------------------------------------
+    # S11. "in French and English" + Indigenous → NOT Multiple due to French
+    # ------------------------------------------------------------------
+    def test_french_language_accommodation_drops_french_candidate(self):
+        """
+        "services in both French and English" is a language accommodation context.
+        The French ethnic candidate should be dropped by the P2-1 filter,
+        leaving only Indigenous → single ethnic result, not Multiple.
+        Language accommodation annotation is emitted.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="Services are available in both French and English for Indigenous communities."),
+            TAXONOMY_S2,
+        )
+        self.assertNotEqual(e1, MULTIPLE_ETHNIC)
+        self.assertIn("language accommodation", flag)
 
 
 if __name__ == "__main__":

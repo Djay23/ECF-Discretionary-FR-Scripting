@@ -62,9 +62,10 @@ def filter_french_language_accommodation(candidates, combined):
             and "french" in (c["level2"] + c["level3"]).lower()
         )
     ]
+    note = "French reference treated as language accommodation — verify ethnic identity"
     if len(filtered) == len(candidates):
-        return candidates, None
-    return filtered, "French reference treated as language accommodation — verify ethnic identity"
+        return candidates, note
+    return filtered, note
 
 
 # ---------------------------------------------------------------------------

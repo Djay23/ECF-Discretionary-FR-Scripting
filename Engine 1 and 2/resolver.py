@@ -1,5 +1,5 @@
 from typing import List, Tuple
-from collections import Counter
+from constants import MULTIPLE_ETHNIC, OTHER_ETHNIC, GENERAL_POP
 
 """
 resolver.py
@@ -40,15 +40,6 @@ State = dict
 
 ContextFlags = List[str]
 Resolution   = Tuple[str, str, str, str]   # (Ethnic1, Ethnic2, Ethnic3, Flag)
-
-# ---------------------------------------------------------------------------
-# Classification outcome constants
-# (mirrored from ethnic_taggerv3.py — move to constants.py when shared)
-# ---------------------------------------------------------------------------
-
-MULTIPLE_ETHNIC = "Multiple Ethnic and Cultural Origins"
-OTHER_ETHNIC = "Other Ethnic and Cultural Origins"
-GENERAL_POP = "General Population (No specific ethnic and cultural origin group served)"
 
 # ---------------------------------------------------------------------------
 # Internal helpers — private to this module
@@ -161,7 +152,8 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
         for s in primary if s["level1"] == OTHER_ETHNIC
     )
     is_indigenous = any(s["level1"] == "North American Indigenous Origins" for s in primary)
-    is_african    = any(s["level1"] == "African Origins" for s in primary)
+    is_african = any(s["level1"] == "African Origins" for s in primary)
+    is_caribbean = any(s["level1"] == "Caribbean Origins" for s in primary)
 
     if is_black and is_indigenous and not bipoc_present:
         return build_output(
@@ -170,7 +162,7 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
             context_flags,
         )
 
-    if is_black and is_african:
+    if is_black and is_african or is_black and is_caribbean: # Handle black & caribbean as well.
         return build_output(
             MULTIPLE_ETHNIC, "", "",
             "Review: multiple distinct groups detected; possible umbrella term (Black) alongside specific group — verify served population",
@@ -192,30 +184,44 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
         )
 
     # -----------------------------------------------------------------------
-    # Step 4 — Depth resolution within a single L1
-    # Deepest match wins. If two or more candidates tie at the deepest level
-    # with different L2/L3 paths, that is still Multiple within one origin.
+    # Step 4 — Deepest shared level within a single L1
+    #
+    # Rule: find the deepest taxonomy level at which ALL surviving candidates
+    # hold the identical value.
+    #
+    # Umbrella drop: L1-only entries (no L2, no L3 — e.g. bare "African")
+    # are dropped first when at least one specific candidate also exists,
+    # so they don't constrain the outcome.
+    #
+    # Resolution order (over the surviving candidate set):
+    #   1. All agree on the same non-empty L3 → return that L3 (with its L2)
+    #   2. All agree on the same L2            → return that L2
+    #   3. Otherwise                           → return the shared L1
+    #
+    # If only umbrella candidates remain (all L1-only), return the L1.
     # -----------------------------------------------------------------------
-    max_depth = max(s["depth"] for s in primary)
-    deepest = [s for s in primary if s["depth"] == max_depth]
+    shared_l1 = primary[0]["level1"]
 
-    if len(deepest) >= 2:
-        # All same L1 (guaranteed by Step 3). Roll up to the most common L2
-        # rather than classifying as Multiple within one origin.
-        # e.g. Indian+Pakistani → South Asian Origins; Kenyan+Ghanaian → African Origins L1.
-        shared_l1 = deepest[0]["level1"]
-        l2_counts = Counter(s["level2"] for s in deepest)
-        most_common_l2, _ = l2_counts.most_common(1)[0]
-        if most_common_l2:
-            return build_output(shared_l1, most_common_l2, "", "", context_flags)
-        return build_output(shared_l1, "", "", "", context_flags)
+    specific = [s for s in primary if s["level2"] or s["level3"]]
+    pool = specific if specific else primary
 
-    # -----------------------------------------------------------------------
-    # Step 5 — Single best candidate
-    # -----------------------------------------------------------------------
-    best = deepest[0]
-    return build_output(
-        best["level1"], best["level2"], best["level3"],
-        source_flag(best["source"]),
-        context_flags,
-    )
+    # Single candidate in the pool — return its full path with source flag.
+    if len(pool) == 1:
+        best = pool[0]
+        return build_output(
+            shared_l1, best["level2"], best["level3"],
+            source_flag(best["source"]),
+            context_flags,
+        )
+
+    # Multiple candidates — consensus resolution.
+    l3_vals = set(s["level3"] for s in pool)
+    if len(l3_vals) == 1 and next(iter(l3_vals)):
+        winner = pool[0]
+        return build_output(shared_l1, winner["level2"], winner["level3"], "", context_flags)
+
+    l2_vals = set(s["level2"] for s in pool)
+    if len(l2_vals) == 1:
+        return build_output(shared_l1, next(iter(l2_vals)), "", "", context_flags)
+
+    return build_output(shared_l1, "", "", "", context_flags)

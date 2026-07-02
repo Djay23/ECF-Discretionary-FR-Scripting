@@ -33,6 +33,8 @@ PATTERN_RULES = [
     (r"\baboriginal\b","North American Indigenous Origins", "", ""),
     (r"\bindigenous canadian\b", "North American Indigenous Origins", "", ""),
     (r"\bindigenous\b", "North American Indigenous Origins", "", ""),
+    (r"\bindiginous\b", "North American Indigenous Origins", "", ""),
+    (r"\bindigenious\b", "North American Indigenous Origins", "", ""),
     (r"\btreaty 6\b", "North American Indigenous Origins", "", ""),
     (r"\bnorthern european\b", "European Origins", "Northern European Origins", ""),
     (r"\bsouthern european\b", "European Origins", "Southern European Origins", ""),
@@ -78,6 +80,8 @@ COUNTRY_REGION_MAP = {
     "india": ("Asian Origins", "South Asian Origins", "Indian (India)"),
     "kerala": ("Asian Origins", "South Asian Origins", "Indian (India)"), # state in India, often named directly e.g. "Kerala Cultural Association"
     "uyghur": ("Asian Origins", "West and Central Asian and Middle Eastern Origins", ""),
+    "kyrgyz": ("Asian Origins", "West and Central Asian and Middle Eastern Origins", ""),
+    "kyrgyzstan": ("Asian Origins", "West and Central Asian and Middle Eastern Origins", ""),
     "cameroonian": ("African Origins", "Central and West African Origins", ""), # no L3 entry for Cameroon -- falls to L2
     "cameroon": ("African Origins", "Central and West African Origins", ""),
     "sierra leone": ("African Origins", "Central and West African Origins", ""),
@@ -94,9 +98,7 @@ COUNTRY_REGION_MAP = {
     "zimbabwean": ("African Origins", "Southern and East African Origins", ""),
     "mozambique": ("African Origins", "Southern and East African Origins", ""),
     "mozambican": ("African Origins", "Southern and East African Origins", ""),
-    "ghana": ("African Origins", "Central and West African Origins", ""),
     "ghanaian": ("African Origins", "Central and West African Origins", ""),
-    "sierra leone": ("African Origins", "Central and West African Origins", ""),
     "sierra leonean": ("African Origins", "Central and West African Origins", ""),
     "egyptian": ("African Origins", "North African Origins", ""),
     "africancanadian": ("African Origins", "", ""),  # injected by IDENTITY_PHRASE_REWRITES mask — see P1-1
@@ -142,6 +144,10 @@ ALWAYS_MULTIPLE_COMPOUNDS = {
     r"\bafro[\-\u2010\u2011\u2012\u2013\u2014\s]*latin(o|a|x)?\b": (
         ("African Origins", "", ""),
         ("Latin, Central, and South American Origins", "", ""),
+    ),
+    r"\bbyzantine\b": (
+        ("European Origins", "", ""),
+        ("Asian Origins", "West and Central Asian and Middle Eastern Origins", ""),
     ),
 }
 
@@ -218,7 +224,6 @@ NEGATION_PHRASES = [
     r"no longer (target(ing)?|serv(ing|e)|focus(ing|ed))",
     r"exclud(es?|ing)",
     r"except(ing)?",
-    r"\bnon[- ]?$", # handles non-indigenous, non-black, non indigenous, etc.
     #r"other than",
     #r"outside of",
     r"not the (primary|main|sole|only) (focus|target|group|population)",
@@ -312,6 +317,10 @@ KEYWORD_ALIASES = {
 """
 
 IDENTITY_PHRASE_REWRITES = [
+    # "black african/africans" masked to "african" so the bare "black" token is consumed
+    # and does not trigger the is_black path; the phrase resolves through African Origins
+    # via the umbrella-drop rule in resolver Step 4 (Fix 2).
+    (r"\bblack africans?\b",    "african"),
     # "african canadian/canadians" masked to a synthetic token so bare "african" cannot re-match;
     # "africancanadian" resolves to African Origins via COUNTRY_REGION_MAP (P1-1).
     (r"\bafrican canadians?\b", "africancanadian"),
@@ -319,6 +328,25 @@ IDENTITY_PHRASE_REWRITES = [
     (r"\black american\b",      "black"),
     (r"\black canadian\b",      "black"),
 ]
+
+# Directional/regional qualifiers that prevent the African Canadian/American
+# identity rewrite from swallowing phrases like "East African Canadian".
+DIRECTIONAL_AFRICAN_PREFIXES = ["north", "south", "east", "west", "central", "saharan"]
+
+# Common suffix patterns that appear in ethnic demonyms (Kenyan, Chinese, Danish…).
+DEMONYM_SUFFIXES = ["an", "ian", "ese", "ish", "ic", "ali", "i"]
+
+# Words that almost certainly indicate a non-ethnic organization name leading token.
+# Used by looks_like_demonym() in ethnic_taggerv3.py to gate Case 13.
+NON_ETHNIC_LEADING_WORDS = {
+    "soccer", "basketball", "hockey", "football", "tennis", "volleyball", "badminton",
+    "cricket", "rugby", "swimming", "cycling", "chess",
+    "youth", "women", "men", "senior", "seniors", "children", "adult", "adults",
+    "arts", "music", "dance", "theatre", "drama", "literary",
+    "health", "wellness", "mental", "nutrition",
+    "education", "learning", "training",
+    "business", "professional", "entrepreneurs",
+}
 
 # =================================================
 # CASE 13 — Potential Ethnocultural Organization Name

@@ -59,6 +59,18 @@ try:
 except ImportError:
     SEMANTIC_AVAILABLE = False
 
+from constants import (
+    MULTIPLE_ETHNIC, OTHER_ETHNIC, GENERAL_POP,
+    BIPOC_KEYWORDS, AMBIGUOUS_EQUITY_WORDS, BROAD_IDENTITY_KEYWORDS,
+    ALWAYS_MULTIPLE_COMPOUNDS, ORG_NAME_ETHNICITY_MAP,
+    PATTERN_RULES, COUNTRY_REGION_MAP,
+    EXPANSION_PHRASES, HISTORICAL_PHRASES, NEGATION_PHRASES,
+    ASPIRATIONAL_PHRASES, EXAMPLE_PHRASES, EXPERT_ROLE_PHRASES,
+    SERVING_CONTEXT_WORDS, IDENTITY_PHRASE_REWRITES,
+    DIRECTIONAL_AFRICAN_PREFIXES, CASE_13_PATTERNS,
+    DEMONYM_SUFFIXES, NON_ETHNIC_LEADING_WORDS,
+)
+
 # =============
 # CONFIGURATION 
 # =============
@@ -87,279 +99,6 @@ OUTPUT_ETHNIC3 = "Ethnic 3 - FR8"
 OUTPUT_FLAG = "Classification Flag"
 OUTPUT_SEMANTIC = "Semantic Suggestion (REVIEW)"
 
-MULTIPLE_ETHNIC = "Multiple Ethnic and Cultural Origins"
-OTHER_ETHNIC = "Other Ethnic and Cultural Origins"
-GENERAL_POP = "General Population (No specific ethnic and cultural origin group served)"
-
-# =======================
-# CASE 9 — BIPOC keywords 
-# =======================
-BIPOC_KEYWORDS = [
-    r"\bbipoc\b",
-    r"\bqtbipoc\b",
-    r"\bpoc\b",
-    r"\bibpoc\b"
-    r"\bpeople of colou?r\b",
-    #r"\bblack african\b",
-    #r"\bracialized\b", # Change to flag if "racialized" is detected
-]
-
-# Words that, on their own, should NOT trigger BIPOC/Multiple classification
-# unless paired with an actual ethnic 'hint'. Handled separately from
-# BIPOC_KEYWORDS because the rule is different (Case 11).
-# Always flagged for review either way now (signal or no signal) --
-# see check_grassroots_case().
-
-AMBIGUOUS_EQUITY_WORDS = [
-    #r"\bmarginalized\b", # Can be removed because marginalized can also refer to gender 
-    #r"\bgrassroots\b", # Can be removed
-    #r"\bethnocultural\b",
-    r"\bracialized\b",
-    #r"\bunderrepresented\b", # Possible to overlook as most times refers to gender and sexual identity
-    r"\bmulticultural\b",
-    #r"\bdiverse\b",
-    #r"\brefugee\b",
-    #r"\bimmigrant\b",
-    #r"\bfrancophone\b",
-    #r"\bnewcomer\b", # Can be overlooked
-    #r"\bculturally\b",
-    r"\bminorit(y|ies)\b",
-]
-
-# ============================================================
-# CASE 9b — Broad identity labels (not in taxonomy directly)
-# Black/Jewish/Arab removed -- these are real Level 2 entries under
-# "Other Ethnic and Cultural Origins" in the taxonomy, matched through
-# find_taxonomy_matches() instead of here now.
-# ============================================================
-BROAD_IDENTITY_KEYWORDS = [
-    # "hispanic" removed — real L2 taxonomy keyword under "Latin, Central, and South American Origins";
-    # keeping it here caused taxonomy + broad-identity to produce two different L1s → spurious Multiple.
-    # Same fix already applied to Black/Jewish/Arab (see comment above).
-    # "latino"/"latina"/"latinx" removed — moved to PATTERN_RULES with the correct L1.
-    r"\bmixed heritage\b",
-    r"\bmixed race\b",
-    r"\bmultiracial\b",
-    r"\bmulti[\-\s]ethnic\b",
-]
-
-# Afro-Caribbean / Afro-Latino name TWO distinct Level 1 groups at
-# once -- always Multiple, regardless of anything else in the text.
-ALWAYS_MULTIPLE_COMPOUNDS = {
-    r"\bafro[\-\u2010\u2011\u2012\u2013\u2014\s]*caribbean\b": (
-        ("African Origins", "", ""),
-        ("Caribbean Origins", "", ""),
-    ),
-    r"\bafro[\-\u2010\u2011\u2012\u2013\u2014\s]*latin(o|a|x)?\b": (
-        ("African Origins", "", ""),
-        ("Latin, Central, and South American Origins", "", ""),
-    ),
-}
-
-# =========================================================
-# CASE 10 — Known organization name -> ethnicity lookup
-# Only consulted as a LAST RESORT if classification would
-# otherwise be General Population.
-# ========================================================
-ORG_NAME_ETHNICITY_MAP = {
-    "bent arrow": ("North American Indigenous Origins", "", ""),
-    "treaty 6": ("North American Indigenous Origins", "", ""), # Flag for review, as "Treaty 6" could refer to the geographic region (which would be L1 or L2) rather than the organization (which would be Case 10). Only trigger if "Treaty 6" appears in the funding request name or purpose, not just the description.
-    # Add more known organization name -> ethnicity mappings here as identified
-}
-
-# ==================================================
-# CASE 4 — Structured / directional phrase patterns
-# Applied only if no direct taxonomy match found.
-# ==================================================
-PATTERN_RULES = [
-    (r"\bnorth[\s\-]?african\b", "African Origins", "North African Origins", ""),
-    (r"\bsouth[\s\-]?african\b", "African Origins", "Southern and East African Origins", ""),
-    (r"\beast[\s\-]?african\b", "African Origins", "Southern and East African Origins", ""),
-    (r"\bwest[\s\-]?african\b", "African Origins", "Central and West African Origins", ""),
-    (r"\bcentral[\s\-]?african\b", "African Origins", "Central and West African Origins", ""),
-    (r"\bsub[\s\-]?saharan\b", "African Origins", "Central and West African Origins", ""),
-    (r"\bsoutheast[\s\-]?asian\b", "Asian Origins", "East and Southeast Asian Origins", ""),
-    (r"\bsouth[\s\-]?asian\b", "Asian Origins", "South Asian Origins", ""),
-    (r"\beast[\s\-]?asian\b", "Asian Origins", "East and Southeast Asian Origins", ""),
-    (r"\bmiddle[\s\-]?eastern\b", "Asian Origins", "West and Central Asian and Middle Eastern Origins", ""),
-    (r"\bfirst nations\b", "North American Indigenous Origins", "", ""),
-    (r"\bmetis\b", "North American Indigenous Origins", "Métis", ""),
-    (r"\binuit\b", "North American Indigenous Origins", "", ""),
-    (r"\baboriginal\b","North American Indigenous Origins", "", ""),
-    (r"\bindigenous canadian\b", "North American Indigenous Origins", "", ""),
-    (r"\bindigenous\b", "North American Indigenous Origins", "", ""),
-    (r"\btreaty 6\b", "North American Indigenous Origins", "", ""),
-    (r"\bnorthern european\b", "European Origins", "Northern European Origins", ""),
-    (r"\bsouthern european\b", "European Origins", "Southern European Origins", ""),
-    (r"\beast(ern)? european\b", "European Origins", "Eastern European Origins", ""),
-    (r"\bwest(ern)? european\b", "European Origins", "Western European Origins", ""),
-    (r"\blatino\b", "Latin, Central, and South American Origins", "", ""),
-    (r"\blatina\b", "Latin, Central, and South American Origins", "", ""),
-    (r"\blatinx\b", "Latin, Central, and South American Origins", "", ""),
-    (r"\bsouth[\s\-]?american\b", "Latin, Central, and South American Origins", "", ""),
-    (r"\bcentral[\s\-]?american\b", "Latin, Central, and South American Origins", "", ""),
-]
-
-# ============================================================
-# CASES 6 & 7 — Country/nationality NOT in taxonomy
-# Covers both "Jamaican" (nationality) and "from Jamaica" (Case 7)
-# ============================================================
-COUNTRY_REGION_MAP = {
-    "jamaican": ("Caribbean Origins", "", ""),
-    "jamaica": ("Caribbean Origins", "", ""),
-    "trinidadian": ("Caribbean Origins", "", ""),
-    "trinidad": ("Caribbean Origins", "", ""),
-    "barbadian": ("Caribbean Origins", "", ""),
-    "barbados": ("Caribbean Origins", "", ""),
-    "haitian": ("Caribbean Origins", "", ""),
-    "haiti": ("Caribbean Origins", "", ""),
-    "guyanese": ("Caribbean Origins", "", ""),
-    "guyana": ("Caribbean Origins", "", ""),
-    "brazilian": ("Latin, Central, and South American Origins", "", ""),
-    "brazil": ("Latin, Central, and South American Origins", "", ""),
-    "colombian": ("Latin, Central, and South American Origins", "", ""),
-    "colombia": ("Latin, Central, and South American Origins", "", ""),
-    "mexican": ("Latin, Central, and South American Origins", "", ""),
-    "mexico": ("Latin, Central, and South American Origins", "", ""),
-    "salvadoran": ("Latin, Central, and South American Origins", "", ""),
-    "el salvador": ("Latin, Central, and South American Origins", "", ""),
-    "guatemalan": ("Latin, Central, and South American Origins", "", ""),
-    "guatemala": ("Latin, Central, and South American Origins", "", ""),
-    "peruvian": ("Latin, Central, and South American Origins", "", ""),
-    "peru": ("Latin, Central, and South American Origins", "", ""),
-    "venezuelan": ("Latin, Central, and South American Origins", "", ""),
-    "venezuela": ("Latin, Central, and South American Origins", "", ""),
-    "indian": ("Asian Origins", "South Asian Origins", "Indian (India)"),
-    "india": ("Asian Origins", "South Asian Origins", "Indian (India)"),
-    "kerala": ("Asian Origins", "South Asian Origins", "Indian (India)"), # state in India, often named directly e.g. "Kerala Cultural Association"
-    "uyghur": ("Asian Origins", "West and Central Asian and Middle Eastern Origins", ""),
-    "cameroonian": ("African Origins", "Central and West African Origins", ""), # no L3 entry for Cameroon -- falls to L2
-    "cameroon": ("African Origins", "Central and West African Origins", ""),
-    "sierra leone": ("African Origins", "Central and West African Origins", ""),
-    "nigerian": ("African Origins", "Central and West African Origins", ""), # safety net -- if "Nigerian" is a real L3 entry in the taxonomy, that match wins anyway via depth priority
-    "nigeria": ("African Origins", "Central and West African Origins", ""),
-    "ghana": ("African Origins", "Central and West African Origins", ""),
-    "djibouti": ("African Origins", "Southern and East African Origins", ""),
-    "namibia": ("African Origins", "Southern and East African Origins", ""),
-    "botswana": ("African Origins", "Southern and East African Origins", ""),
-    "zimbabwe": ("African Origins", "Southern and East African Origins", ""),
-    "egyptian": ("African Origins", "North African Origins", ""),
-}
-
-# ============================================================
-# Context-override / historical / negation / aspirational / example
-# phrase banks — all generic, applied to ANY keyword (not group-specific)
-# ============================================================
-EXPANSION_PHRASES = [
-    r"beyond (its|their|our|the) (original|previous|former|initial|traditional|historic(al)?)",
-    r"expanding beyond",
-    r"expansion",
-    r"not (exclusively|solely|limited to|just|restricted to)",
-    r"no longer (limited|restricted|focused|exclusively)",
-    r"open(ing)? (up )?to (all|broader|wider|diverse|other)",
-    r"(increasingly|more) diverse",
-    r"welcom(es?|ing) (all|everyone|anyone|diverse)",
-    r"regardless of (ethnic|cultural|racial|background)",
-    r"all (cultural|ethnic|racial)? backgrounds",
-    r"without regard to",
-    r"irrespective of",
-    r"inclusive of all",
-]
-
-HISTORICAL_PHRASES = [
-    r"historic(al(ly)?)?",
-    r"former(ly)?",
-    r"previous(ly)?",
-    r"original(ly)?",
-    r"(in|during) the past",
-    r"used to (serve|focus|target|support)",
-    r"once (served|focused|targeted|supported)",
-    r"(its|their|our) roots (in|with)",
-    r"founded (to serve|for|by)",
-    r"(was|were) (established|created|founded) (for|to serve)",
-]
-
-NEGATION_PHRASES = [
-    r"not (target(ing)?|serv(ing|e)|focus(ing|ed)|for|limited to|exclusively)",
-    r"does not (target|serve|focus|support|cater)",
-    r"do not (target|serve|focus|support|cater)",
-    r"no longer (target(ing)?|serv(ing|e)|focus(ing|ed))",
-    r"exclud(es?|ing)",
-    r"except(ing)?",
-    r"\bnon[- ]?$", # handles non-indigenous, non-black, non indigenous, etc.
-    #r"other than",
-    #r"outside of",
-    r"not the (primary|main|sole|only) (focus|target|group|population)",
-]
-
-ASPIRATIONAL_PHRASES = [
-    r"hop(es?|ing) to (serve|reach|support|engage|include|target)",
-    r"plan(s|ning) to (serve|reach|support|engage|include|target)",
-    r"aim(s|ing) to (serve|reach|support|engage|include|target)",
-    r"intend(s|ing) to",
-    r"will (eventually|soon|begin to|start to) (serve|reach|support)",
-    r"goal(s)? (is|are|of|to) (reach(ing)?|serv(ing|e)|includ(ing|e))",
-    r"aspir(es?|ing) to",
-    r"seek(s|ing) to (expand|reach|grow|include)",
-    r"in the future",
-    r"(future|upcoming) (focus|programming|initiative)",
-]
-
-EXAMPLE_PHRASES = [
-    r"such as",
-    r"for example",
-    r"e\.g\.?",
-    r"i\.e\.?",
-    r"includ(ing|e) (communities|groups|populations|organizations|people)? ?(such as|like)",
-    r"like (the )?following",
-    r"among (others|other groups|other communities)",
-    r"(and|or) (other|similar) (communities|groups|populations)",
-    r"compar(ed|ing) to",
-    r"as (opposed|compared) to",
-]
-
-# Words suggesting an ethnic term names a CONSULTED PARTY (expert/
-# advisor role) rather than the population served, e.g. "...consult
-# wildlife biologists, conservation experts, and indigenous knowledge
-# holders". Never suppresses a match -- only adds a flag, since there's
-# no reliable way to confirm this either way.
-EXPERT_ROLE_PHRASES = [
-    r"\bexperts?\b",
-    r"\bspecialists?\b",
-    r"\bconsultants?\b",
-    r"\badvisors?\b",
-    r"\bpractitioners?\b",
-    r"\bknowledge holders?\b",
-    r"\bstakeholders?\b",
-    r"\bbiologists?\b",
-]
-
-"""
--- Not Necessary to be handled right now for processing sakes.
-
-# Common typos / nationality-vs-canonical-term variants.
-KEYWORD_ALIASES = {
-    "somalian": "somali",
-    "ethopian": "ethiopian",
-    "ethipian": "ethiopian",
-    "rwandese": "rwandan",
-    "congolaise": "congolese",
-    "congolais": "congolese",
-    "mozambiquean": "mozambican",
-    "tanzanean": "tanzanian",
-    "ugandese": "ugandan",
-    "burundaise": "burundian",
-    "filippino": "filipino",
-    "phillipine": "filipino",
-    "philippine": "filipino",
-    "viet": "vietnamese",
-    "indo-canadian": "south asian",
-    "indo canadian": "south asian",
-    "south-asian": "south asian",
-    "middle eastern": "west and central asian and middle eastern",
-    "middle-eastern": "west and central asian and middle eastern",
-}
-"""
 
 # =======
 # HELPERS
@@ -425,31 +164,20 @@ def keyword_context_window(keyword, text, window=80):
     start = max(0, m.start() - window)
     return text[start:m.start()]
 
+def is_non_prefixed(keyword, text):
+    """Return True if keyword appears immediately after 'non-' or 'non ' in text."""
+    return bool(re.search(r'\bnon[\- ]' + re.escape(keyword), text, re.IGNORECASE))
+
 def is_negated(keyword, text):
     snippet = keyword_context_window(keyword, text)
-    return snippet is not None and matches_any(NEGATION_PHRASES, snippet)
+    return (
+        (snippet is not None and matches_any(NEGATION_PHRASES, snippet))
+        or is_non_prefixed(keyword, text)
+    )
 
 def is_example_mention(keyword, text):
     snippet = keyword_context_window(keyword, text)
     return snippet is not None and matches_any(EXAMPLE_PHRASES, snippet)
-
-SERVING_CONTEXT_WORDS = [
-    r"\bserve(s|d)?\b",
-    r"\bserving\b",
-    r"\bpopulation\b",
-    #r"\bcommunit(y|ies)\b",
-    r"\bdemographic(s)?\b",
-    r"\bfocus(ed|es)?\b",
-    r"\btarget(ed|ing)?\b",
-    r"\breach\b",
-    r"\bbeneficiar(y|ies)\b",
-    #r"\bclientele\b",
-    #r"\bmembership\b",
-    #r"\bmembers\b",
-    #r"\baudience\b",
-    #r"\bclients\b",
-    ##r"\bgroups\b",
-]
 
 def phrase_has_serving_context(pattern, text, window=100):
     for m in re.finditer(pattern, text, re.IGNORECASE):
@@ -754,14 +482,11 @@ def build_debug_context_notes(signals):
 # NEVER classifies. NEVER overrides. Review flag only.
 # =================================================
 
-CASE_13_PATTERNS = [
-    r"^([a-z][a-z\s\-']+?)\s+cultural\s+association\b",
-    r"^([a-z][a-z\s\-']+?)\s+cultural\s+group\b",
-    r"^([a-z][a-z\s\-']+?)\s+cultural\s+society\b",
-    r"^([a-z][a-z\s\-']+?)\s+community\s+association\b",
-    r"^([a-z][a-z\s\-']+?)\s+community\s+organization\b",
-    r"^([a-z][a-z\s\-']+?)\s+association\b",
-]
+def looks_like_demonym(group_name):
+    """Return True if group_name could plausibly be an ethnic/national identifier.
+    Primary gate: any token in NON_ETHNIC_LEADING_WORDS → almost certainly not ethnic."""
+    tokens = group_name.lower().split()
+    return not any(t in NON_ETHNIC_LEADING_WORDS for t in tokens)
 
 
 def is_known_taxonomy_keyword(group_name, taxonomy_entries):
@@ -820,6 +545,8 @@ def detect_ethnocultural_org_name(funding_request_name, candidates, bipoc_presen
             return None
         if matches_pattern_rule(group_name):
             return None
+        if not looks_like_demonym(group_name):
+            return None
 
         return "Potential ethnocultural organization name detected - verify group identity manually"
 
@@ -843,25 +570,6 @@ def detect_ethnocultural_org_name(funding_request_name, candidates, bipoc_presen
 # mentioned elsewhere in the same text (e.g. "African Canadian and
 # Somali") still correctly produces Multiple instead of silently
 # picking one and ignoring the other.
-IDENTITY_PHRASE_REWRITES = [
-    # "african canadian/canadians" masked to synthetic token; resolves to African Origins
-    # via COUNTRY_REGION_MAP in constants.py (P1-1). Plural-safe.
-    (r"\bafrican canadians?\b", "africancanadian"),
-    (r"\bafrican american\b",   "black"),
-    (r"\black american\b",      "black"),
-    (r"\black canadian\b",      "black"),
-]
-
-# A directional/regional qualifier immediately before "African" (East
-# African, West African, etc.) means the phrase keeps its literal,
-# specific meaning -- "East African Canadian" should still resolve via
-# the existing East African pattern rule, not get swallowed by the
-# African Canadian/American rewrite just because "african canadian"
-# happens to be a literal substring of it. Only BARE "African" paired
-# with Canadian/American carries the special idiomatic meaning (Black
-# identity) the rewrite above is for.
-DIRECTIONAL_AFRICAN_PREFIXES = ["north", "south", "east", "west", "central", "saharan"]
-
 def apply_identity_phrase_rewrites(text):
     for pattern, replacement in IDENTITY_PHRASE_REWRITES:
         def _replace(m, text=text):

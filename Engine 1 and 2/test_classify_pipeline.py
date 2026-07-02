@@ -533,19 +533,20 @@ class TestSprint2Fixes(unittest.TestCase):
         self.assertEqual(e1, "African Origins")
 
     # ------------------------------------------------------------------
-    # S6. Black + African Origins → Multiple + umbrella sub-flag (P0-3 Part B)
+    # S6. "Black African" alone → African Origins (Fix 2 rewrite)
     # ------------------------------------------------------------------
-    def test_black_and_african_origins_produces_multiple_with_umbrella_flag(self):
+    def test_black_african_alone_resolves_to_african_origins(self):
         """
-        "Black African newcomers" — Black (Other Ethnic L2) + African Origins (L1)
-        → Multiple + umbrella sub-flag noting Black may be the umbrella term.
+        Fix 2: r"\\bblack africans?\\b" is rewritten to "african" before
+        extraction, so 'black' is never extracted separately.
+        Result: African Origins (L1), not Multiple.
         """
         e1, e2, e3, flag = classify_row(
             row(desc="Programming for Black African newcomers in the city."),
             TAXONOMY_S2,
         )
-        self.assertEqual(e1, MULTIPLE_ETHNIC)
-        self.assertIn("umbrella term (Black)", flag)
+        self.assertEqual(e1, "African Origins")
+        self.assertNotEqual(e1, MULTIPLE_ETHNIC)
 
     # ------------------------------------------------------------------
     # S7. Somali + Black → Multiple + umbrella sub-flag
@@ -626,6 +627,231 @@ class TestSprint2Fixes(unittest.TestCase):
         )
         self.assertNotEqual(e1, MULTIPLE_ETHNIC)
         self.assertIn("language accommodation", flag)
+
+
+# ---------------------------------------------------------------------------
+# Step 4 umbrella-drop + deepest-shared-level tests (Fix 1)
+# ---------------------------------------------------------------------------
+
+class TestStep4UmbrellaDrop(unittest.TestCase):
+    """Regression tests for the umbrella-drop / deepest-shared-level resolver rule."""
+
+    # ------------------------------------------------------------------
+    # F1. african(L1) + somali(L3,S&E) + ethiopian(L3,S&E)
+    #     → drop umbrella, specifics share L2 → Southern & East African
+    # ------------------------------------------------------------------
+    def test_umbrella_dropped_specifics_share_l2(self):
+        """
+        bare 'african' (L1-only) is dropped as an umbrella when Somali and
+        Ethiopian (both L3 under Southern & East African) are also present.
+        The two L3s differ, but they share L2 → Southern & East African Origins.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="Supporting African, Somali, and Ethiopian communities in Edmonton."),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "African Origins")
+        self.assertEqual(e2, "Southern and East African Origins")
+        self.assertNotEqual(e1, MULTIPLE_ETHNIC)
+
+    # ------------------------------------------------------------------
+    # F2. Somali(L3,S&E) + Ethiopian(L3,S&E) + East African(L2,S&E)
+    #     → all share L2 → Southern & East African
+    # ------------------------------------------------------------------
+    def test_l3_and_l2_mixed_same_l2_rolls_up_to_l2(self):
+        """
+        East African is an L2-only pattern match (no L3); Somali and Ethiopian
+        are L3. All three share L2 = Southern & East African Origins → return L2.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="Serving Somali, Ethiopian, and East African newcomers."),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "African Origins")
+        self.assertEqual(e2, "Southern and East African Origins")
+        self.assertNotEqual(e1, MULTIPLE_ETHNIC)
+
+    # ------------------------------------------------------------------
+    # F3. Somali(S&E) + Ghanaian(C&W) → different L2 → African Origins L1
+    # ------------------------------------------------------------------
+    def test_different_l2_rolls_up_to_l1(self):
+        """
+        Somali (Southern & East) and Ghanaian (Central & West) share L1
+        but differ at L2 → resolver returns African Origins L1 only.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="Programming for Somali and Ghanaian youth in the community."),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "African Origins")
+        self.assertEqual(e2, "")
+        self.assertNotEqual(e1, MULTIPLE_ETHNIC)
+
+    # ------------------------------------------------------------------
+    # F4. Black African + Kenyan + Ghanaian + Zimbabwean + South African
+    #     → umbrella dropped, specifics span C&W and S&E → African Origins L1
+    # ------------------------------------------------------------------
+    def test_black_african_plus_multi_region_specifics_rolls_to_l1(self):
+        """
+        'Black African' is rewritten to 'african' (umbrella, L1-only).
+        Kenyan and Zimbabwean → S&E; Ghanaian → C&W; South African → S&E.
+        Umbrella dropped; specifics span two L2 regions → African Origins L1.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="Supporting Black African youth including Kenyan, Ghanaian, Zimbabwean and South African communities."),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "African Origins")
+        self.assertEqual(e2, "")
+        self.assertNotEqual(e1, MULTIPLE_ETHNIC)
+
+
+# ---------------------------------------------------------------------------
+# Blueprint 2 taxonomy fixture (adds Kyrgyz, indigenous entries)
+# ---------------------------------------------------------------------------
+TAXONOMY_B2 = TAXONOMY_S2 + [
+    {
+        "keyword": "kyrgyz",
+        "level1": "Asian Origins",
+        "level2": "West and Central Asian and Middle Eastern Origins",
+        "level3": "",
+        "depth": 2,
+    },
+]
+
+
+class TestBlueprint2Fixes(unittest.TestCase):
+    """Regression tests for Blueprint 2 classification fixes."""
+
+    # ------------------------------------------------------------------
+    # B1. Kyrgyz → Asian Origins / West and Central Asian and Middle Eastern
+    # ------------------------------------------------------------------
+    def test_kyrgyz_resolves_to_west_central_asian(self):
+        """
+        'Kyrgyz' was added to COUNTRY_REGION_MAP and (above) to taxonomy fixture.
+        Ensure it routes to the correct L2.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="Supporting Kyrgyz newcomer families in Edmonton."),
+            TAXONOMY_B2,
+        )
+        self.assertEqual(e1, "Asian Origins")
+        self.assertEqual(e2, "West and Central Asian and Middle Eastern Origins")
+
+    # ------------------------------------------------------------------
+    # B2. Byzantine → Multiple (European + West Asian compound)
+    # ------------------------------------------------------------------
+    def test_byzantine_produces_multiple(self):
+        """
+        'Byzantine' was added to ALWAYS_MULTIPLE_COMPOUNDS mapping to
+        European Origins AND Asian / West and Central Asian Origins.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="Programming for the Byzantine cultural heritage community."),
+            TAXONOMY_B2,
+        )
+        self.assertEqual(e1, MULTIPLE_ETHNIC)
+
+    # ------------------------------------------------------------------
+    # B3. Indigenous misspelling 'indiginous' → North American Indigenous
+    # ------------------------------------------------------------------
+    def test_indigenous_misspelling_indiginous_classifies(self):
+        """
+        Common misspelling 'indiginous' added to PATTERN_RULES.
+        Should resolve identically to the correctly spelled word.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="Services for indiginous youth in the community."),
+            TAXONOMY_B2,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+
+    # ------------------------------------------------------------------
+    # B4. Indigenous misspelling 'indigenious' → North American Indigenous
+    # ------------------------------------------------------------------
+    def test_indigenous_misspelling_indigenious_classifies(self):
+        e1, e2, e3, flag = classify_row(
+            row(desc="Support for indigenious elders and families."),
+            TAXONOMY_B2,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+
+    # ------------------------------------------------------------------
+    # B5. Francophone context always emits accommodation note (P2-1 decoupled)
+    # ------------------------------------------------------------------
+    def test_francophone_context_always_emits_note(self):
+        """
+        Even when no French ethnic candidate is present to drop,
+        a francophone-context match should emit the accommodation note.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="Services for francophone women in the Edmonton region."),
+            TAXONOMY_B2,
+        )
+        self.assertIn("language accommodation", flag)
+
+    # ------------------------------------------------------------------
+    # B6. 'non-profit Indigenous' — non- prefix should NOT negate 'Indigenous'
+    # ------------------------------------------------------------------
+    def test_non_profit_indigenous_not_negated(self):
+        """
+        The bad pattern r"\\bnon[- ]?$" was removed from NEGATION_PHRASES.
+        'non-profit Indigenous organization' must NOT negate the Indigenous signal.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="A non-profit Indigenous organization serving urban youth."),
+            TAXONOMY_B2,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+
+    # ------------------------------------------------------------------
+    # B7. Eritrean Cultural Association → review flag (Case 13)
+    # ------------------------------------------------------------------
+    def test_eritrean_cultural_association_flagged(self):
+        """
+        'eritrean' is not in taxonomy or COUNTRY_REGION_MAP, and 'eritrean'
+        is not in NON_ETHNIC_LEADING_WORDS — Case 13 should flag it for review.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(name="Eritrean Cultural Association"),
+            TAXONOMY_B2,
+        )
+        self.assertIn("Potential ethnocultural organization name", flag)
+
+    # ------------------------------------------------------------------
+    # B8. Soccer Association — NOT flagged by Case 13 (looks_like_demonym gate)
+    # ------------------------------------------------------------------
+    def test_soccer_association_not_flagged(self):
+        """
+        'Soccer' is in NON_ETHNIC_LEADING_WORDS → looks_like_demonym returns False
+        → Case 13 must NOT flag 'Soccer Association'.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(name="Edmonton Soccer Association"),
+            TAXONOMY_B2,
+        )
+        self.assertNotIn("Potential ethnocultural organization name", flag)
+
+    # ------------------------------------------------------------------
+    # B9. Import smoke test — constants export all expected names
+    # ------------------------------------------------------------------
+    def test_constants_exports_all_expected_names(self):
+        """Verify that constants.py exports every name used by the pipeline."""
+        import constants
+        expected = [
+            "MULTIPLE_ETHNIC", "OTHER_ETHNIC", "GENERAL_POP",
+            "BIPOC_KEYWORDS", "AMBIGUOUS_EQUITY_WORDS", "BROAD_IDENTITY_KEYWORDS",
+            "ALWAYS_MULTIPLE_COMPOUNDS", "ORG_NAME_ETHNICITY_MAP",
+            "PATTERN_RULES", "COUNTRY_REGION_MAP",
+            "EXPANSION_PHRASES", "HISTORICAL_PHRASES", "NEGATION_PHRASES",
+            "ASPIRATIONAL_PHRASES", "EXAMPLE_PHRASES", "EXPERT_ROLE_PHRASES",
+            "SERVING_CONTEXT_WORDS", "IDENTITY_PHRASE_REWRITES",
+            "DIRECTIONAL_AFRICAN_PREFIXES", "CASE_13_PATTERNS",
+            "DEMONYM_SUFFIXES", "NON_ETHNIC_LEADING_WORDS",
+            "LANGUAGE_ACCOMMODATION_PATTERNS", "FRENCH_ETHNIC_KEEP_PATTERNS",
+        ]
+        for name in expected:
+            self.assertTrue(hasattr(constants, name), f"constants.py missing: {name}")
 
 
 if __name__ == "__main__":

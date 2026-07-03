@@ -548,7 +548,7 @@ def detect_ethnocultural_org_name(funding_request_name, candidates, bipoc_presen
         if not looks_like_demonym(group_name):
             return None
 
-        return "Potential ethnocultural organization name detected - verify group identity manually"
+        return "Note (low priority): Potential ethnocultural organization name detected - verify group identity manually"
 
     return None
 
@@ -695,14 +695,14 @@ def classify_row(row, taxonomy_entries):
     has_ethnic_signal = bool(candidates) or bipoc_present
     grassroots_state = check_grassroots_case(combined, has_ethnic_signal) # Handle 'ethnocultural', 'marginalized' as well, since they have the same rule as 'grassroots'
     if grassroots_state == "no_signal":
-        extra_notes.append("Ambiguous equity term with no paired ethnic signal")
+        extra_notes.append("Note (low priority): Ambiguous equity term with no paired ethnic signal")
     if grassroots_state == "has_signal":
-        extra_notes.append("Equity/diversity buzzword present alongside a real signal - verify manually")
+        extra_notes.append("Note (low priority): Equity/diversity buzzword present alongside a real signal - verify manually")
 
     # Possible consulted-party mention (expert/advisor/biologist role)
     # rather than the population served -- flagged, never suppressed.
     if candidates and matches_any(EXPERT_ROLE_PHRASES, combined):
-        extra_notes.append("Possible consulted-party mention (expert/advisor role) rather than served population - verify manually")
+        extra_notes.append("Note (low priority): Possible consulted-party mention (expert/advisor role) rather than served population - verify manually")
 
     # Checked here (after candidates are gathered) so we can tell whether
     # BIPOC is mentioned ALONGSIDE a real specific group (the ambiguous nuance from the README) vs. BIPOC being the only signal.
@@ -737,7 +737,7 @@ def classify_row(row, taxonomy_entries):
         l1, l2, l3, depth, source = deepest[0]
         flag = ""
         if source == "pattern":
-            flag = "Pattern rule match (Direction phrase, e.g. North African)"
+            flag = "Pattern rule match (Directional phrase, e.g. North African)"
         elif source == "country":
             flag = "Country/nationality mapping match"
         elif source == "compound":

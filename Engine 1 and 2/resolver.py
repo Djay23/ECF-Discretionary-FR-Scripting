@@ -63,7 +63,7 @@ def source_flag(source: str) -> str:
     (taxonomy is the default path; org is annotated by the caller branch).
     """
     return {
-        "pattern": "Pattern rule match (structured phrase)",
+        "pattern": "Pattern rule match (Directional Region, e.g. North African)",
         "country": "Country/nationality mapping match",
         "compound": "Compound identity term match",
         "broad_identity": "Broad identity term - review recommended",

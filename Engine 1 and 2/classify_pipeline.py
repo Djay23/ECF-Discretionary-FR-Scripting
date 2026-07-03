@@ -93,12 +93,12 @@ def extra_annotation_notes(combined, states, bipoc_present):
 
     grassroots_state = check_grassroots_case(combined, has_ethnic_signal)
     if grassroots_state == "no_signal":
-        notes.append("Ambiguous equity term with no paired ethnic signal")
+        notes.append("Note (low priority): Ambiguous equity term with no paired ethnic signal")
     if grassroots_state == "has_signal":
-        notes.append("Equity/diversity buzzword present alongside a real signal - verify manually")
+        notes.append("Note (low priority): Equity/diversity buzzword present alongside a real signal - verify manually")
 
     if primary_states and matches_any(EXPERT_ROLE_PHRASES, combined):
-        notes.append("Possible consulted-party mention (expert/advisor role) rather than served population - verify manually")
+        notes.append("Note (low priority): Possible consulted-party mention (expert/advisor role) rather than served population - verify manually")
 
     if primary_states and re.search(r"\b(especially|particularly)\b", combined, re.IGNORECASE):
         notes.append("Emphasis phrase ('especially'/'particularly') detected — verify specificity of population served")

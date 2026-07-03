@@ -4,6 +4,7 @@ import pandas as pd
 
 import ethnic_taggerv3 as et
 from classify_pipeline import classify_row as pipeline_classify_row
+import Gender_SexID as gs
 from pathlib import Path
 
 """
@@ -15,36 +16,29 @@ workbook with several tabs, meant for manual review of what Engine 1
 is actually doing on your real data, before any more classification
 rules get added.
 
-This exists because the right next step isn't more rules -- it's
-finding out whether the existing rules are already correct. The two
-numbers worth knowing before anything else:
-    - How many of the "General Population" rows are actually correct?
-    - How many of the "Ambiguous equity term" rows are correct?
-Guessing at either from outside the data is how rules end up being
-added for problems that don't actually exist, or missed for ones that
-do.
-
 Tabs produced:
-    1. General Population Sample - a random sample (up to 100 rows) of
-       everything Engine 1 left as General Population. Random, not
-       "first N", so the sample isn't biased by row order in the sheet.
-    2. Ambiguous Equity Rows - ALL rows flagged with the "no paired
-       ethnic signal" buzzword-only outcome. Every one of these, not a
-       sample, since this is the smaller and more suspicious group.
-    3. Multiple Rows - ALL rows classified as Multiple Ethnic and
-       Cultural Origins, so you can judge whether the flags on them are
-       actually actionable or just restating a decision already made.
-    4. Flag Frequency - every distinct flag value that appears anywhere
-       in the dataset, with a count, sorted most-common first.
-    5. Classification Frequency - every distinct (Ethnic 1, Ethnic 2,
-       Ethnic 3) combination Engine 1 produced, with a count, so you
-       can see what's actually being triggered most often.
+  Ethnic (5):
+    1.  General Pop Sample       - random sample (up to 100) of General Population rows
+    2.  Ambiguous Equity Rows    - all rows with "no paired ethnic signal" flag
+    3.  Multiple Rows            - all Multiple Ethnic and Cultural Origins rows
+    4.  Flag Frequency           - distinct ethnic flags, most-common first
+    5.  Classification Frequency - distinct (Ethnic1, Ethnic2, Ethnic3) combos, most-common first
+  Gender (4):
+    6.  Gender Gen Pop Sample    - random sample of Gender General Population rows (recall check)
+    7.  Gender Multiple Rows     - all Multiple gender identities rows
+    8.  Gender Flag Frequency    - distinct gender flags, most-common first
+    9.  Gender Class Frequency   - distinct Gender Id values, most-common first
+  Sexual Identity (4):
+    10. 2SLGBTQIA Rows           - all 2SLGBTQIA+ rows (precision check)
+    11. Sexual Gen Pop Sample    - random sample of Sexual General Population rows (recall check)
+    12. Sexual Flag Frequency    - distinct sexual flags, most-common first
+    13. Sexual Class Frequency   - distinct Sexual Id values, most-common first
 
 To Run:
     python generate_review_report.py
 
 Output:
-    review_reportV3(new pipeline).xlsx, written to the current directory.
+    review_reportV3(new pipeline).xlsx  (separate workbook — FR testing.xlsx is never modified)
 """
 
 SAMPLE_SIZE = 100
@@ -56,7 +50,7 @@ def main():
 
     taxonomy_filepath = SCRIPT_DIR.parent / "Taxonomy" / "Taxonomy - Definitions.xlsx"
     funding_filepath = SCRIPT_DIR.parent / "Data Sheets" / "FR testing.xlsx"
-    OUTPUT_FILE = SCRIPT_DIR.parent / "Data Sheets" / "review_reportV3(new pipeline).xlsx"
+    OUTPUT_FILE = SCRIPT_DIR.parent / "Data Sheets" / "review_reportDemo(new pipeline).xlsx"
 
     tax_df = pd.read_excel(taxonomy_filepath, sheet_name=et.TAXONOMY_SHEET, dtype=str)
     data_df = pd.read_excel(funding_filepath, sheet_name=et.DATA_SHEET, dtype=str)
@@ -66,6 +60,8 @@ def main():
     rows = []
     for idx, row in data_df.iterrows():
         e1, e2, e3, flag = pipeline_classify_row(row, taxonomy_entries)
+        g_label, g_flag  = gs.classify_gender(row)
+        s_label, s_flag  = gs.classify_sexual(row)
         rows.append({
             "Funding Request Name": row.get("Funding Request Name", f"row {idx}"),
             "Final_Project_Description": row.get("Final_Project_Description", ""),
@@ -75,6 +71,10 @@ def main():
             "Ethnic 2": e2,
             "Ethnic 3": e3,
             "Classification Flag": flag,
+            "Gender Id": g_label,
+            "Gender Flag": g_flag,
+            "Sexual Id": s_label,
+            "Sexual Flag": s_flag,
         })
 
     results_df = pd.DataFrame(rows)
@@ -111,17 +111,63 @@ def main():
         .sort_values("Count", ascending=False)
     )
 
+    # --- Gender tabs ---
+    gender_gen_pop_df = results_df[results_df["Gender Id"] == gs.GENDER_GENERAL_POP]
+    g_sample_n = min(SAMPLE_SIZE, len(gender_gen_pop_df))
+    gender_gen_pop_sample = (
+        gender_gen_pop_df.sample(n=g_sample_n, random_state=RANDOM_SEED)
+        if g_sample_n > 0 else gender_gen_pop_df
+    )
+    gender_multiple_df = results_df[results_df["Gender Id"] == gs.GENDER_MULTIPLE]
+    gender_flag_counts = (
+        results_df[results_df["Gender Flag"] != ""]["Gender Flag"]
+        .value_counts().reset_index()
+    )
+    gender_flag_counts.columns = ["Gender Flag", "Count"]
+    gender_class_counts = (
+        results_df["Gender Id"].value_counts().reset_index()
+    )
+    gender_class_counts.columns = ["Gender Id", "Count"]
+
+    # --- Sexual identity tabs ---
+    sexual_2slgbtqia_df = results_df[results_df["Sexual Id"] == gs.SEXUAL_2SLGBTQIA]
+    sexual_gen_pop_df   = results_df[results_df["Sexual Id"] == gs.SEXUAL_GENERAL_POP]
+    s_sample_n = min(SAMPLE_SIZE, len(sexual_gen_pop_df))
+    sexual_gen_pop_sample = (
+        sexual_gen_pop_df.sample(n=s_sample_n, random_state=RANDOM_SEED)
+        if s_sample_n > 0 else sexual_gen_pop_df
+    )
+    sexual_flag_counts = (
+        results_df[results_df["Sexual Flag"] != ""]["Sexual Flag"]
+        .value_counts().reset_index()
+    )
+    sexual_flag_counts.columns = ["Sexual Flag", "Count"]
+    sexual_class_counts = (
+        results_df["Sexual Id"].value_counts().reset_index()
+    )
+    sexual_class_counts.columns = ["Sexual Id", "Count"]
+
     with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
+        # Ethnic tabs (unchanged)
         general_sample.to_excel(writer, sheet_name="General Pop Sample", index=False)
         ambiguous_df.to_excel(writer, sheet_name="Ambiguous Equity Rows", index=False)
         multiple_df.to_excel(writer, sheet_name="Multiple Rows", index=False)
         flag_counts.to_excel(writer, sheet_name="Flag Frequency", index=False)
         class_counts.to_excel(writer, sheet_name="Classification Frequency", index=False)
+        # Gender tabs
+        gender_gen_pop_sample.to_excel(writer, sheet_name="Gender Gen Pop Sample", index=False)
+        gender_multiple_df.to_excel(writer, sheet_name="Gender Multiple Rows", index=False)
+        gender_flag_counts.to_excel(writer, sheet_name="Gender Flag Frequency", index=False)
+        gender_class_counts.to_excel(writer, sheet_name="Gender Class Frequency", index=False)
+        # Sexual identity tabs
+        sexual_2slgbtqia_df.to_excel(writer, sheet_name="2SLGBTQIA Rows", index=False)
+        sexual_gen_pop_sample.to_excel(writer, sheet_name="Sexual Gen Pop Sample", index=False)
+        sexual_flag_counts.to_excel(writer, sheet_name="Sexual Flag Frequency", index=False)
+        sexual_class_counts.to_excel(writer, sheet_name="Sexual Class Frequency", index=False)
 
     print(f"\nWritten to: {OUTPUT_FILE}")
     print("This file is a separate review workbook -- your original funding")
     print("requests file was not opened for writing and was not modified.")
-
 
 if __name__ == "__main__":
     main()

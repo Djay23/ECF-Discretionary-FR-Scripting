@@ -244,3 +244,36 @@ Is this something a human reviewer actually needs to look at?
 - Reference context rules are needed
 - Additional oranization mappings are needed
 - Semantic Engine thresholds need tuning
+
+
+# 2026-06-30
+- Continued auditing of script classification for correctness. 
+### Sprint 1:
+- 100 General pop. rows sample - Complete -> 100% accuracy
+- 11 Ambiguous equity rows with no paired ethnic signal
+- 55 'Multiple Ethnic' rows - Complete -> Case notes below.
+
+> [!NOTES] 
+> Include a flag that highlights words like "especially" or "particularly", "particularly for", etc. if used with an ethnic term. "BIPOC communities—particularly East African newcomers".
+> Something like this should be grouped as African Origins not multiple ethnic "for African youth from diverse backgrounds including Kenyan, Ghanaian, Zimbabwean, Sierra Leonean, Somali, Ethiopian, Djiboutian, Namibian, Botswanan, Mozambican, South African, etc.". We only group as multiple ethnic if they have different level 1, or level 2 classifications. Otherwise if there is a common level 1 or level 2 classification, group in the respective category. For example: "Serving indian and Pakistani communities" Should be grouped under Asian Origins -> South Asian Origins, Not multiple origins.
+> "Black African" should be grouped as African Origins, instead of: Other Ethnic and Cultural Origins -> Black, not otherwise specified. Previously had it under BIPOC.
+> Have engine 2 look at our country mapping for possible country aliases? Like Namibia vs. Namibian.
+> We can group the "BIPOC signal detected" flag as low priority as these were classified properly from our sample.
+> How do we handle cases where it mentions african Canadian, and then later specifies Nigerian for example? Currently we view african canadian as black, so adding nigerian would group it as multiple ethnic with distinct groups present. We should group African Canadian as black unless there is a specificied African country mentioned or Africa as a region mentioned later, then we go with the grouping for the specified african country/region. Or should we just change the grouping of 'African Canadian' to African?
+> Need to double check the flag: multiple sub-groups within same origin. if they are within the same origin, they should be classified under the same origin and not as multiple ethnic.
+> french-speaking, francophone, french canadian should be treated as a language accomodation and not an ethnic group. Review 50 examples with "French", "French canadian", "francophone", "french-speaking" and if it is ambiguous/language accomodation or is actually a cultural/ethnic identity. French-speaking/Francophone can also be referring to African countries that speak french, like cameroon, or just anyone who speaks french. How should we handle this as this is different from European french people.
+    Keep as ethnic signal:
+    - French Canadian Association
+    - Francophone Cultural Society
+    - French heritage community
+    - French cultural programming
+### High priority flags (resulting in incorrect classification)
+- Ambiguous: BIPOC mentioned alongside specific group(s)
+> Need to fix how we handle "African Canadian", "Black Canadian", etc. right now if we get an example like: "Advancement of African Canadians", we first see 'African Canadians' which we collapse into 'Black -> Other Ethnic and Cultural Origins'. We then see the 'African' In 'African Canadians' and group that under African origins, so a sentence like "Advancement of African Canadians" gets grouped as Multiple ethnic origins and flagged as multiple distinct groups detected.
+> Similar issue, if we see African Canadian, and then black later, it is treated as two distinct groups even though we currently have African Canadian to be black (this should probably change so African canadian is just african). 
+> What about in cases where it says African Canadian and is for something like black History month, or something like 'for the advancement of black students in STEM'. How should we handle classification/flagging?
+> Case where classified as multiple and flagged as distinct because Somali and Black mentioned. Should actually be classified as Somali. We need to flag when  we see anything with Black, and African/Caribbean origins because they could be using Black as the umbrella and then specify, or vice versa. For example: "Hate crimes targeting Black Muslims—especially young Somali Canadians" or "Somali project aims to strengthen cultural pride, foster inclusion, and create safe spaces for Black Muslim communities".
+> Correctly grouped as multiple ethnic: "Our program services are available in multiple languages, including French, Somali, and Urdu", however based on the current proposed changes, this would have probably been flagged as languages and maybe incorrectly grouped. we can ignore an example like this as because these are languages corresponding to specific countries we can assume they are targetting multiple ethnic groups, especially after manually reviewing it.
+> We need to flag when hindu is present because Hindu can imply indian, but not always. 
+> Black and Indigenous should be classified as BIPOC. Currently treated as two different Ethnic categories when present together.
+> Flag anything with "official-language minority" or "French" because it could be referring to the ethnic group or just the language. Tricky though because of this example: "It aims to increase the diversity of content on Wikimedia projects, improving the visibility of notable Canadian figures and underrepresented groups, including Indigenous communities, gender minorities, and official-language minority communities.";  "will engage approximately 120 participants, including the general public, students, educators, volunteers, and cultural organizations, in both French and English". Upon changing the classification of French, this would have been grouped as indigenous although it was for multiple ethnic groups.

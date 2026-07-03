@@ -248,7 +248,7 @@ Is this something a human reviewer actually needs to look at?
 
 # 2026-06-30
 - Continued auditing of script classification for correctness. 
-### Sprint 1:
+## Sprint 1:
 - 100 General pop. rows sample - Complete -> 100% accuracy
 - 11 Ambiguous equity rows with no paired ethnic signal
 - 55 'Multiple Ethnic' rows - Complete -> Case notes below.
@@ -277,3 +277,13 @@ Is this something a human reviewer actually needs to look at?
 > We need to flag when hindu is present because Hindu can imply indian, but not always. 
 > Black and Indigenous should be classified as BIPOC. Currently treated as two different Ethnic categories when present together.
 > Flag anything with "official-language minority" or "French" because it could be referring to the ethnic group or just the language. Tricky though because of this example: "It aims to increase the diversity of content on Wikimedia projects, improving the visibility of notable Canadian figures and underrepresented groups, including Indigenous communities, gender minorities, and official-language minority communities.";  "will engage approximately 120 participants, including the general public, students, educators, volunteers, and cultural organizations, in both French and English". Upon changing the classification of French, this would have been grouped as indigenous although it was for multiple ethnic groups.
+
+# 2026-07-02
+## Sprint 1 (Continued)
+- 100 General pop. rows sample - Complete -> 100% Accuracy.
+- 11 Ambiguous equity rows with no paired ethnic signal - Complete -> 100% Accuracy.
+- 55 'Multiple Ethnic' rows - Complete -> Case notes Above.
+
+- Hook up old pipeline to new refactored version.
+- Compare new review report with previous pipeline version.
+- Use python library for country matching instead of built out dictionary

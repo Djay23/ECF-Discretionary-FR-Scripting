@@ -59,6 +59,18 @@ try:
 except ImportError:
     SEMANTIC_AVAILABLE = False
 
+from constants import (
+    MULTIPLE_ETHNIC, OTHER_ETHNIC, GENERAL_POP,
+    BIPOC_KEYWORDS, AMBIGUOUS_EQUITY_WORDS, BROAD_IDENTITY_KEYWORDS,
+    ALWAYS_MULTIPLE_COMPOUNDS, ORG_NAME_ETHNICITY_MAP,
+    PATTERN_RULES, COUNTRY_REGION_MAP,
+    EXPANSION_PHRASES, HISTORICAL_PHRASES, NEGATION_PHRASES,
+    ASPIRATIONAL_PHRASES, EXAMPLE_PHRASES, EXPERT_ROLE_PHRASES,
+    SERVING_CONTEXT_WORDS, IDENTITY_PHRASE_REWRITES,
+    DIRECTIONAL_AFRICAN_PREFIXES, CASE_13_PATTERNS,
+    DEMONYM_SUFFIXES, NON_ETHNIC_LEADING_WORDS,
+)
+
 # =============
 # CONFIGURATION 
 # =============
@@ -87,263 +99,6 @@ OUTPUT_ETHNIC3 = "Ethnic 3 - FR8"
 OUTPUT_FLAG = "Classification Flag"
 OUTPUT_SEMANTIC = "Semantic Suggestion (REVIEW)"
 
-MULTIPLE_ETHNIC = "Multiple Ethnic and Cultural Origins"
-OTHER_ETHNIC = "Other Ethnic and Cultural Origins"
-GENERAL_POP = "General Population (No specific ethnic and cultural origin group served)"
-
-# =======================
-# CASE 9 — BIPOC keywords 
-# =======================
-BIPOC_KEYWORDS = [
-    r"\bbipoc\b",
-    r"\bqtbipoc\b",
-    r"\bpoc\b",
-    r"\bpeople of colou?r\b",
-    r"\bblack african\b",
-    #r"\bracialized\b", # Change to flag if "racialized" is detected
-]
-
-# Words that, on their own, should NOT trigger BIPOC/Multiple classification
-# unless paired with an actual ethnic 'hint'. Handled separately from
-# BIPOC_KEYWORDS because the rule is different (Case 11).
-# Always flagged for review either way now (signal or no signal) --
-# see check_grassroots_case().
-
-AMBIGUOUS_EQUITY_WORDS = [
-    r"\bmarginalized\b", # Can be removed because marginalized can also refer to gender 
-    r"\bgrassroots\b", # Can be removed
-    r"\bethnocultural\b",
-    r"\bracialized\b",
-    r"\bunderrepresented\b", # Possible to overlook as most times refers to gender and sexual identity
-    r"\bmulticultural\b",
-    r"\bdiverse\b",
-    r"\brefugee\b",
-    r"\bimmigrant\b",
-    r"\bfrancophone\b",
-    r"\bnewcomer\b", # Can be overlooked
-    r"\bculturally\b",
-    r"\bminorit(y|ies)\b",
-]
-
-# ============================================================
-# CASE 9b — Broad identity labels (not in taxonomy directly)
-# Black/Jewish/Arab removed -- these are real Level 2 entries under
-# "Other Ethnic and Cultural Origins" in the taxonomy, matched through
-# find_taxonomy_matches() instead of here now.
-# ============================================================
-BROAD_IDENTITY_KEYWORDS = [
-    r"\bhispanic\b",
-    r"\blatino\b",
-    r"\blatina\b",
-    r"\blatinx\b",
-    r"\bmixed heritage\b",
-    r"\bmixed race\b",
-    r"\bmultiracial\b",
-    r"\bmulti[\-\s]ethnic\b",
-]
-
-# Afro-Caribbean / Afro-Latino name TWO distinct Level 1 groups at
-# once -- always Multiple, regardless of anything else in the text.
-ALWAYS_MULTIPLE_COMPOUNDS = {
-    r"\bafro[\-\u2010\u2011\u2012\u2013\u2014\s]*caribbean\b": (
-        ("African Origins", "", ""),
-        ("Caribbean Origins", "", ""),
-    ),
-    r"\bafro[\-\u2010\u2011\u2012\u2013\u2014\s]*latin(o|a|x)?\b": (
-        ("African Origins", "", ""),
-        ("Latin American Origins", "", ""),
-    ),
-}
-
-# =========================================================
-# CASE 10 — Known organization name -> ethnicity lookup
-# Only consulted as a LAST RESORT if classification would
-# otherwise be General Population.
-# ========================================================
-ORG_NAME_ETHNICITY_MAP = {
-    "bent arrow": ("North American Indigenous Origins", "", ""),
-    "treaty 6": ("North American Indigenous Origins", "", ""), # Flag for review, as "Treaty 6" could refer to the geographic region (which would be L1 or L2) rather than the organization (which would be Case 10). Only trigger if "Treaty 6" appears in the funding request name or purpose, not just the description.
-    # Add more known organization name -> ethnicity mappings here as identified
-}
-
-# ==================================================
-# CASE 4 — Structured / directional phrase patterns
-# Applied only if no direct taxonomy match found.
-# ==================================================
-PATTERN_RULES = [
-    (r"\bnorth[\s\-]?african\b", "African Origins", "North African Origins", ""),
-    (r"\bsouth[\s\-]?african\b", "African Origins", "Southern and East African Origins", ""),
-    (r"\beast[\s\-]?african\b", "African Origins", "Southern and East African Origins", ""),
-    (r"\bwest[\s\-]?african\b", "African Origins", "Central and West African Origins", ""),
-    (r"\bcentral[\s\-]?african\b", "African Origins", "Central and West African Origins", ""),
-    (r"\bsub[\s\-]?saharan\b", "African Origins", "Central and West African Origins", ""),
-    (r"\bsoutheast[\s\-]?asian\b", "Asian Origins", "East and Southeast Asian Origins", ""),
-    (r"\bsouth[\s\-]?asian\b", "Asian Origins", "South Asian Origins", ""),
-    (r"\beast[\s\-]?asian\b", "Asian Origins", "East and Southeast Asian Origins", ""),
-    (r"\bmiddle[\s\-]?eastern\b", "Asian Origins", "West and Central Asian and Middle Eastern Origins", ""),
-    (r"\bfirst nations\b", "North American Indigenous Origins", "", ""),
-    (r"\bmetis\b", "North American Indigenous Origins", "", ""),
-    (r"\binuit\b", "North American Indigenous Origins", "", ""),
-    (r"\baboriginal\b","North American Indigenous Origins", "", ""),
-    (r"\bindigenous canadian\b", "North American Indigenous Origins", "", ""),
-    (r"\btreaty 6\b", "North American Indigenous Origins", "", ""),
-    (r"\bnorthern european\b", "European Origins", "Northern European Origins", ""),
-    (r"\bsouthern european\b", "European Origins", "Southern European Origins", ""),
-    (r"\beast(ern)? european\b", "European Origins", "Eastern European Origins", ""),
-    (r"\bwest(ern)? european\b", "European Origins", "Western European Origins", ""),
-]
-
-# ============================================================
-# CASES 6 & 7 — Country/nationality NOT in taxonomy
-# Covers both "Jamaican" (nationality) and "from Jamaica" (Case 7)
-# ============================================================
-COUNTRY_REGION_MAP = {
-    "jamaican": ("Caribbean Origins", "", ""),
-    "jamaica": ("Caribbean Origins", "", ""),
-    "trinidadian": ("Caribbean Origins", "", ""),
-    "trinidad": ("Caribbean Origins", "", ""),
-    "barbadian": ("Caribbean Origins", "", ""),
-    "barbados": ("Caribbean Origins", "", ""),
-    "haitian": ("Caribbean Origins", "", ""),
-    "haiti": ("Caribbean Origins", "", ""),
-    "guyanese": ("Caribbean Origins", "", ""),
-    "guyana": ("Caribbean Origins", "", ""),
-    "brazilian": ("Latin American Origins", "", ""),
-    "brazil": ("Latin American Origins", "", ""),
-    "colombian": ("Latin American Origins", "", ""),
-    "colombia": ("Latin American Origins", "", ""),
-    "mexican": ("Latin American Origins", "", ""),
-    "mexico": ("Latin American Origins", "", ""),
-    "salvadoran": ("Latin American Origins", "", ""),
-    "el salvador": ("Latin American Origins", "", ""),
-    "guatemalan": ("Latin American Origins", "", ""),
-    "guatemala": ("Latin American Origins", "", ""),
-    "peruvian": ("Latin American Origins", "", ""),
-    "peru": ("Latin American Origins", "", ""),
-    "venezuelan": ("Latin American Origins", "", ""),
-    "venezuela": ("Latin American Origins", "", ""),
-    "indian": ("Asian Origins", "South Asian Origins", "Indian (India)"),
-    "india": ("Asian Origins", "South Asian Origins", "Indian (India)"),
-    "kerala": ("Asian Origins", "South Asian Origins", "Indian (India)"), # state in India, often named directly e.g. "Kerala Cultural Association"
-    "cameroonian": ("African Origins", "Central and West African Origins", ""), # no L3 entry for Cameroon -- falls to L2
-    "cameroon": ("African Origins", "Central and West African Origins", ""),
-    "nigerian": ("African Origins", "Central and West African Origins", ""), # safety net -- if "Nigerian" is a real L3 entry in the taxonomy, that match wins anyway via depth priority
-    "nigeria": ("African Origins", "Central and West African Origins", ""),
-}
-
-# ============================================================
-# Context-override / historical / negation / aspirational / example
-# phrase banks — all generic, applied to ANY keyword (not group-specific)
-# ============================================================
-EXPANSION_PHRASES = [
-    r"beyond (its|their|our|the) (original|previous|former|initial|traditional|historic(al)?)",
-    r"expanding beyond",
-    r"expansion",
-    r"not (only|exclusively|solely|limited to|just|restricted to)",
-    r"no longer (limited|restricted|focused|exclusively)",
-    r"open(ing)? (up )?to (all|broader|wider|diverse|other)",
-    r"(increasingly|more) diverse",
-    r"welcom(es?|ing) (all|everyone|anyone|diverse)",
-    r"regardless of (ethnic|cultural|racial|background)",
-    r"all (cultural|ethnic|racial)? backgrounds",
-    r"without regard to",
-    r"irrespective of",
-    r"inclusive of all",
-]
-
-HISTORICAL_PHRASES = [
-    r"historic(al(ly)?)?",
-    r"former(ly)?",
-    r"previous(ly)?",
-    r"original(ly)?",
-    r"(in|during) the past",
-    r"used to (serve|focus|target|support)",
-    r"once (served|focused|targeted|supported)",
-    r"(its|their|our) roots (in|with)",
-    r"founded (to serve|for|by)",
-    r"(was|were) (established|created|founded) (for|to serve)",
-]
-
-NEGATION_PHRASES = [
-    r"not (target(ing)?|serv(ing|e)|focus(ing|ed)|for|limited to|exclusively)",
-    r"does not (target|serve|focus|support|cater)",
-    r"do not (target|serve|focus|support|cater)",
-    r"no longer (target(ing)?|serv(ing|e)|focus(ing|ed))",
-    r"exclud(es?|ing)",
-    r"except(ing)?",
-    r"other than",
-    r"outside of",
-    r"not the (primary|main|sole|only) (focus|target|group|population)",
-]
-
-ASPIRATIONAL_PHRASES = [
-    r"hop(es?|ing) to (serve|reach|support|engage|include|target)",
-    r"plan(s|ning) to (serve|reach|support|engage|include|target)",
-    r"aim(s|ing) to (serve|reach|support|engage|include|target)",
-    r"intend(s|ing) to",
-    r"will (eventually|soon|begin to|start to) (serve|reach|support)",
-    r"goal(s)? (is|are|of|to) (reach(ing)?|serv(ing|e)|includ(ing|e))",
-    r"aspir(es?|ing) to",
-    r"seek(s|ing) to (expand|reach|grow|include)",
-    r"in the future",
-    r"(future|upcoming) (focus|programming|initiative)",
-]
-
-EXAMPLE_PHRASES = [
-    r"such as",
-    r"for example",
-    r"e\.g\.?",
-    r"i\.e\.?",
-    r"includ(ing|e) (communities|groups|populations|organizations|people)? ?(such as|like)",
-    r"like (the )?following",
-    r"among (others|other groups|other communities)",
-    r"(and|or) (other|similar) (communities|groups|populations)",
-    r"compar(ed|ing) to",
-    r"as (opposed|compared) to",
-]
-
-# Words suggesting an ethnic term names a CONSULTED PARTY (expert/
-# advisor role) rather than the population served, e.g. "...consult
-# wildlife biologists, conservation experts, and indigenous knowledge
-# holders". Never suppresses a match -- only adds a flag, since there's
-# no reliable way to confirm this either way.
-EXPERT_ROLE_PHRASES = [
-    r"\bexperts?\b",
-    r"\bspecialists?\b",
-    r"\bconsultants?\b",
-    r"\badvisors?\b",
-    r"\bpractitioners?\b",
-    r"\bknowledge holders?\b",
-    r"\bstakeholders?\b",
-    r"\bbiologists?\b",
-]
-
-"""
--- Not Necessary to be handled right now for processing sakes.
-
-# Common typos / nationality-vs-canonical-term variants.
-KEYWORD_ALIASES = {
-    "somalian": "somali",
-    "ethopian": "ethiopian",
-    "ethipian": "ethiopian",
-    "rwandese": "rwandan",
-    "congolaise": "congolese",
-    "congolais": "congolese",
-    "mozambiquean": "mozambican",
-    "tanzanean": "tanzanian",
-    "ugandese": "ugandan",
-    "burundaise": "burundian",
-    "filippino": "filipino",
-    "phillipine": "filipino",
-    "philippine": "filipino",
-    "viet": "vietnamese",
-    "indo-canadian": "south asian",
-    "indo canadian": "south asian",
-    "south-asian": "south asian",
-    "middle eastern": "west and central asian and middle eastern",
-    "middle-eastern": "west and central asian and middle eastern",
-}
-"""
 
 # =======
 # HELPERS
@@ -409,32 +164,20 @@ def keyword_context_window(keyword, text, window=80):
     start = max(0, m.start() - window)
     return text[start:m.start()]
 
+def is_non_prefixed(keyword, text):
+    """Return True if keyword appears immediately after 'non-' or 'non ' in text."""
+    return bool(re.search(r'\bnon[\- ]' + re.escape(keyword), text, re.IGNORECASE))
+
 def is_negated(keyword, text):
     snippet = keyword_context_window(keyword, text)
-    return snippet is not None and matches_any(NEGATION_PHRASES, snippet)
+    return (
+        (snippet is not None and matches_any(NEGATION_PHRASES, snippet))
+        or is_non_prefixed(keyword, text)
+    )
 
 def is_example_mention(keyword, text):
     snippet = keyword_context_window(keyword, text)
     return snippet is not None and matches_any(EXAMPLE_PHRASES, snippet)
-
-SERVING_CONTEXT_WORDS = [
-    r"\bserve(s|d)?\b",
-    r"\bserving\b",
-    r"\bpopulation\b",
-    r"\bcommunit(y|ies)\b",
-    r"\bdemographic(s)?\b",
-    r"\bfocus(ed|es)?\b",
-    r"\btarget(ed|ing)?\b",
-    r"\breach\b",
-    r"\bbeneficiar(y|ies)\b",
-    r"\bclientele\b",
-    r"\bmembership\b",
-    r"\bmembers\b",
-    r"\baudience\b",
-    r"\bclients\b",
-    r"\bresidents\b",
-    r"\bgroups\b",
-]
 
 def phrase_has_serving_context(pattern, text, window=100):
     for m in re.finditer(pattern, text, re.IGNORECASE):
@@ -677,6 +420,139 @@ def context_is_aspirational(text):
     return matches_any(ASPIRATIONAL_PHRASES, text)
 
 # =================================================
+# CONTEXT SIGNAL LAYER
+# Detects soft discourse signals in the full combined text.
+# Results are annotations only — they MUST NOT affect classification decisions.
+# =================================================
+
+def extract_context_signals(text):
+    return {
+        "historical":   matches_any(HISTORICAL_PHRASES, text),
+        "expansion":    matches_any(EXPANSION_PHRASES, text),
+        "aspirational": matches_any(ASPIRATIONAL_PHRASES, text),
+        "negation":     matches_any(NEGATION_PHRASES, text),
+        "example":      matches_any(EXAMPLE_PHRASES, text),
+    }
+
+def build_context_notes(signals):
+    """
+    Production annotation notes.
+
+    Only negation is surfaced — it directly affects how confident a reviewer
+    should be in the ethnic evidence found (a negated term may or may not
+    indicate the population served).
+
+    Historical, expansion, aspirational, and example signals are omitted here
+    because they are extremely common in nonprofit funding language and create
+    alert fatigue when surfaced on every request.  They remain detectable via
+    extract_context_signals() and are available in full via
+    build_debug_context_notes() for debug overlay use.
+    """
+    notes = []
+    if signals["negation"]:
+        notes.append("Negation detected - verify exclusion vs inclusion intent")
+    return notes
+
+def build_debug_context_notes(signals):
+    """
+    Full context annotation notes including discourse-framing signals.
+    For debug overlay use only — NOT emitted in production output.
+    """
+    notes = []
+    if signals["historical"]:
+        notes.append("Historical framing detected - may refer to past service scope only")
+    if signals["expansion"]:
+        notes.append("Scope expansion language detected - indicates broadened or non-exclusive targeting")
+    if signals["aspirational"]:
+        notes.append("Aspirational/future-oriented language detected - may not reflect current service population")
+    if signals["negation"]:
+        notes.append("Negation detected - verify exclusion vs inclusion intent")
+    if signals["example"]:
+        notes.append("Example-based phrasing detected - referenced group may not be primary target")
+    return notes
+
+# =================================================
+# CASE 13 — Potential Ethnocultural Organization Name
+#
+# Safety-net detector for unknown ethnocultural org names in the
+# Funding Request Name column.  Only fires when Engine 1 produced zero
+# candidates and BIPOC is absent — i.e. the row would otherwise fall
+# through to General Population with no ethnic signal at all.
+#
+# NEVER classifies. NEVER overrides. Review flag only.
+# =================================================
+
+def looks_like_demonym(group_name):
+    """Return True if group_name could plausibly be an ethnic/national identifier.
+    Primary gate: any token in NON_ETHNIC_LEADING_WORDS → almost certainly not ethnic."""
+    tokens = group_name.lower().split()
+    return not any(t in NON_ETHNIC_LEADING_WORDS for t in tokens)
+
+
+def is_known_taxonomy_keyword(group_name, taxonomy_entries):
+    """Return True if group_name contains a recognized taxonomy keyword."""
+    for entry in taxonomy_entries:
+        kw = entry.get("keyword", "")
+        if not kw:
+            continue
+        if re.search(r'\b' + re.escape(kw) + r's?\b', group_name, re.IGNORECASE):
+            return True
+    return False
+
+
+def matches_pattern_rule(group_name):
+    """Return True if group_name matches any PATTERN_RULES entry."""
+    for pattern, *_ in PATTERN_RULES:
+        if re.search(pattern, group_name, re.IGNORECASE):
+            return True
+    return False
+
+
+def detect_ethnocultural_org_name(funding_request_name, candidates, bipoc_present, taxonomy_entries):
+    """
+    Case 13 — low-recall, high-precision safety net.
+
+    Detects potential ethnocultural organization names in the Funding Request
+    Name that Engine 1 did not already classify.
+
+    Guard clause (Step 1): if ANY Engine 1 candidate exists or BIPOC is
+    present, the row is already being handled — return None immediately.
+    This ensures Case 13 only triggers as a true last resort.
+
+    Negative filters (Step 6): even when the title matches the org-name
+    pattern, do NOT flag if the extracted group token is:
+      - a recognized taxonomy keyword
+      - a known country/region/nationality in COUNTRY_REGION_MAP
+      - matched by any PATTERN_RULES entry (directional ethnonyms etc.)
+    """
+    if candidates or bipoc_present:
+        return None
+
+    title = normalize_text(funding_request_name or "")
+    if not title:
+        return None
+
+    for pattern in CASE_13_PATTERNS:
+        match = re.search(pattern, title, re.IGNORECASE)
+        if not match:
+            continue
+
+        group_name = match.group(1).strip()
+
+        if is_known_taxonomy_keyword(group_name, taxonomy_entries):
+            return None
+        if group_name in COUNTRY_REGION_MAP:
+            return None
+        if matches_pattern_rule(group_name):
+            return None
+        if not looks_like_demonym(group_name):
+            return None
+
+        return "Note (low priority): Potential ethnocultural organization name detected - verify group identity manually"
+
+    return None
+
+# =================================================
 # TEXT EXTRACTION — concatenate across all 4 columns
 # =================================================
 
@@ -694,21 +570,6 @@ def context_is_aspirational(text):
 # mentioned elsewhere in the same text (e.g. "African Canadian and
 # Somali") still correctly produces Multiple instead of silently
 # picking one and ignoring the other.
-IDENTITY_PHRASE_REWRITES = [
-    (r"\bafrican canadian\b", "black"),
-    (r"\bafrican american\b", "black"),
-]
-
-# A directional/regional qualifier immediately before "African" (East
-# African, West African, etc.) means the phrase keeps its literal,
-# specific meaning -- "East African Canadian" should still resolve via
-# the existing East African pattern rule, not get swallowed by the
-# African Canadian/American rewrite just because "african canadian"
-# happens to be a literal substring of it. Only BARE "African" paired
-# with Canadian/American carries the special idiomatic meaning (Black
-# identity) the rewrite above is for.
-DIRECTIONAL_AFRICAN_PREFIXES = ["north", "south", "east", "west", "central", "saharan"]
-
 def apply_identity_phrase_rewrites(text):
     for pattern, replacement in IDENTITY_PHRASE_REWRITES:
         def _replace(m, text=text):
@@ -750,13 +611,11 @@ def classify_row(row, taxonomy_entries):
     if not combined.strip():
         return finalize(GENERAL_POP, "", "", "Empty input")
 
-    # Highest priority: context override / historical reference
-    if context_is_overridden(combined):
-        return finalize(GENERAL_POP, "", "", "Context override: expansion phrase detected")
-    if context_is_historical(combined):
-        return finalize(GENERAL_POP, "", "", "Context override: historical reference detected")
-
-    aspirational = context_is_aspirational(combined)
+    # Context signal layer — annotation only, no control flow.
+    # All discourse signals (historical, expansion, aspirational, negation, example)
+    # are recorded as flags. Classification is never branched on them.
+    context_signals = extract_context_signals(combined)
+    extra_notes = build_context_notes(context_signals)
 
     # "Cultural Association" often hides a specific named group (e.g.
     # "Kerala Cultural Association") -- always worth a second look,
@@ -836,20 +695,20 @@ def classify_row(row, taxonomy_entries):
     has_ethnic_signal = bool(candidates) or bipoc_present
     grassroots_state = check_grassroots_case(combined, has_ethnic_signal) # Handle 'ethnocultural', 'marginalized' as well, since they have the same rule as 'grassroots'
     if grassroots_state == "no_signal":
-        return finalize(GENERAL_POP, "", "", "Ambiguous equity term (e.g. grassroots, multicultural, refugee) with no paired ethnic signal")
+        extra_notes.append("Note (low priority): Ambiguous equity term with no paired ethnic signal")
     if grassroots_state == "has_signal":
-        extra_notes.append("Equity/diversity buzzword present alongside a real signal - verify manually")
+        extra_notes.append("Note (low priority): Equity/diversity buzzword present alongside a real signal - verify manually")
 
     # Possible consulted-party mention (expert/advisor/biologist role)
     # rather than the population served -- flagged, never suppressed.
     if candidates and matches_any(EXPERT_ROLE_PHRASES, combined):
-        extra_notes.append("Possible consulted-party mention (expert/advisor role) rather than served population - verify manually")
+        extra_notes.append("Note (low priority): Possible consulted-party mention (expert/advisor role) rather than served population - verify manually")
 
     # Checked here (after candidates are gathered) so we can tell whether
     # BIPOC is mentioned ALONGSIDE a real specific group (the ambiguous nuance from the README) vs. BIPOC being the only signal.
     if bipoc_present:
         if candidates:
-            # BIPOC + a specific named group both present. Do not silently resolve, flag for manual review.
+            # BIPOC + a specific named group both present. Do not silently resolve, flag for manual review. # We can set this as a generic 'Ambiguous: BIPOC mentioned alongside specific group(s) flag so number of unique classification flags are smaller
             other_groups = sorted(set(c[0] for c in candidates))
             flag = ("Ambiguous: BIPOC mentioned alongside specific group(s) ("
                     + ", ".join(other_groups) + ") - verify manually")
@@ -864,10 +723,7 @@ def classify_row(row, taxonomy_entries):
         distinct_l1 = set(c[0] for c in candidates)
 
         if len(distinct_l1) >= 2:
-            flag = "Review: multiple distinct groups detected"
-            if aspirational:
-                flag += "; aspirational language present"
-            return finalize(MULTIPLE_ETHNIC, "", "", flag)
+            return finalize(MULTIPLE_ETHNIC, "", "", "Review: multiple distinct groups detected")
 
         # All candidates share one Level 1 -- use depth to pick the most
         # specific. If several DIFFERENT branches still tie at the
@@ -876,23 +732,18 @@ def classify_row(row, taxonomy_entries):
         deepest = [c for c in candidates if c[3] == max_depth]
 
         if len(deepest) >= 2:
-            flag = "Review: multiple sub-groups within same origin"
-            if aspirational:
-                flag += "; aspirational language present"
-            return finalize(MULTIPLE_ETHNIC, "", "", flag)
+            return finalize(MULTIPLE_ETHNIC, "", "", "Review: multiple sub-groups within same origin")
 
         l1, l2, l3, depth, source = deepest[0]
         flag = ""
         if source == "pattern":
-            flag = "Pattern rule match (structured phrase)"
+            flag = "Pattern rule match (Directional phrase, e.g. North African)"
         elif source == "country":
             flag = "Country/nationality mapping match"
         elif source == "compound":
             flag = "Compound identity term match"
         elif source == "broad_identity":
             flag = "Broad identity term - review recommended"
-        if aspirational:
-            flag = (flag + "; " if flag else "") + "Review: aspirational language - future intent, not current population"
         return finalize(l1, l2, l3, flag)
 
     # Case 10: organization name lookup (LAST RESORT before General) NOTE: Need to highlight Black Canadian Women to flag
@@ -908,15 +759,14 @@ def classify_row(row, taxonomy_entries):
 # MAIN
 # =====
 def main():
+    # Deferred import avoids circular dependency: classify_pipeline imports from this module.
+    from classify_pipeline import classify_row as pipeline_classify_row
+
     start_time = time.time()
 
-    if len(sys.argv) < 3:
-        print('Usage: python ethnic_taggerv3.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"')
-        sys.exit(1)
- 
     SCRIPT_DIR = Path(__file__).resolve().parent
 
-    taxonomy_filepath = SCRIPT_DIR.parent / "Data Sheets" / "Taxonomy - Definitions.xlsx"
+    taxonomy_filepath = SCRIPT_DIR.parent / "Taxonomy" / "Taxonomy - Definitions.xlsx"
     funding_filepath = SCRIPT_DIR.parent / "Data Sheets" / "FR testing.xlsx"
  
     print(f"Loading taxonomy from: {taxonomy_filepath}")
@@ -960,8 +810,8 @@ def main():
               "country": 0, "org_lookup": 0, "grassroots_filtered": 0, "semantic_suggested": 0}
  
     for idx, row in data_df.iterrows():
-        # Initial deterministic engine (level 1) called from taxonomy definitions sheet
-        e1, e2, e3, flag = classify_row(row, taxonomy_entries)
+        # Route through the canonical refactored pipeline (classify_pipeline → resolver)
+        e1, e2, e3, flag = pipeline_classify_row(row, taxonomy_entries)
         data_df.at[idx, OUTPUT_ETHNIC1] = e1
         data_df.at[idx, OUTPUT_ETHNIC2] = e2
         data_df.at[idx, OUTPUT_ETHNIC3] = e3

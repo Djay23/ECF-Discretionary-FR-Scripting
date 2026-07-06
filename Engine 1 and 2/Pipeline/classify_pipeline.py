@@ -8,6 +8,7 @@ from ethnic_taggerv3 import (
     check_grassroots_case,
     matches_any,
     detect_ethnocultural_org_name,
+    is_non_prefixed,
     EXPERT_ROLE_PHRASES,
     GENERAL_POP,
 )
@@ -106,7 +107,37 @@ def extra_annotation_notes(combined, states, bipoc_present):
     if re.search(r"\bhindu\b", combined, re.IGNORECASE):
         notes.append("'Hindu' detected — may imply South Asian/Indian origin; verify as religion vs. ethnicity")
 
+    # Non-{group} negation: check if any matched candidate's ethnic keyword appears
+    # immediately after "non-" in the text. Annotation only — does not suppress candidates.
+    # Uses is_non_prefixed (the per-keyword path) rather than NEGATION_PHRASES (whole-text scan),
+    # so "non-profit" cannot trigger it — only an actually matched ethnic term can.
+    if primary_states and has_non_prefixed_negation(primary_states, combined):
+        notes.append("Negation detected - verify exclusion vs inclusion intent")
+
     return notes
+
+def has_non_prefixed_negation(states, combined):
+    """
+    Return True if any primary candidate's ethnic term appears after 'non-' in text.
+    Extracts a searchable keyword from each candidate's most specific level name
+    (L3 first, then the last content word of L2/L1 after stripping 'Origins').
+    """
+    for s in states:
+        for level in [s["level3"], s["level2"], s["level1"]]:
+            if not level:
+                continue
+            # Strip comma-qualified suffixes ("Black, not otherwise specified" → "Black")
+            word = re.sub(r'\s*,.*$', '', level).strip()
+            # Strip "Origins" and leading direction words to reach the ethnic noun
+            word = re.sub(r'\borigins?\b', '', word, flags=re.IGNORECASE).strip()
+            parts = [p for p in word.split() if len(p) > 2]
+            if not parts:
+                continue
+            # Use the last meaningful word: "North American Indigenous" → "Indigenous"
+            keyword = parts[-1]
+            if is_non_prefixed(keyword, combined):
+                return True
+    return False
 
 # ---------------------------------------------------------------------------
 # Public entry point

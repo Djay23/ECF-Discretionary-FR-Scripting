@@ -35,6 +35,7 @@ PATTERN_RULES = [
     (r"\bindigenous\b", "North American Indigenous Origins", "", ""),
     (r"\bindiginous\b", "North American Indigenous Origins", "", ""),
     (r"\bindigenious\b", "North American Indigenous Origins", "", ""),
+    (r"\bindingeous\b", "North American Indigenous Origins", "", ""),
     (r"\btreaty 6\b", "North American Indigenous Origins", "", ""),
     (r"\bnorthern european\b", "European Origins", "Northern European Origins", ""),
     (r"\bsouthern european\b", "European Origins", "Southern European Origins", ""),

@@ -52,6 +52,9 @@ Also handles:
     - Strict word-boundary matching (no "blacksmith" -> "black")
 """
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Engine 1 and 2
+import bootstrap 
+
 # Semantic-similarity fallback (see semantic_fallback.py).
 try:
     import semantic_fallback
@@ -488,7 +491,6 @@ def looks_like_demonym(group_name):
     tokens = group_name.lower().split()
     return not any(t in NON_ETHNIC_LEADING_WORDS for t in tokens)
 
-
 def is_known_taxonomy_keyword(group_name, taxonomy_entries):
     """Return True if group_name contains a recognized taxonomy keyword."""
     for entry in taxonomy_entries:
@@ -499,14 +501,12 @@ def is_known_taxonomy_keyword(group_name, taxonomy_entries):
             return True
     return False
 
-
 def matches_pattern_rule(group_name):
     """Return True if group_name matches any PATTERN_RULES entry."""
     for pattern, *_ in PATTERN_RULES:
         if re.search(pattern, group_name, re.IGNORECASE):
             return True
     return False
-
 
 def detect_ethnocultural_org_name(funding_request_name, candidates, bipoc_present, taxonomy_entries):
     """
@@ -764,10 +764,8 @@ def main():
 
     start_time = time.time()
 
-    SCRIPT_DIR = Path(__file__).resolve().parent
-
-    taxonomy_filepath = SCRIPT_DIR.parent / "Taxonomy" / "Taxonomy - Definitions.xlsx"
-    funding_filepath = SCRIPT_DIR.parent / "Data Sheets" / "FR testing.xlsx"
+    taxonomy_filepath = bootstrap.PROJECT_ROOT / "Taxonomy" / "Taxonomy - Definitions.xlsx"
+    funding_filepath = bootstrap.PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx"
  
     print(f"Loading taxonomy from: {taxonomy_filepath}")
     try:

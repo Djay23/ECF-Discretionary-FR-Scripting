@@ -37,6 +37,7 @@ IDENTITY_KEY_TO_LABEL = {
     "genderqueer":    GENDER_OTHER,
     "non_binary":     GENDER_OTHER,
     "transgender":    GENDER_OTHER,
+    "lgbtq_umbrella": GENDER_OTHER,
 }
 
 # Short name used inside "Multiple: …" flag text
@@ -50,6 +51,7 @@ IDENTITY_KEY_SHORT_LABEL = {
     "genderqueer":    "genderqueer",
     "non_binary":     "non-binary",
     "transgender":    "transgender",
+    "lgbtq_umbrella": "gender-diverse (2SLGBTQIA+)",
 }
 
 # ---------------------------------------------------------------------------
@@ -68,12 +70,12 @@ IDENTITY_KEY_SHORT_LABEL = {
 # ---------------------------------------------------------------------------
 GENDER_TERM_PATTERNS = [
     # women_girls — female first
-    (r"\bfemales?\b", "women_girls", "sex_term"),
+    (r"\bfemales?\b", "women_girls", None),
     (r"\bwomen\b", "women_girls", None),
     (r"\bwoman\b", "women_girls", None),
     (r"\bgirls?\b", "women_girls", None),
     # men_boys
-    (r"\bmales?\b", "men_boys", "sex_term"),
+    (r"\bmales?\b", "men_boys", None),
     (r"\bmen\b", "men_boys", None),
     (r"\bman\b", "men_boys", None),
     (r"\bboys?\b", "men_boys", None),
@@ -101,15 +103,18 @@ BARE_TRANS_PATTERN = r"\btrans\b"
 # Used to detect "gender queer" / "genderqueer" context so bare-queer flag is suppressed
 GENDER_QUEER_CONTEXT = r"\bgender[\-\s]?queer\b|\bgenderqueer\b"
 
+# Shared acronym pattern — referenced by SEXUAL_ORIENTATION_PATTERNS and the gender
+# umbrella scan so the regex lives in exactly one place.
+# normalize_text() replaces literal + with space, so \+? matches gracefully without it.
+UMBRELLA_ACRONYM_PATTERN = r"\b(2s)?lgbt(?:q(?:ia?|2s)?)?\+?(?!\w)"
+
 # ---------------------------------------------------------------------------
 # Flag strings (all live here so a reviewer can grep one file)
 # ---------------------------------------------------------------------------
-FLAG_SEX_TERM = "Sex term (female/male) used - verify gender-identity vs. biological-sex intent"
-FLAG_QUEER_AMBIGUOUS = "Ambiguous 'queer' - may mean genderqueer (gender) or a sexual-identity term - verify"
-FLAG_BARE_TRANS = "Possible false 'trans' token - verify transgender vs. trans- prefix word"
-FLAG_ASPIRATIONAL = "Aspirational/future language - group may not be current served population"
+FLAG_ASPIRATIONAL     = "Aspirational/future language - group may not be current served population"
 FLAG_TWO_SPIRIT_INDIG = "Two-Spirit present - also an Indigenous signal - cross-check ethnic classification"
-FLAG_NEGATION = "Negation detected - verify exclusion vs inclusion intent"
+FLAG_NEGATION         = "Negation detected - verify exclusion vs inclusion intent"
+FLAG_UMBRELLA_ACRONYM = "Gender identity inferred from 2SLGBTQIA+ umbrella acronym - umbrella also spans cisgender orientations; verify served population"
 
 # ---------------------------------------------------------------------------
 # Sexual Identity — output labels, columns, signals, flags
@@ -117,11 +122,11 @@ FLAG_NEGATION = "Negation detected - verify exclusion vs inclusion intent"
 SEXUAL_2SLGBTQIA   = "2SLGBTQIA+"
 SEXUAL_GENERAL_POP = "General Population (No specific sexual identity served)"
 
-OUTPUT_SEXUAL      = "Sexual Id - FR10"
+OUTPUT_SEXUAL = "Sexual Id - FR10"
 OUTPUT_SEXUAL_FLAG = "Sexual Classification Flag"
 
 # Gender-diverse identity keys that imply 2SLGBTQIA+ (all gender keys except women/men)
-_SEXUAL_GENDER_DIVERSE_KEYS = {
+SEXUAL_GENDER_DIVERSE_KEYS = {
     "two_spirit", "agender", "gender_fluid", "gender_neutral",
     "genderqueer", "non_binary", "transgender",
 }
@@ -129,7 +134,7 @@ _SEXUAL_GENDER_DIVERSE_KEYS = {
 # Single source of truth — reuse GENDER_TERM_PATTERNS; no re-listing of trans/non-binary/etc.
 # BARE_TRANS_PATTERN appended because bare "trans" also signals 2SLGBTQIA+.
 SEXUAL_GENDER_DIVERSE_PATTERNS = (
-    [pat for pat, key, _ in GENDER_TERM_PATTERNS if key in _SEXUAL_GENDER_DIVERSE_KEYS]
+    [pat for pat, key, _ in GENDER_TERM_PATTERNS if key in SEXUAL_GENDER_DIVERSE_KEYS]
     + [BARE_TRANS_PATTERN]
 )
 
@@ -144,12 +149,10 @@ SEXUAL_ORIENTATION_PATTERNS = [
     r"\bintersex\b",
     r"\basexual\b",
     r"\bpansexual\b",
-    # Acronym family: optional 2s prefix, optional q/ia/2s suffix, optional +
-    # normalize_text() replaces literal + with space, so \+? matches gracefully without it.
-    r"\b(2s)?lgbt(?:q(?:ia?|2s)?)?\+?(?!\w)",
+    UMBRELLA_ACRONYM_PATTERN,   # single source of truth — defined above
 ]
 
 # Sexual identity flag strings
-SFLAG_NEGATION     = "Negation detected - verify exclusion vs inclusion intent"
-SFLAG_GENDER_TERM  = "Signal is a gender-identity term (trans/two-spirit/non-binary/…) - 2SLGBTQIA+ via umbrella, verify sexual-orientation intent"
+SFLAG_NEGATION = "Negation detected - verify exclusion vs inclusion intent"
+SFLAG_GENDER_TERM = "Signal is a gender-identity term (trans/two-spirit/non-binary/…) - 2SLGBTQIA+ via umbrella, verify sexual-orientation intent"
 SFLAG_ASPIRATIONAL = "Aspirational/future language - group may not be current served population"

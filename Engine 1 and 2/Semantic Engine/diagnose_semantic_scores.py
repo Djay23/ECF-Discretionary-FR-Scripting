@@ -2,6 +2,10 @@ import sys
 import pandas as pd
 import numpy as np
 import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Engine 1 and 2
+import bootstrap
 
 import ethnic_taggerv3 as et
 import semantic_fallback as sf
@@ -35,10 +39,8 @@ TOP_N = 20  # how many of the highest-scoring rows to print in full for manual r
 def main():
     start_time = time.time()
     
-    SCRIPT_DIR = Path(__file__).resolve().parent
-
-    taxonomy_filepath = SCRIPT_DIR.parent / "Taxonomy" / "Taxonomy - Definitions.xlsx"
-    funding_filepath = SCRIPT_DIR.parent / "Data Sheets" / "FR testing.xlsx"
+    taxonomy_filepath = bootstrap.PROJECT_ROOT / "Taxonomy" / "Taxonomy - Definitions.xlsx"
+    funding_filepath = bootstrap.PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx"
 
     tax_df = pd.read_excel(taxonomy_filepath, sheet_name=et.TAXONOMY_SHEET, dtype=str)
     data_df = pd.read_excel(funding_filepath, sheet_name=et.DATA_SHEET, dtype=str)

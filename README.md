@@ -316,9 +316,19 @@ Is this something a human reviewer actually needs to look at?
 - Using Python Library `Country_Converter` to pull extensive dictionary of country mappings instead of hardcoding. 
 - Use Python Library to pull extensive dictionary of People Groups.
 - Column in Review sheet of Classification Frequency - Flag frequency for each Ethnic grouping
+- Low priority section for low priority flags.
+- Gazan/Gaza should be handled (not sure if this is handled)
 - Classifcation of ECF Focus Areas.
 - Classification of Sectors. (Dave -> flagging accuracy) 
 
 ### Report:
 - What to explore based on gathered data.
 - Present data in a format that means something.
+
+## TO NOTE: Gender & Sex Identity Classification:
+- Flag HERizon mentions - should default to Multiple identities for gender and General for sex, unless something under the umbrella of 2SLGBTQIA+
+- Aspirational language should not be flagged for gender & sex.
+- 
+
+# 2026-07-06
+## Sprint 3 - Auditing - Classification of Sexual & Gender Identity

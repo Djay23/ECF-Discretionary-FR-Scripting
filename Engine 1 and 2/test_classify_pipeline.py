@@ -3,6 +3,7 @@ import os
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bootstrap  
 
 from classify_pipeline import classify_row
 from ethnic_taggerv3 import MULTIPLE_ETHNIC, OTHER_ETHNIC, GENERAL_POP

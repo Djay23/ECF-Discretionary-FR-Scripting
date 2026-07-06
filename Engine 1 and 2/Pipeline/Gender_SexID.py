@@ -5,6 +5,9 @@ import pandas as pd
 from openpyxl import load_workbook
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Engine 1 and 2
+import bootstrap
+
 from ethnic_taggerv3 import (
     normalize_text,
     get_column_texts,
@@ -24,9 +27,9 @@ from gender_constants import (
     IDENTITY_KEY_TO_LABEL, IDENTITY_KEY_SHORT_LABEL,
     GENDER_TERM_PATTERNS,
     BARE_QUEER_PATTERN, BARE_TRANS_PATTERN, GENDER_QUEER_CONTEXT,
+    UMBRELLA_ACRONYM_PATTERN,
     # Gender flags
-    FLAG_SEX_TERM, FLAG_QUEER_AMBIGUOUS, FLAG_BARE_TRANS,
-    FLAG_ASPIRATIONAL, FLAG_TWO_SPIRIT_INDIG, FLAG_NEGATION,
+    FLAG_ASPIRATIONAL, FLAG_TWO_SPIRIT_INDIG, FLAG_NEGATION, FLAG_UMBRELLA_ACRONYM,
     # Sexual identity labels
     SEXUAL_2SLGBTQIA, SEXUAL_GENERAL_POP,
     # Sexual output columns
@@ -72,7 +75,6 @@ To Run:
 
 DATA_SHEET = "Discretionary Funding Requests"
 
-
 # ===========================================================================
 # GENDER IDENTITY — extraction + resolver
 # ===========================================================================
@@ -83,12 +85,12 @@ def extract_gender_candidates(text):
 
     Returns
     -------
-    keys        : set[str]  — accepted identity keys
-    flags_out   : set[str]  — annotation flag strings triggered by this text
-    any_negated : bool      — True if any negation encountered (→ FLAG_NEGATION)
+    keys: set[str]  — accepted identity keys
+    flags_out: set[str]  — annotation flag strings triggered by this text
+    any_negated : bool — True if any negation encountered (→ FLAG_NEGATION)
     """
-    keys        = set()
-    flags_out   = set()
+    keys = set()
+    flags_out = set()
     any_negated = False
 
     # Standard (unambiguous) patterns
@@ -103,8 +105,6 @@ def extract_gender_candidates(text):
         if is_example_mention(term, text):
             continue
         keys.add(identity_key)
-        if extra_flag_key == "sex_term":
-            flags_out.add(FLAG_SEX_TERM)
 
     # Bare "queer" — ambiguity check
     # \bqueer\b fires on "queer youth" AND on "gender queer community".
@@ -118,7 +118,6 @@ def extract_gender_candidates(text):
         if prefix.lower().endswith("gender") or prefix.lower().endswith("gender-"):
             continue  # already captured by the "gender queer" standard pattern
         keys.add("genderqueer")
-        flags_out.add(FLAG_QUEER_AMBIGUOUS)
 
     # Bare "trans" — false-positive risk
     # \btrans\b cannot match inside "transgender" (no \b between 's' and 'g').
@@ -128,10 +127,21 @@ def extract_gender_candidates(text):
             any_negated = True
             continue
         keys.add("transgender")
-        flags_out.add(FLAG_BARE_TRANS)
+
+    # 2SLGBTQIA+ umbrella acronym — implies gender-diverse identity on the gender axis.
+    # "2S" prefix additionally adds two_spirit (Two-Spirit is explicitly named in the acronym).
+    # resolve_gender then handles: 1 key (lgbtq_umbrella alone) → Other; 2+ keys → Multiple.
+    for m in re.finditer(UMBRELLA_ACRONYM_PATTERN, text, re.IGNORECASE):
+        term = m.group(0)
+        if is_negated(term, text) or is_example_mention(term, text):
+            any_negated = True
+            continue
+        keys.add("lgbtq_umbrella")
+        if term.lower().startswith("2s"):
+            keys.add("two_spirit")
+        flags_out.add(FLAG_UMBRELLA_ACRONYM)
 
     return keys, flags_out, any_negated
-
 
 def resolve_gender(keys, flags_set, any_negated, aspirational):
     """
@@ -171,7 +181,6 @@ def classify_gender(row):
     aspirational                  = matches_any(ASPIRATIONAL_PHRASES, text)
     return resolve_gender(keys, flags_set, any_negated, aspirational)
 
-
 # ===========================================================================
 # SEXUAL IDENTITY — extraction + resolver
 # ===========================================================================
@@ -182,14 +191,13 @@ def extract_sexual_candidates(text):
 
     Returns
     -------
-    found           : bool — at least one signal survived guards
-    gender_term_only: bool — signals came exclusively from gender-diverse
-                             patterns (not orientation terms / acronyms)
-    any_negated     : bool — at least one negation encountered
+    found: bool — at least one signal survived guards
+    gender_term_only: bool — signals came exclusively from gender-diverse patterns (not orientation terms / acronyms)
+    any_negated : bool — at least one negation encountered
     """
     found_gender_diverse = False
-    found_orientation    = False
-    any_negated          = False
+    found_orientation = False
+    any_negated = False
 
     for pattern in SEXUAL_GENDER_DIVERSE_PATTERNS:
         m = re.search(pattern, text, re.IGNORECASE)
@@ -219,7 +227,6 @@ def extract_sexual_candidates(text):
     gender_term_only = found_gender_diverse and not found_orientation
     return found, gender_term_only, any_negated
 
-
 def resolve_sexual(found, gender_term_only, any_negated, aspirational):
     """
     found → 2SLGBTQIA+; else → General Population.
@@ -242,7 +249,6 @@ def resolve_sexual(found, gender_term_only, any_negated, aspirational):
         flag_parts.append(SFLAG_ASPIRATIONAL)
     return SEXUAL_GENERAL_POP, "; ".join(flag_parts)
 
-
 def classify_sexual(row):
     """Public entry point — sexual identity classification for a single row."""
     col_texts = get_column_texts(row)
@@ -254,7 +260,6 @@ def classify_sexual(row):
     aspirational                          = matches_any(ASPIRATIONAL_PHRASES, text)
     return resolve_sexual(found, gender_term_only, any_negated, aspirational)
 
-
 # ===========================================================================
 # main() — writes both classifiers to FR testing.xlsx in one workbook pass
 # ===========================================================================
@@ -262,8 +267,7 @@ def classify_sexual(row):
 def main():
     start_time = time.time()
 
-    SCRIPT_DIR       = Path(__file__).resolve().parent
-    funding_filepath = SCRIPT_DIR.parent / "Data Sheets" / "FR testing.xlsx"
+    funding_filepath = bootstrap.PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx"
 
     print(f"Loading funding requests from: {funding_filepath}")
     try:

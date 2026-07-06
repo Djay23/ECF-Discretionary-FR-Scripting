@@ -1,10 +1,15 @@
 import sys
 import random
 import pandas as pd
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Engine 1 and 2
+import bootstrap 
 
 import ethnic_taggerv3 as et
 from classify_pipeline import classify_row as pipeline_classify_row
 import Gender_SexID as gs
+import audit_evidence as ae
 from pathlib import Path
 
 """
@@ -44,13 +49,16 @@ Output:
 SAMPLE_SIZE = 100
 RANDOM_SEED = 42  # fixed so the same sample comes up
 
+GENDER_SAMPLE_COLS = ["Funding Request Name", "Final_Project_Description",
+                      "Final_Summary_Description", "Purpose", "Gender Id", "Gender Flag"]
+SEXUAL_SAMPLE_COLS = ["Funding Request Name", "Final_Project_Description",
+                      "Final_Summary_Description", "Purpose", "Sexual Id", "Sexual Flag"]
+
 def main():
 
-    SCRIPT_DIR = Path(__file__).resolve().parent
-
-    taxonomy_filepath = SCRIPT_DIR.parent / "Taxonomy" / "Taxonomy - Definitions.xlsx"
-    funding_filepath = SCRIPT_DIR.parent / "Data Sheets" / "FR testing.xlsx"
-    OUTPUT_FILE = SCRIPT_DIR.parent / "Data Sheets" / "review_reportDemo(new pipeline).xlsx"
+    taxonomy_filepath = bootstrap.PROJECT_ROOT / "Taxonomy" / "Taxonomy - Definitions.xlsx"
+    funding_filepath = bootstrap.PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx"
+    OUTPUT_FILE = bootstrap.PROJECT_ROOT / "Data Sheets" / "review_report(Gender and Sex).xlsx"
 
     tax_df = pd.read_excel(taxonomy_filepath, sheet_name=et.TAXONOMY_SHEET, dtype=str)
     data_df = pd.read_excel(funding_filepath, sheet_name=et.DATA_SHEET, dtype=str)
@@ -75,6 +83,9 @@ def main():
             "Gender Flag": g_flag,
             "Sexual Id": s_label,
             "Sexual Flag": s_flag,
+            "Ethnic Evidence": ae.ethnic_evidence(row, taxonomy_entries),
+            "Gender Evidence": ae.gender_evidence(row),
+            "Sexual Evidence": ae.sexual_evidence(row),
         })
 
     results_df = pd.DataFrame(rows)
@@ -105,11 +116,13 @@ def main():
 
     # --- Tab 5: classification (E1/E2/E3) frequency, most common first ---
     class_counts = (
-        results_df.groupby(["Ethnic 1", "Ethnic 2", "Ethnic 3"])
-        .size()
-        .reset_index(name="Count")
+        results_df.assign(flagged=results_df["Classification Flag"] != "")
+        .groupby(["Ethnic 1", "Ethnic 2", "Ethnic 3"])
+        .agg(Count=("flagged", "size"), Flagged_Count=("flagged", "sum"))
+        .reset_index()
         .sort_values("Count", ascending=False)
     )
+    class_counts.rename(columns={"Flagged_Count": "Flagged Count"}, inplace=True)
 
     # --- Gender tabs ---
     gender_gen_pop_df = results_df[results_df["Gender Id"] == gs.GENDER_GENERAL_POP]
@@ -117,7 +130,7 @@ def main():
     gender_gen_pop_sample = (
         gender_gen_pop_df.sample(n=g_sample_n, random_state=RANDOM_SEED)
         if g_sample_n > 0 else gender_gen_pop_df
-    )
+    )[GENDER_SAMPLE_COLS]
     gender_multiple_df = results_df[results_df["Gender Id"] == gs.GENDER_MULTIPLE]
     gender_flag_counts = (
         results_df[results_df["Gender Flag"] != ""]["Gender Flag"]
@@ -136,7 +149,7 @@ def main():
     sexual_gen_pop_sample = (
         sexual_gen_pop_df.sample(n=s_sample_n, random_state=RANDOM_SEED)
         if s_sample_n > 0 else sexual_gen_pop_df
-    )
+    )[SEXUAL_SAMPLE_COLS]
     sexual_flag_counts = (
         results_df[results_df["Sexual Flag"] != ""]["Sexual Flag"]
         .value_counts().reset_index()
@@ -147,8 +160,21 @@ def main():
     )
     sexual_class_counts.columns = ["Sexual Id", "Count"]
 
+    # --- Audit Detail tab — every row, all labels/flags/evidence ---
+    AUDIT_DETAIL_COLS = [
+        "Funding Request Name",
+        "Final_Project_Description", "Final_Summary_Description", "Purpose",
+        "Ethnic 1", "Ethnic 2", "Ethnic 3",
+        "Gender Id", "Sexual Id",
+        "Classification Flag", "Gender Flag", "Sexual Flag",
+        "Ethnic Evidence", "Gender Evidence", "Sexual Evidence",
+    ]
+    audit_detail_df = results_df[AUDIT_DETAIL_COLS]
+
     with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
-        # Ethnic tabs (unchanged)
+        # Primary audit surface
+        audit_detail_df.to_excel(writer, sheet_name="Audit Detail", index=False)
+        # Ethnic tabs
         general_sample.to_excel(writer, sheet_name="General Pop Sample", index=False)
         ambiguous_df.to_excel(writer, sheet_name="Ambiguous Equity Rows", index=False)
         multiple_df.to_excel(writer, sheet_name="Multiple Rows", index=False)
@@ -166,8 +192,7 @@ def main():
         sexual_class_counts.to_excel(writer, sheet_name="Sexual Class Frequency", index=False)
 
     print(f"\nWritten to: {OUTPUT_FILE}")
-    print("This file is a separate review workbook -- your original funding")
-    print("requests file was not opened for writing and was not modified.")
+    print("This file is a separate review workbook -- your original funding\nrequests file was not opened for writing and was not modified.")
 
 if __name__ == "__main__":
     main()

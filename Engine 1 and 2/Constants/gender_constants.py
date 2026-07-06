@@ -26,6 +26,8 @@ OUTPUT_GENDER_FLAG = "Gender Classification Flag"
 # Each "Other (…)" identity key maps to the same label (the six subtypes are
 # individually distinct for the Multiple rule, but collapse to one label when
 # only one is detected).
+# lgbtq_umbrella short-circuits to GENDER_MULTIPLE in resolve_gender() before
+# IDENTITY_KEY_TO_LABEL is consulted; GENDER_OTHER here is a safe fallback only.
 # ---------------------------------------------------------------------------
 IDENTITY_KEY_TO_LABEL = {
     "women_girls":    GENDER_WOMEN_GIRLS,
@@ -51,7 +53,7 @@ IDENTITY_KEY_SHORT_LABEL = {
     "genderqueer":    "genderqueer",
     "non_binary":     "non-binary",
     "transgender":    "transgender",
-    "lgbtq_umbrella": "gender-diverse (2SLGBTQIA+)",
+    "lgbtq_umbrella": "2SLGBTQIA+ umbrella",
 }
 
 # ---------------------------------------------------------------------------
@@ -74,11 +76,37 @@ GENDER_TERM_PATTERNS = [
     (r"\bwomen\b", "women_girls", None),
     (r"\bwoman\b", "women_girls", None),
     (r"\bgirls?\b", "women_girls", None),
+    # women_girls — familial / relational (unambiguous gendered terms)
+    # normalize_text strips apostrophes/punctuation, so "mothers'" and "mothers" both → \bmothers\b
+    (r"\bmothers?\b", "women_girls", None),
+    (r"\bmoms?\b", "women_girls", None),
+    (r"\bmaternal\b", "women_girls", None),
+    (r"\bmatriarchs?\b", "women_girls", None),
+    (r"\bmatriarchal\b", "women_girls", None),
+    (r"\bsisters?\b", "women_girls", None),
+    (r"\bdaughters?\b", "women_girls", None),
+    (r"\bgrandmothers?\b", "women_girls", None),
+    (r"\baunts?\b", "women_girls", None),
+    (r"\bwidows?\b", "women_girls", None),
+    (r"\bladies\b", "women_girls", None),
+    (r"\blady\b", "women_girls", None),
     # men_boys
     (r"\bmales?\b", "men_boys", None),
     (r"\bmen\b", "men_boys", None),
     (r"\bman\b", "men_boys", None),
     (r"\bboys?\b", "men_boys", None),
+    # men_boys — familial / relational
+    (r"\bfathers?\b", "men_boys", None),
+    (r"\bdads?\b", "men_boys", None),
+    (r"\bpaternal\b", "men_boys", None),
+    (r"\bpatriarchs?\b", "men_boys", None),
+    (r"\bpatriarchal\b", "men_boys", None),
+    (r"\bbrothers?\b", "men_boys", None),
+    (r"\bsons?\b", "men_boys", None),
+    (r"\bgrandfathers?\b", "men_boys", None),
+    (r"\buncles?\b", "men_boys", None),
+    (r"\bwidowers?\b", "men_boys", None),
+    (r"\bgentlem[ae]n\b", "men_boys", None),
     # two_spirit
     (r"\btwo[\-\s]spirited?\b", "two_spirit", None),
     (r"\b2[\-\s]spirited?\b", "two_spirit", None),
@@ -115,6 +143,39 @@ FLAG_ASPIRATIONAL     = "Aspirational/future language - group may not be current
 FLAG_TWO_SPIRIT_INDIG = "Two-Spirit present - also an Indigenous signal - cross-check ethnic classification"
 FLAG_NEGATION         = "Negation detected - verify exclusion vs inclusion intent"
 FLAG_UMBRELLA_ACRONYM = "Gender identity inferred from 2SLGBTQIA+ umbrella acronym - umbrella also spans cisgender orientations; verify served population"
+FLAG_ORG_NAME         = "Gender/sexual term appears inside an organization or proper name - verify served population vs organization name"
+FLAG_AMBIGUOUS_TERM   = "Ambiguous coded gender/orientation term (femme/masc/butch/...) - verify served population on both gender and sexual-identity axes"
+
+# ---------------------------------------------------------------------------
+# Ambiguous coded terms — flag without classifying (femme/masc/butch are
+# gender-coded AND lesbian-orientation-adjacent; reviewer checks both axes).
+# ---------------------------------------------------------------------------
+AMBIGUOUS_CODED_TERMS = [
+    r"\bfemme\b",
+    r"\bmasc\b",
+    r"\bbutch\b",
+    r"\bstud\b",
+]
+
+# ---------------------------------------------------------------------------
+# Org / proper-name context patterns.
+# Run on normalized text (normalize_text lowercases + replaces all
+# non-word/non-space chars with space, so apostrophes become spaces:
+#   "Women's" → "women s",  "Boys & Girls" → "boys  girls" → "boys girls").
+# When any pattern fires alongside a classification, FLAG_ORG_NAME is appended.
+# ---------------------------------------------------------------------------
+ORG_NAME_CONTEXT_PATTERNS = [
+    # "Boys (and) Girls Club" — & normalized to space; explicit "and" optional
+    r"\bboys?\s+(?:and\s+)?girls?\s+club\b",
+    r"\bgirls?\s+(?:and\s+)?boys?\s+club\b",
+    # "[gender word][s] [org noun]" — "womens association", "ladies institute"
+    # "women s" (from "Women's") is also matched since 's' token can follow
+    r"\b(?:womens?|women\s+s|girls?|mens?|boys?|females?|males?|mothers?|fathers?|ladies|lady)\s+"
+    r"(?:club|society|association|institute|foundation|centre|center|council|league|academy|guild|chapter|network|organization)\b",
+    # "[org noun] for/of [gender word]" — "institute for women", "foundation for girls"
+    r"\b(?:club|society|association|institute|foundation|centre|center|council|league|academy|guild|chapter|network|organization)\s+"
+    r"(?:for|of)\s+(?:women|woman|girls?|men|man|boys?|females?|males?|mothers?|fathers?|ladies|lady)\b",
+]
 
 # ---------------------------------------------------------------------------
 # Sexual Identity — output labels, columns, signals, flags
@@ -154,5 +215,5 @@ SEXUAL_ORIENTATION_PATTERNS = [
 
 # Sexual identity flag strings
 SFLAG_NEGATION = "Negation detected - verify exclusion vs inclusion intent"
-SFLAG_GENDER_TERM = "Signal is a gender-identity term (trans/two-spirit/non-binary/…) - 2SLGBTQIA+ via umbrella, verify sexual-orientation intent"
+SFLAG_GENDER_TERM = "2SLGBTQIA+ inferred from a gender-identity term (trans/non-binary/two-spirit/...) not an explicit orientation - verify sexual-identity intent"
 SFLAG_ASPIRATIONAL = "Aspirational/future language - group may not be current served population"

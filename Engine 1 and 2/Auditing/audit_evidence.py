@@ -120,9 +120,9 @@ def ethnic_evidence(row, taxonomy_entries):
     seen = set()   # (matched_term.lower(), col) — dedupe within column
 
     for col in INPUT_COLS_PRIORITY:
-        normed = normed(row, col)
-        raw    = raw(row, col)
-        if not normed:
+        norm_text = normed(row, col)
+        raw_text  = raw(row, col)
+        if not norm_text:
             continue
 
         # Cases 1-3: taxonomy keywords
@@ -131,45 +131,45 @@ def ethnic_evidence(row, taxonomy_entries):
             if not kw:
                 continue
             pat = re.compile(r'\b' + re.escape(kw) + r's?\b', re.IGNORECASE)
-            for m in pat.finditer(normed):
+            for m in pat.finditer(norm_text):
                 term = m.group(0)
                 key  = (term.lower(), col)
                 if key in seen:
                     continue
                 seen.add(key)
                 label   = entry.get("level3") or entry.get("level2") or entry.get("level1") or kw
-                negated = is_negated(kw, normed)
-                example = is_example_mention(kw, normed)
+                negated = is_negated(kw, norm_text)
+                example = is_example_mention(kw, norm_text)
                 parts.append(fmt(term, f"taxonomy({label})", col, negated, example,
-                                  normed, m.start(), m.end(), raw))
+                                  norm_text, m.start(), m.end(), raw_text))
 
         # Case 9: BIPOC keywords
         for kw_pat in BIPOC_KEYWORDS:
-            for m in re.finditer(kw_pat, normed, re.IGNORECASE):
+            for m in re.finditer(kw_pat, norm_text, re.IGNORECASE):
                 term = m.group(0)
                 key  = (term.lower(), col)
                 if key in seen:
                     continue
                 seen.add(key)
-                negated = is_negated(term, normed)
-                example = is_example_mention(term, normed)
+                negated = is_negated(term, norm_text)
+                example = is_example_mention(term, norm_text)
                 parts.append(fmt(term, "bipoc", col, negated, example,
-                                  normed, m.start(), m.end(), raw))
+                                  norm_text, m.start(), m.end(), raw_text))
 
         # Compound identity phrases (ALWAYS_MULTIPLE → always Multi)
         for compound_pat in ALWAYS_MULTIPLE_COMPOUNDS:
-            for m in re.finditer(compound_pat, normed, re.IGNORECASE):
+            for m in re.finditer(compound_pat, norm_text, re.IGNORECASE):
                 term = m.group(0)
                 key  = (term.lower(), col)
                 if key in seen:
                     continue
                 seen.add(key)
                 parts.append(fmt(term, "compound", col, False, False,
-                                  normed, m.start(), m.end(), raw))
+                                  norm_text, m.start(), m.end(), raw_text))
 
         # Case 4: directional / structural pattern rules
         for pat_str, l1, l2, l3 in PATTERN_RULES:
-            for m in re.finditer(pat_str, normed, re.IGNORECASE):
+            for m in re.finditer(pat_str, norm_text, re.IGNORECASE):
                 term = m.group(0)
                 key  = (term.lower(), col)
                 if key in seen:
@@ -177,12 +177,12 @@ def ethnic_evidence(row, taxonomy_entries):
                 seen.add(key)
                 label = l3 or l2 or l1
                 parts.append(fmt(term, f"pattern({label})", col, False, False,
-                                  normed, m.start(), m.end(), raw))
+                                  norm_text, m.start(), m.end(), raw_text))
 
         # Cases 6-7: country / nationality map
         for country, (l1, l2, l3) in COUNTRY_REGION_MAP.items():
-            direct  = re.search(r'\b' + re.escape(country) + r's?\b', normed, re.IGNORECASE)
-            from_ph = re.search(r'\bfrom\s+' + re.escape(country) + r's?\b', normed, re.IGNORECASE)
+            direct  = re.search(r'\b' + re.escape(country) + r's?\b', norm_text, re.IGNORECASE)
+            from_ph = re.search(r'\bfrom\s+' + re.escape(country) + r's?\b', norm_text, re.IGNORECASE)
             m = direct or from_ph
             if not m:
                 continue
@@ -192,26 +192,26 @@ def ethnic_evidence(row, taxonomy_entries):
                 continue
             seen.add(key)
             label   = l3 or l2 or l1
-            negated = is_negated(term, normed)
+            negated = is_negated(term, norm_text)
             parts.append(fmt(term, f"country({label})", col, negated, False,
-                               normed, m.start(), m.end(), raw))
+                               norm_text, m.start(), m.end(), raw_text))
 
         # Case 9b: broad identity labels
         for kw_pat in BROAD_IDENTITY_KEYWORDS:
-            for m in re.finditer(kw_pat, normed, re.IGNORECASE):
+            for m in re.finditer(kw_pat, norm_text, re.IGNORECASE):
                 term = m.group(0)
                 key  = (term.lower(), col)
                 if key in seen:
                     continue
                 seen.add(key)
-                negated = is_negated(term, normed)
-                example = is_example_mention(term, normed)
+                negated = is_negated(term, norm_text)
+                example = is_example_mention(term, norm_text)
                 parts.append(fmt(term, "broad_identity", col, negated, example,
-                                  normed, m.start(), m.end(), raw))
+                                  norm_text, m.start(), m.end(), raw_text))
 
         # Case 10: org-name lookup
         for org_name, (l1, l2, l3) in ORG_NAME_ETHNICITY_MAP.items():
-            m = re.search(r'\b' + re.escape(org_name) + r'\b', normed, re.IGNORECASE)
+            m = re.search(r'\b' + re.escape(org_name) + r'\b', norm_text, re.IGNORECASE)
             if not m:
                 continue
             term = m.group(0)
@@ -221,7 +221,7 @@ def ethnic_evidence(row, taxonomy_entries):
             seen.add(key)
             label = l3 or l2 or l1
             parts.append(fmt(term, f"org_lookup({label})", col, False, False,
-                               normed, m.start(), m.end(), raw))
+                               norm_text, m.start(), m.end(), raw_text))
 
     return " | ".join(parts)
 
@@ -234,59 +234,59 @@ def gender_evidence(row):
     seen  = set()
 
     for col in INPUT_COLS_PRIORITY:
-        normed = normed(row, col)
-        raw    = raw(row, col)
-        if not normed:
+        norm_text = normed(row, col)
+        raw_text  = raw(row, col)
+        if not norm_text:
             continue
 
         # Standard GENDER_TERM_PATTERNS
         for pat_str, identity_key, _ in GENDER_TERM_PATTERNS:
-            for m in re.finditer(pat_str, normed, re.IGNORECASE):
+            for m in re.finditer(pat_str, norm_text, re.IGNORECASE):
                 term = m.group(0)
                 key  = (term.lower(), col)
                 if key in seen:
                     continue
                 seen.add(key)
-                negated = is_negated(term, normed)
-                example = is_example_mention(term, normed)
+                negated = is_negated(term, norm_text)
+                example = is_example_mention(term, norm_text)
                 parts.append(fmt(term, f"gender({identity_key})", col, negated, example,
-                                  normed, m.start(), m.end(), raw))
+                                  norm_text, m.start(), m.end(), raw_text))
 
         # Bare "queer" (context-sensitive in gender classifier)
-        for m in re.finditer(BARE_QUEER_PATTERN, normed, re.IGNORECASE):
+        for m in re.finditer(BARE_QUEER_PATTERN, norm_text, re.IGNORECASE):
             term = m.group(0)
             key  = (term.lower(), col)
             if key in seen:
                 continue
             seen.add(key)
-            negated = is_negated(term, normed)
-            example = is_example_mention(term, normed)
+            negated = is_negated(term, norm_text)
+            example = is_example_mention(term, norm_text)
             parts.append(fmt(term, "gender(genderqueer/bare)", col, negated, example,
-                               normed, m.start(), m.end(), raw))
+                               norm_text, m.start(), m.end(), raw_text))
 
         # Bare "trans" (context-sensitive in gender classifier)
-        for m in re.finditer(BARE_TRANS_PATTERN, normed, re.IGNORECASE):
+        for m in re.finditer(BARE_TRANS_PATTERN, norm_text, re.IGNORECASE):
             term = m.group(0)
             key  = (term.lower(), col)
             if key in seen:
                 continue
             seen.add(key)
-            negated = is_negated(term, normed)
-            example = is_example_mention(term, normed)
+            negated = is_negated(term, norm_text)
+            example = is_example_mention(term, norm_text)
             parts.append(fmt(term, "gender(transgender/bare)", col, negated, example,
-                               normed, m.start(), m.end(), raw))
+                               norm_text, m.start(), m.end(), raw_text))
 
         # 2SLGBTQIA+ umbrella acronym
-        for m in re.finditer(UMBRELLA_ACRONYM_PATTERN, normed, re.IGNORECASE):
+        for m in re.finditer(UMBRELLA_ACRONYM_PATTERN, norm_text, re.IGNORECASE):
             term = m.group(0)
             key  = (term.lower(), col)
             if key in seen:
                 continue
             seen.add(key)
-            negated = is_negated(term, normed)
-            example = is_example_mention(term, normed)
+            negated = is_negated(term, norm_text)
+            example = is_example_mention(term, norm_text)
             parts.append(fmt(term, "gender(lgbtq_umbrella)", col, negated, example,
-                               normed, m.start(), m.end(), raw))
+                               norm_text, m.start(), m.end(), raw_text))
 
     parts.extend(org_ambiguous_evidence(row))
     return " | ".join(parts)
@@ -300,35 +300,35 @@ def sexual_evidence(row):
     seen  = set()
 
     for col in INPUT_COLS_PRIORITY:
-        normed = normed(row, col)
-        raw    = raw(row, col)
-        if not normed:
+        norm_text = normed(row, col)
+        raw_text  = raw(row, col)
+        if not norm_text:
             continue
 
         # Gender-diverse identity terms that imply 2SLGBTQIA+
         for pat_str in SEXUAL_GENDER_DIVERSE_PATTERNS:
-            for m in re.finditer(pat_str, normed, re.IGNORECASE):
+            for m in re.finditer(pat_str, norm_text, re.IGNORECASE):
                 term = m.group(0)
                 key  = (term.lower(), col)
                 if key in seen:
                     continue
                 seen.add(key)
-                negated = is_negated(term, normed)
-                example = is_example_mention(term, normed)
+                negated = is_negated(term, norm_text)
+                example = is_example_mention(term, norm_text)
                 parts.append(fmt(term, "sexual(gender_diverse)", col, negated, example,
-                                  normed, m.start(), m.end(), raw))
+                                  norm_text, m.start(), m.end(), raw_text))
 
         # Explicit orientation terms and acronyms
         for pat_str in SEXUAL_ORIENTATION_PATTERNS:
-            for m in re.finditer(pat_str, normed, re.IGNORECASE):
+            for m in re.finditer(pat_str, norm_text, re.IGNORECASE):
                 term = m.group(0)
                 key  = (term.lower(), col)
                 if key in seen:
                     continue
                 seen.add(key)
-                negated = is_negated(term, normed)
-                example = is_example_mention(term, normed)
+                negated = is_negated(term, norm_text)
+                example = is_example_mention(term, norm_text)
                 parts.append(fmt(term, "sexual(orientation)", col, negated, example,
-                                  normed, m.start(), m.end(), raw))
+                                  norm_text, m.start(), m.end(), raw_text))
 
     return " | ".join(parts)

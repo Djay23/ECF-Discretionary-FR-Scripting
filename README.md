@@ -332,3 +332,6 @@ Is this something a human reviewer actually needs to look at?
 
 # 2026-07-06
 ## Sprint 3 - Auditing - Classification of Sexual & Gender Identity
+- Audit Gender and Sex. ID classification for missed edge cases.
+- Construct review report audit document for this process.
+- Once final Gold standard document produced post-audit, make necessary adjustments.

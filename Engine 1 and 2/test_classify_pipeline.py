@@ -855,5 +855,170 @@ class TestBlueprint2Fixes(unittest.TestCase):
             self.assertTrue(hasattr(constants, name), f"constants.py missing: {name}")
 
 
+
+# ---------------------------------------------------------------------------
+# Gender + Sexual Identity classifier tests
+# Tests item 1–4 from the audit-driven improvement spec.
+# ---------------------------------------------------------------------------
+
+from Gender_SexID import (
+    classify_gender, classify_sexual,
+    GENDER_GENERAL_POP, GENDER_MULTIPLE, GENDER_OTHER,
+    GENDER_WOMEN_GIRLS, GENDER_MEN_BOYS,
+    SEXUAL_2SLGBTQIA, SEXUAL_GENERAL_POP,
+)
+from gender_constants import FLAG_ORG_NAME, FLAG_AMBIGUOUS_TERM, SFLAG_GENDER_TERM
+
+
+class TestGenderSexualClassifier(unittest.TestCase):
+    """Tests for all five audit-driven fixes to the gender/sexual classifier."""
+
+    # ------------------------------------------------------------------
+    # Item 1 — LGBTQ acronym → Multiple gender identities
+    # ------------------------------------------------------------------
+    def test_lgbtq_alone_produces_multiple(self):
+        """Bare 'lgbtq' → Multiple (not Other); flag names acronym source."""
+        label, flag = classify_gender(row(desc="Services for the lgbtq community."))
+        self.assertEqual(label, GENDER_MULTIPLE)
+        self.assertIn("2SLGBTQIA+", flag)
+
+    def test_lgbtqplus_produces_multiple(self):
+        """'lgbtq+' → Multiple (+ is stripped by normalize_text)."""
+        label, flag = classify_gender(row(desc="Supporting lgbtq+ youth."))
+        self.assertEqual(label, GENDER_MULTIPLE)
+
+    def test_lgbtqia_produces_multiple(self):
+        """'lgbtqia' variant → Multiple."""
+        label, flag = classify_gender(row(desc="Programs for the lgbtqia community."))
+        self.assertEqual(label, GENDER_MULTIPLE)
+
+    def test_2slgbtqia_produces_multiple_with_two_spirit_flag(self):
+        """'2SLGBTQIA+' → Multiple; Two-Spirit cross-check flag present."""
+        label, flag = classify_gender(row(desc="Serving 2SLGBTQIA+ individuals."))
+        self.assertEqual(label, GENDER_MULTIPLE)
+        self.assertIn("Two-Spirit", flag)
+
+    def test_lone_queer_produces_other_not_multiple(self):
+        """A single 'queer' (no umbrella acronym) → Other, not Multiple."""
+        label, flag = classify_gender(row(desc="A queer youth program."))
+        self.assertEqual(label, GENDER_OTHER)
+        self.assertNotEqual(label, GENDER_MULTIPLE)
+
+    # ------------------------------------------------------------------
+    # Item 2 — Org / proper-name context: keep classification + add flag
+    # ------------------------------------------------------------------
+    def test_boys_girls_club_classified_and_flagged(self):
+        """'Boys & Girls Club' → still classified (Women and/or girls or Multiple)
+        AND FLAG_ORG_NAME is present."""
+        label, flag = classify_gender(row(name="Boys and Girls Club of Edmonton"))
+        self.assertNotEqual(label, GENDER_GENERAL_POP)
+        self.assertIn(FLAG_ORG_NAME, flag)
+
+    def test_institute_for_women_classified_and_flagged(self):
+        """'Institute for Women' → Women and/or girls + FLAG_ORG_NAME."""
+        label, flag = classify_gender(row(desc="The institute for women provides programming."))
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+        self.assertIn(FLAG_ORG_NAME, flag)
+
+    def test_org_flag_not_fired_for_plain_gender_description(self):
+        """A plain description like 'serving women in Edmonton' has no org noun
+        — FLAG_ORG_NAME must NOT fire."""
+        label, flag = classify_gender(row(desc="Serving women in Edmonton."))
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+        self.assertNotIn(FLAG_ORG_NAME, flag)
+
+    # ------------------------------------------------------------------
+    # Item 3 — Gender-diverse term → Sexual: flag fires even with orientation
+    # ------------------------------------------------------------------
+    def test_trans_youth_produces_sexual_2slgbtqia_with_gender_flag(self):
+        """'trans youth' → Sexual 2SLGBTQIA+ with SFLAG_GENDER_TERM present."""
+        label, flag = classify_sexual(row(desc="Program serving trans youth."))
+        self.assertEqual(label, SEXUAL_2SLGBTQIA)
+        self.assertIn(SFLAG_GENDER_TERM, flag)
+
+    def test_trans_plus_gay_still_flags_gender_term(self):
+        """'trans and gay' → 2SLGBTQIA+; SFLAG_GENDER_TERM fires even though
+        an explicit orientation term (gay) is also present."""
+        label, flag = classify_sexual(row(desc="Resources for trans and gay individuals."))
+        self.assertEqual(label, SEXUAL_2SLGBTQIA)
+        self.assertIn(SFLAG_GENDER_TERM, flag)
+
+    def test_lesbian_only_no_gender_flag(self):
+        """Pure orientation term ('lesbian') → 2SLGBTQIA+; SFLAG_GENDER_TERM absent."""
+        label, flag = classify_sexual(row(desc="A program for lesbian women."))
+        self.assertEqual(label, SEXUAL_2SLGBTQIA)
+        self.assertNotIn(SFLAG_GENDER_TERM, flag)
+
+    # ------------------------------------------------------------------
+    # Item 4 — Vocabulary expansion (familial terms)
+    # ------------------------------------------------------------------
+    def test_single_mothers_classified_as_women_girls(self):
+        """'single mothers' → Women and/or girls."""
+        label, flag = classify_gender(row(desc="Supporting single mothers in our community."))
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+
+    def test_fathers_group_classified_as_men_boys(self):
+        """'fathers group' → Men and/or boys."""
+        label, flag = classify_gender(row(desc="A fathers group for new parents."))
+        self.assertEqual(label, GENDER_MEN_BOYS)
+
+    def test_grandmothers_classified_as_women_girls(self):
+        """'grandmothers' → Women and/or girls."""
+        label, flag = classify_gender(row(desc="Programming for Indigenous grandmothers."))
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+
+    def test_grandfathers_classified_as_men_boys(self):
+        """'grandfathers' → Men and/or boys."""
+        label, flag = classify_gender(row(desc="Cultural program for grandfathers and elders."))
+        self.assertEqual(label, GENDER_MEN_BOYS)
+
+    def test_maternal_classified_as_women_girls(self):
+        """'maternal' → Women and/or girls."""
+        label, flag = classify_gender(row(desc="Addressing maternal health outcomes."))
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+
+    def test_paternal_classified_as_men_boys(self):
+        """'paternal' → Men and/or boys."""
+        label, flag = classify_gender(row(desc="Supporting paternal mental health."))
+        self.assertEqual(label, GENDER_MEN_BOYS)
+
+    # ------------------------------------------------------------------
+    # Item 4 — Ambiguous coded terms: flag only, no classification change
+    # ------------------------------------------------------------------
+    def test_femme_alone_does_not_classify(self):
+        """'femme-identified' alone → General Population + FLAG_AMBIGUOUS_TERM."""
+        label, flag = classify_gender(row(desc="Serving femme-identified individuals."))
+        self.assertEqual(label, GENDER_GENERAL_POP)
+        self.assertIn(FLAG_AMBIGUOUS_TERM, flag)
+
+    def test_butch_alone_does_not_classify(self):
+        """'butch' alone → General Population + FLAG_AMBIGUOUS_TERM."""
+        label, flag = classify_gender(row(desc="Programming for butch community members."))
+        self.assertEqual(label, GENDER_GENERAL_POP)
+        self.assertIn(FLAG_AMBIGUOUS_TERM, flag)
+
+    def test_femme_with_clear_signal_keeps_classification_and_flags(self):
+        """'femme women' — clear 'women' signal classifies; FLAG_AMBIGUOUS_TERM still fires."""
+        label, flag = classify_gender(row(desc="Support for femme women in the community."))
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+        self.assertIn(FLAG_AMBIGUOUS_TERM, flag)
+
+    # ------------------------------------------------------------------
+    # Regression — negation still suppresses
+    # ------------------------------------------------------------------
+    def test_negation_on_women_suppresses_and_flags(self):
+        """'not serving women' — negation detected; classification may still proceed
+        (negation is annotation-only) but FLAG_NEGATION must appear."""
+        label, flag = classify_gender(row(desc="This program is not serving women exclusively."))
+        self.assertIn("Negation detected", flag)
+
+    def test_empty_row_returns_general_pop(self):
+        """All columns empty → General Population, no crash."""
+        g_label, g_flag = classify_gender(row())
+        s_label, s_flag = classify_sexual(row())
+        self.assertEqual(g_label, GENDER_GENERAL_POP)
+        self.assertEqual(s_label, SEXUAL_GENERAL_POP)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

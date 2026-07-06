@@ -30,6 +30,9 @@ from gender_constants import (
     UMBRELLA_ACRONYM_PATTERN,
     # Gender flags
     FLAG_ASPIRATIONAL, FLAG_TWO_SPIRIT_INDIG, FLAG_NEGATION, FLAG_UMBRELLA_ACRONYM,
+    FLAG_ORG_NAME, FLAG_AMBIGUOUS_TERM,
+    # Org-name and ambiguous-term data
+    ORG_NAME_CONTEXT_PATTERNS, AMBIGUOUS_CODED_TERMS,
     # Sexual identity labels
     SEXUAL_2SLGBTQIA, SEXUAL_GENERAL_POP,
     # Sexual output columns
@@ -74,6 +77,18 @@ To Run:
 """
 
 DATA_SHEET = "Discretionary Funding Requests"
+
+# ===========================================================================
+# ORG-NAME CONTEXT DETECTOR
+# ===========================================================================
+
+def is_org_name_context(text):
+    """
+    Return True when any ORG_NAME_CONTEXT_PATTERNS fires on normalized text,
+    indicating a gender/sexual term appears inside an organizational construct.
+    Classification is kept; caller appends FLAG_ORG_NAME as an annotation.
+    """
+    return matches_any(ORG_NAME_CONTEXT_PATTERNS, text)
 
 # ===========================================================================
 # GENDER IDENTITY — extraction + resolver
@@ -130,7 +145,7 @@ def extract_gender_candidates(text):
 
     # 2SLGBTQIA+ umbrella acronym — implies gender-diverse identity on the gender axis.
     # "2S" prefix additionally adds two_spirit (Two-Spirit is explicitly named in the acronym).
-    # resolve_gender then handles: 1 key (lgbtq_umbrella alone) → Other; 2+ keys → Multiple.
+    # resolve_gender short-circuits lgbtq_umbrella → GENDER_MULTIPLE regardless of key count.
     for m in re.finditer(UMBRELLA_ACRONYM_PATTERN, text, re.IGNORECASE):
         term = m.group(0)
         if is_negated(term, text) or is_example_mention(term, text):
@@ -141,13 +156,25 @@ def extract_gender_candidates(text):
             keys.add("two_spirit")
         flags_out.add(FLAG_UMBRELLA_ACRONYM)
 
+    # Ambiguous coded terms (femme/masc/butch/stud) — flag only, no key added.
+    # These terms are gender-coded AND orientation-adjacent; reviewer checks both axes.
+    for pattern in AMBIGUOUS_CODED_TERMS:
+        m = re.search(pattern, text, re.IGNORECASE)
+        if not m:
+            continue
+        term = m.group(0)
+        if is_negated(term, text) or is_example_mention(term, text):
+            continue
+        flags_out.add(FLAG_AMBIGUOUS_TERM)
+
     return keys, flags_out, any_negated
 
 def resolve_gender(keys, flags_set, any_negated, aspirational):
     """
-    0 keys  → General Population (No specific gender served)
-    1 key   → that key's output group label
-    2+ keys → Multiple gender identities  (flag lists which identities)
+    0 keys          → General Population (No specific gender served)
+    lgbtq_umbrella  → Multiple gender identities (always — acronym spans identities)
+    1 other key     → that key's output group label
+    2+ other keys   → Multiple gender identities  (flag lists which identities)
     Annotation flags are appended; they never change the branch.
     """
     flag_parts = sorted(flags_set)
@@ -161,6 +188,17 @@ def resolve_gender(keys, flags_set, any_negated, aspirational):
 
     if not keys:
         return GENDER_GENERAL_POP, "; ".join(flag_parts)
+
+    # LGBTQ family acronym → always Multiple regardless of other keys present.
+    # The acronym inherently spans multiple gender identities; name the source in the flag.
+    if "lgbtq_umbrella" in keys:
+        other_short = sorted(IDENTITY_KEY_SHORT_LABEL[k] for k in keys if k != "lgbtq_umbrella")
+        if other_short:
+            label_list = ["2SLGBTQIA+ umbrella"] + other_short
+        else:
+            label_list = ["2SLGBTQIA+ umbrella acronym"]
+        flag_parts.insert(0, f"Multiple: {', '.join(label_list)}")
+        return GENDER_MULTIPLE, "; ".join(flag_parts)
 
     if len(keys) == 1:
         return IDENTITY_KEY_TO_LABEL[next(iter(keys))], "; ".join(flag_parts)
@@ -178,7 +216,9 @@ def classify_gender(row):
         return GENDER_GENERAL_POP, ""
     text = normalize_text(combined)
     keys, flags_set, any_negated = extract_gender_candidates(text)
-    aspirational                  = matches_any(ASPIRATIONAL_PHRASES, text)
+    if keys and is_org_name_context(text):
+        flags_set.add(FLAG_ORG_NAME)
+    aspirational = matches_any(ASPIRATIONAL_PHRASES, text)
     return resolve_gender(keys, flags_set, any_negated, aspirational)
 
 # ===========================================================================
@@ -192,7 +232,8 @@ def extract_sexual_candidates(text):
     Returns
     -------
     found: bool — at least one signal survived guards
-    gender_term_only: bool — signals came exclusively from gender-diverse patterns (not orientation terms / acronyms)
+    found_gender_diverse: bool — at least one gender-diverse term survived guards
+        (SFLAG_GENDER_TERM fires whenever this is True, even alongside orientation terms)
     any_negated : bool — at least one negation encountered
     """
     found_gender_diverse = False
@@ -224,18 +265,20 @@ def extract_sexual_candidates(text):
         found_orientation = True
 
     found = found_gender_diverse or found_orientation
-    gender_term_only = found_gender_diverse and not found_orientation
-    return found, gender_term_only, any_negated
+    return found, found_gender_diverse, any_negated
 
-def resolve_sexual(found, gender_term_only, any_negated, aspirational):
+def resolve_sexual(found, found_gender_diverse, any_negated, aspirational):
     """
     found → 2SLGBTQIA+; else → General Population.
+    SFLAG_GENDER_TERM fires whenever a gender-diverse term contributed (not only
+    when it was the exclusive signal), so every inference from a gender term is
+    surfaced for reviewer verification.
     Flags are annotations only — they never change the branch.
     """
     flag_parts = []
 
     if found:
-        if gender_term_only:
+        if found_gender_diverse:
             flag_parts.append(SFLAG_GENDER_TERM)
         if any_negated:
             flag_parts.append(SFLAG_NEGATION)
@@ -256,9 +299,12 @@ def classify_sexual(row):
     if not combined.strip():
         return SEXUAL_GENERAL_POP, ""
     text = normalize_text(combined)
-    found, gender_term_only, any_negated = extract_sexual_candidates(text)
-    aspirational                          = matches_any(ASPIRATIONAL_PHRASES, text)
-    return resolve_sexual(found, gender_term_only, any_negated, aspirational)
+    found, found_gender_diverse, any_negated = extract_sexual_candidates(text)
+    aspirational = matches_any(ASPIRATIONAL_PHRASES, text)
+    label, flag = resolve_sexual(found, found_gender_diverse, any_negated, aspirational)
+    if found and is_org_name_context(text):
+        flag = "; ".join(p for p in [FLAG_ORG_NAME, flag] if p)
+    return label, flag
 
 # ===========================================================================
 # main() — writes both classifiers to FR testing.xlsx in one workbook pass

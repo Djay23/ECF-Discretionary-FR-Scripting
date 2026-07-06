@@ -32,6 +32,7 @@ from gender_constants import (
     GENDER_TERM_PATTERNS,
     BARE_QUEER_PATTERN, BARE_TRANS_PATTERN, UMBRELLA_ACRONYM_PATTERN,
     SEXUAL_GENDER_DIVERSE_PATTERNS, SEXUAL_ORIENTATION_PATTERNS,
+    ORG_NAME_CONTEXT_PATTERNS, AMBIGUOUS_CODED_TERMS,
 )
 
 snippet_WINDOW = 60
@@ -71,6 +72,43 @@ def fmt(matched_term, source, col, negated, example, normed_text, n_start, n_end
     qualifier = "{NEGATED}" if negated else ("{EXAMPLE}" if example else "")
     snip = best_snippet(matched_term, normed_text, n_start, n_end, raw_text)
     return f"{matched_term} [{source}, {col}]{qualifier}: {snip}"
+
+def org_ambiguous_evidence(row):
+    """
+    Scan each input column for org-name context and ambiguous coded terms.
+    Uses norm_text (not normed) as the local variable name to avoid the
+    outer normed() function being shadowed.
+    Returns a list of evidence strings ready to extend into a parts list.
+    """
+    parts = []
+    seen = set()
+    for col in INPUT_COLS_PRIORITY:
+        val = row.get(col, "")
+        if not val or not isinstance(val, str):
+            continue
+        norm_text = apply_identity_phrase_rewrites(normalize_text(val))
+        if not norm_text:
+            continue
+        for pat in ORG_NAME_CONTEXT_PATTERNS:
+            m = re.search(pat, norm_text, re.IGNORECASE)
+            if m:
+                key = ("org_context", col)
+                if key not in seen:
+                    seen.add(key)
+                    snip = snippet(norm_text, m.start(), m.end())
+                    parts.append(f"org_context [{col}]: {snip}")
+                break
+        for pat in AMBIGUOUS_CODED_TERMS:
+            m = re.search(pat, norm_text, re.IGNORECASE)
+            if m:
+                term = m.group(0)
+                key = (term.lower(), col)
+                if key not in seen:
+                    seen.add(key)
+                    snip = snippet(norm_text, m.start(), m.end())
+                    parts.append(f"ambiguous_coded({term}) [{col}]: {snip}")
+    return parts
+
 
 def ethnic_evidence(row, taxonomy_entries):
     """
@@ -250,6 +288,7 @@ def gender_evidence(row):
             parts.append(fmt(term, "gender(lgbtq_umbrella)", col, negated, example,
                                normed, m.start(), m.end(), raw))
 
+    parts.extend(org_ambiguous_evidence(row))
     return " | ".join(parts)
 
 def sexual_evidence(row):

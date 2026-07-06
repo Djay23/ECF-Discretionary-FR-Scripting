@@ -65,13 +65,25 @@ def main():
 
     taxonomy_entries = et.build_taxonomy(tax_df)
 
+    CROSS_DOMAIN_NOTE = "Ethnic/cultural signal co-present - verify intersectional target population"
+
     rows = []
     for idx, row in data_df.iterrows():
         e1, e2, e3, flag = pipeline_classify_row(row, taxonomy_entries)
         g_label, g_flag  = gs.classify_gender(row)
         s_label, s_flag  = gs.classify_sexual(row)
+
+        # Cross-domain co-signal: gender/sexual classification alongside ethnic signal
+        has_gender_or_sexual = (g_label != gs.GENDER_GENERAL_POP or
+                                s_label != gs.SEXUAL_GENERAL_POP)
+        has_ethnic = (e1 != et.GENERAL_POP)
+        if has_gender_or_sexual and has_ethnic:
+            g_flag = "; ".join(p for p in [g_flag, CROSS_DOMAIN_NOTE] if p)
+            s_flag = "; ".join(p for p in [s_flag, CROSS_DOMAIN_NOTE] if p)
+
         rows.append({
             "Funding Request Name": row.get("Funding Request Name", f"row {idx}"),
+            "SF_18_ID_Funding_Request__c": row.get("SF_18_ID_Funding_Request__c", ""),
             "Final_Project_Description": row.get("Final_Project_Description", ""),
             "Final_Summary_Description": row.get("Final_Summary_Description", ""),
             "Purpose": row.get("Purpose", ""),
@@ -161,8 +173,11 @@ def main():
     sexual_class_counts.columns = ["Sexual Id", "Count"]
 
     # --- Audit Detail tab — every row, all labels/flags/evidence ---
+    # SF_18_ID_Funding_Request__c is included so future hand-audits can join
+    # back to audit_gold.xlsx by stable ID instead of Funding Request Name.
     AUDIT_DETAIL_COLS = [
         "Funding Request Name",
+        "SF_18_ID_Funding_Request__c",
         "Final_Project_Description", "Final_Summary_Description", "Purpose",
         "Ethnic 1", "Ethnic 2", "Ethnic 3",
         "Gender Id", "Sexual Id",

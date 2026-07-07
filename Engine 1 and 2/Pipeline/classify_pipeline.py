@@ -1,7 +1,7 @@
 import re
 
 from ethnic_taggerv3 import (
-    get_column_texts,
+    get_body_and_name_texts,
     extract_context_signals,
     build_context_notes,
     is_bipoc_real_target,
@@ -150,38 +150,59 @@ def classify_row(row, taxonomy_entries):
     """
 
     # ------------------------------------------------------------------
-    # Step 1 — Normalize text
-    # get_column_texts handles: column selection, normalize_text(),
-    # apply_identity_phrase_rewrites() (e.g. "African Canadian" → "black")
+    # Step 1 — Normalize text, split into body vs. name
+    # get_body_and_name_texts handles: column selection, normalize_text(),
+    # apply_identity_phrase_rewrites() (e.g. "African Canadian" → "black"),
+    # keeping the served-population body separate from the org/request name.
     # ------------------------------------------------------------------
-    col_texts = get_column_texts(row)
-    combined  = " ".join(t for t in col_texts if t.strip())
+    body_text, name_text = get_body_and_name_texts(row)
+    combined = (body_text + " " + name_text).strip()
 
-    if not combined.strip():
+    if not combined:
         return (GENERAL_POP, "", "", "Empty input")
 
     # ------------------------------------------------------------------
-    # Step 2 — Extract signals
+    # Step 2 — Extract signals (body vs. name)
     # All extractor functions are dumb sensors: no filtering,
     # no negation guards, no context logic. Each returns every match.
+    #
+    # A signal must be corroborated in the body to classify (Plan.md D1).
+    # The name is only consulted for a curated known-org lookup and to
+    # decide whether a name-only signal should be flagged.
     # ------------------------------------------------------------------
-    candidates = (
-        extract_taxonomy_candidates(combined, taxonomy_entries)
-        + extract_compound_candidates(combined)
-        + extract_pattern_candidates(combined)
-        + extract_country_candidates(combined)
-        + extract_broad_identity_candidates(combined)
-        + extract_org_candidates(combined)
-    )
+    def _extract(txt):
+        return (
+            extract_taxonomy_candidates(txt, taxonomy_entries)
+            + extract_compound_candidates(txt)
+            + extract_pattern_candidates(txt)
+            + extract_country_candidates(txt)
+            + extract_broad_identity_candidates(txt)
+            + extract_org_candidates(txt)
+        )
+
+    body_candidates = _extract(body_text)
+    bipoc_present    = is_bipoc_real_target(body_text)   # BIPOC must be in the body
+    name_org         = extract_org_candidates(name_text)  # curated known-org from the name
+    name_signal      = bool(_extract(name_text)) or is_bipoc_real_target(name_text)
+
+    # Name-only guard: nothing in the body, but the name carries a signal.
+    if not body_candidates and not bipoc_present:
+        if name_org:  # known org (e.g. Niginan) classifies
+            candidates = name_org
+        elif name_signal:
+            return (GENERAL_POP, "", "",
+                    "Signal appears only in the organization/funding-request name - "
+                    "classified General; verify served population")
+        else:
+            candidates = []
+    else:
+        candidates = body_candidates
 
     # ------------------------------------------------------------------
     # Step 3 — Extract context flags
     # Production notes: negation only. Historical / expansion /
     # aspirational / example are debug metadata only.
     # ------------------------------------------------------------------
-    # BIPOC presence is computed here (moved above the context step) so the
-    # negation annotation can be anchored to an actual ethnic signal.
-    bipoc_present = is_bipoc_real_target(combined)
 
     # Negation is surfaced ONLY when an ethnic term was actually detected (anchor),
     # using the pruned ETHNIC_ANNOTATION_NEGATION_PHRASES list.

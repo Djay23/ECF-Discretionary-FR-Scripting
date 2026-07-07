@@ -97,6 +97,12 @@ INPUT_COLS_PRIORITY = [
     "Funding Request Name",
 ]
 
+# Name/body split (Plan.md Phase 1, D1): a signal must be corroborated in the
+# served-population body text to classify; a name-only signal degrades to
+# General + flag. See get_body_and_name_texts().
+BODY_COLS = ["Final_Project_Description", "Final_Summary_Description", "Purpose"]
+NAME_COL  = "Funding Request Name"
+
 OUTPUT_ETHNIC1 = "Ethnic 1 - FR6"
 OUTPUT_ETHNIC2 = "Ethnic 2 - FR7"
 OUTPUT_ETHNIC3 = "Ethnic 3 - FR8"
@@ -592,6 +598,16 @@ def get_column_texts(row):
         #raw = apply_aliases(raw)
         texts.append(raw)
     return texts
+
+def get_body_and_name_texts(row):
+    """Return (body_text, name_text), each normalized + identity-rewritten
+    exactly like get_column_texts, so callers can require a served-population
+    signal in the body and treat a name-only signal as unclassified."""
+    def _prep(val):
+        return apply_identity_phrase_rewrites(normalize_text(val))
+    body = " ".join(t for t in (_prep(row.get(c, "")) for c in BODY_COLS) if t.strip())
+    name = _prep(row.get(NAME_COL, ""))
+    return body, name
 
 # ==========================
 # MAIN CLASSIFICATION LOGIC

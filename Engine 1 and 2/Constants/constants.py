@@ -119,7 +119,7 @@ BIPOC_KEYWORDS = [
     r"\bbipoc\b",
     r"\bqtbipoc\b",
     r"\bpoc\b",
-    r"\bibpoc\b"
+    r"\bibpoc\b",
     r"\bpeople of colou?r\b",
     #r"\bblack african\b",
     #r"\bracialized\b", # Change to flag if "racialized" is detected
@@ -189,6 +189,7 @@ AMBIGUOUS_EQUITY_WORDS = [
 ORG_NAME_ETHNICITY_MAP = {
     "bent arrow": ("North American Indigenous Origins", "", ""),
     "treaty 6": ("North American Indigenous Origins", "", ""), # Flag for review, as "Treaty 6" could refer to the geographic region (which would be L1 or L2) rather than the organization (which would be Case 10). Only trigger if "Treaty 6" appears in the funding request name or purpose, not just the description.
+    "niginan housing ventures": ("North American Indigenous Origins", "", ""),
     # Add more known organization name -> ethnicity mappings here as identified
 }
 

@@ -335,3 +335,13 @@ Is this something a human reviewer actually needs to look at?
 - Audit Gender and Sex. ID classification for missed edge cases.
 - Construct review report audit document for this process.
 - Once final Gold standard document produced post-audit, make necessary adjustments.
+
+# 2026-07-07
+- Audit newly compiled 'Audit_gold_prefilled_xlsx' for where the engine matched human classification.
+- Re-check classification flags and note which are ambiguous either for re-vamping/removal.
+- Add Flag evidence as well 
+- Appears current Ethnic Classification flagging is outdated.
+
+## Current area of focus:
+- Classification flags:
+    - Negation detected

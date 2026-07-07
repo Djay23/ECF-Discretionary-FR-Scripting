@@ -179,12 +179,14 @@ def classify_row(row, taxonomy_entries):
     # Production notes: negation only. Historical / expansion /
     # aspirational / example are debug metadata only.
     # ------------------------------------------------------------------
-    context = build_context_notes(extract_context_signals(combined))
-
-    # ------------------------------------------------------------------
-    # Step 4 — Compute BIPOC presence
-    # ------------------------------------------------------------------
+    # BIPOC presence is computed here (moved above the context step) so the
+    # negation annotation can be anchored to an actual ethnic signal.
     bipoc_present = is_bipoc_real_target(combined)
+
+    # Negation is surfaced ONLY when an ethnic term was actually detected (anchor),
+    # using the pruned ETHNIC_ANNOTATION_NEGATION_PHRASES list.
+    ethnic_term_present = bool(candidates) or bipoc_present
+    context = build_context_notes(extract_context_signals(combined), ethnic_term_present)
 
     # ------------------------------------------------------------------
     # Step 4b — French language accommodation filter (P2-1)

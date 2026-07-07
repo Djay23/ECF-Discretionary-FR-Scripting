@@ -1,5 +1,5 @@
 from typing import List, Tuple
-from constants import MULTIPLE_ETHNIC, OTHER_ETHNIC, GENERAL_POP
+from constants import MULTIPLE_ETHNIC, OTHER_ETHNIC, GENERAL_POP, INDIGENOUS_L1, INDIGENOUS_UMBRELLA_FLAG
 
 """
 resolver.py
@@ -203,6 +203,19 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
     shared_l1 = primary[0]["level1"]
 
     specific = [s for s in primary if s["level2"] or s["level3"]]
+
+    # Step 4a — North American Indigenous umbrella + specific sub-group → general L1 + flag.
+    # Scoped to Indigenous only. When a broad umbrella signal (L1-only: indigenous /
+    # aboriginal / treaty 6 / indigenous canadian) co-occurs with one or more specific
+    # sub-groups (Métis, First Nations, Inuit, Cree, ...), classify at the general L1 and
+    # flag for review rather than silently narrowing to the sub-group.
+    if shared_l1 == INDIGENOUS_L1 and specific:
+        umbrella_present = any(not (s["level2"] or s["level3"]) for s in primary)
+        if umbrella_present:
+            subs = sorted({s["level2"] or s["level3"] for s in specific})
+            flag = INDIGENOUS_UMBRELLA_FLAG + " (" + ", ".join(subs) + ")"
+            return build_output(shared_l1, "", "", flag, context_flags)
+
     pool = specific if specific else primary
 
     # Single candidate in the pool — return its full path with source flag.

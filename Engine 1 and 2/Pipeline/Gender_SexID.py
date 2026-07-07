@@ -10,7 +10,7 @@ import bootstrap
 
 from ethnic_taggerv3 import (
     normalize_text,
-    get_column_texts,
+    get_body_and_name_texts,
     matches_any,
     is_negated,
     is_example_mention,
@@ -65,12 +65,14 @@ Public API (imported by generate_review_report.py):
     SEXUAL_2SLGBTQIA, SEXUAL_GENERAL_POP
 
 Pipeline — Gender:
-    1. get_column_texts() → normalize → extract_gender_candidates()
+    1. get_body_and_name_texts() → normalize → extract_gender_candidates() on
+       the body; a name-only signal degrades to General + FLAG_ORG_NAME
     2. resolve_gender() : 0 keys → General Pop, 1 → that group, 2+ → Multiple
 
 Pipeline — Sexual:
-    1. same normalized text → extract_sexual_candidates()
-    2. resolve_sexual() : any guarded signal → 2SLGBTQIA+, else General Pop
+    1. same body/name split → extract_sexual_candidates()
+    2. resolve_sexual() : any guarded body signal → 2SLGBTQIA+, else General Pop
+       (name-only signal → General Pop + FLAG_ORG_NAME)
 
 To Run:
     python Gender_SexID.py
@@ -209,16 +211,27 @@ def resolve_gender(keys, flags_set, any_negated, aspirational):
 
 
 def classify_gender(row):
-    """Public entry point — gender identity classification for a single row."""
-    col_texts = get_column_texts(row)
-    combined  = " ".join(t for t in col_texts if t.strip())
-    if not combined.strip():
+    """Public entry point — gender identity classification for a single row.
+
+    A signal must be corroborated in the body to classify (Plan.md D1); a
+    name-only signal degrades to General Population + FLAG_ORG_NAME.
+    """
+    body_text, name_text = get_body_and_name_texts(row)
+    if not (body_text + name_text).strip():
         return GENDER_GENERAL_POP, ""
-    text = normalize_text(combined)
-    keys, flags_set, any_negated = extract_gender_candidates(text)
-    if keys and is_org_name_context(text):
+    body = normalize_text(body_text)
+    name = normalize_text(name_text)
+    keys, flags_set, any_negated = extract_gender_candidates(body)
+    # Body is truly silent (no keys, no ambiguous-term/negation annotation) —
+    # only then does a name-only signal matter.
+    if not keys and not flags_set and not any_negated:
+        name_keys, _, _ = extract_gender_candidates(name)
+        if name_keys:
+            return GENDER_GENERAL_POP, FLAG_ORG_NAME
+        return GENDER_GENERAL_POP, ""
+    if keys and is_org_name_context(body):
         flags_set.add(FLAG_ORG_NAME)
-    aspirational = matches_any(ASPIRATIONAL_PHRASES, text)
+    aspirational = matches_any(ASPIRATIONAL_PHRASES, body)
     return resolve_gender(keys, flags_set, any_negated, aspirational)
 
 # ===========================================================================
@@ -293,16 +306,27 @@ def resolve_sexual(found, found_gender_diverse, any_negated, aspirational):
     return SEXUAL_GENERAL_POP, "; ".join(flag_parts)
 
 def classify_sexual(row):
-    """Public entry point — sexual identity classification for a single row."""
-    col_texts = get_column_texts(row)
-    combined  = " ".join(t for t in col_texts if t.strip())
-    if not combined.strip():
+    """Public entry point — sexual identity classification for a single row.
+
+    A signal must be corroborated in the body to classify (Plan.md D1); a
+    name-only signal degrades to General Population + FLAG_ORG_NAME.
+    """
+    body_text, name_text = get_body_and_name_texts(row)
+    if not (body_text + name_text).strip():
         return SEXUAL_GENERAL_POP, ""
-    text = normalize_text(combined)
-    found, found_gender_diverse, any_negated = extract_sexual_candidates(text)
-    aspirational = matches_any(ASPIRATIONAL_PHRASES, text)
+    body = normalize_text(body_text)
+    name = normalize_text(name_text)
+    found, found_gender_diverse, any_negated = extract_sexual_candidates(body)
+    # Body is truly silent (no signal, no negation) — only then does a
+    # name-only signal matter.
+    if not found and not any_negated:
+        name_found, _, _ = extract_sexual_candidates(name)
+        if name_found:
+            return SEXUAL_GENERAL_POP, FLAG_ORG_NAME
+        return SEXUAL_GENERAL_POP, ""
+    aspirational = matches_any(ASPIRATIONAL_PHRASES, body)
     label, flag = resolve_sexual(found, found_gender_diverse, any_negated, aspirational)
-    if found and is_org_name_context(text):
+    if found and is_org_name_context(body):
         flag = "; ".join(p for p in [FLAG_ORG_NAME, flag] if p)
     return label, flag
 

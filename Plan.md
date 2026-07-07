@@ -4,6 +4,33 @@
 
 ---
 
+## STATUS (verified) & NEXT WORK ORDER
+
+**Done & verified** (78 tests pass; scorer runs clean against `audit_gold_audited.xlsx`):
+- Scorer hygiene (Fix 5 + A1/A2): UTF-8 stdout, depth-fair ethnic comparison (`_norm`/`_eth_deepest`), points at audited gold.
+- Constants: BIPOC comma bug fixed; Niginan in `ORG_NAME_ETHNICITY_MAP`.
+- **Phase 1 name/body split** (`get_body_and_name_texts`; body-first extraction; name-only → General + flag): ethnic `classify_row`, `classify_gender`, `classify_sexual`. (Gender name-only fallback correctly fires only when the body is fully silent — no keys, no flags, no negation — so ambiguous/negation flags aren't dropped.)
+
+**Scoreboard:** Ethnic **94.7%** (6 disagreements) · Gender **92.9%** (8) · Sexual **99.1%** (1). Baseline before this work: 87.6 / 90.3 / 99.1.
+
+**Remaining 15 disagreements, each mapped:**
+
+| Axis | Rows | Cause | Fix |
+|---|---|---|---|
+| Gender | Elizabeth Fry; John Humphrey ×2 | "gender-diverse" unhandled | **Fix 2 (next)** |
+| Sexual | Elizabeth Fry | "gender-diverse" → 2SLGBTQIA+ | **Fix 2 (next)** |
+| Gender | Alberta Immigrant Women; Black Canadian Women; Boys & Girls ×2 | relational/org word echoed in the *body* ("sisters/fathers" = "Big Brothers Big Sisters"; "women" incidental) | **Phase 2** |
+| Ethnic | Alberta Ballet | "Black" as proper-noun descriptor | **Phase 2** |
+| Ethnic | Black Canadian Women ×2; Action for Healthy ×2 | incidental group mention in body (Haitian/Black/Ethiopian/BIPOC) not the served pop | **Phase 2** |
+| Ethnic | PCC Prostate | Indigenous umbrella rolled up past a single named sub-group (Métis) | **Fix 9 (verify)** |
+| Gender | Edmonton Women's Shelter | name-only; engine correctly General per D1, auditor wants Women | **Accepted** (not curated) |
+
+**Recommended sequence:** Chunk C = Fix 2 (quick; clears 3 gender + 1 sexual → Sexual 100%). Chunk D = Phase 2 evidence-role tiering (clears ~5 ethnic + 4 gender). Fix 9 folded into Chunk D. Detailed specs for Fix 2 and Phase 2 are in the sections below.
+
+**Fix 9 (new, verify during Chunk D):** PCC Prostate names "Indigenous" (umbrella) + "Métis" (one specific sub-group); the resolver's Indigenous-umbrella rule (`resolver.py` Step 4a) rolls up to general L1, but gold wants Métis. First confirm whether the engine emitted Métis in Ethnic 2 (then it's a scorer depth-fold miss) or rolled to L1 (then refine the rule: when the umbrella co-occurs with exactly **one** specific sub-group, classify at that sub-group; keep roll-up-with-flag only when **two or more** distinct sub-groups appear).
+
+---
+
 ## Step 1 — Discrepancy Matrix
 
 The auditor deep-reviewed **113 of 448 rows** (filled the `Correct *` columns); the other 335 are blank (treated as engine-correct/unreviewed). Agreement is computed on canonicalized labels (General-Population variants folded; engine's `Ethnic 2/3` counted, since the gold collapses the answer into one `"L1 - L2"` string; accents/parentheticals folded).

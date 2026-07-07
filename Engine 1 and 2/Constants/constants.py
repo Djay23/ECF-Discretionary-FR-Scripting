@@ -11,6 +11,13 @@ MULTIPLE_ETHNIC = "Multiple Ethnic and Cultural Origins"
 OTHER_ETHNIC    = "Other Ethnic and Cultural Origins"
 GENERAL_POP     = "General Population (No specific ethnic and cultural origin group served)"
 
+# North American Indigenous umbrella-widening rule (resolver Step 4a)
+INDIGENOUS_L1 = "North American Indigenous Origins"
+INDIGENOUS_UMBRELLA_FLAG = (
+    "Review: Indigenous umbrella term co-occurs with specific sub-group(s) - "
+    "classified at general North American Indigenous level; verify served population"
+)
+
 # ==================================================
 # CASE 4 — Structured / directional phrase patterns
 # Applied only if no direct taxonomy match found.
@@ -230,6 +237,18 @@ NEGATION_PHRASES = [
     r"not the (primary|main|sole|only) (focus|target|group|population)",
 ]
 
+# Pruned negation list used ONLY by the ethnic annotation flag (extract_context_signals).
+# The full NEGATION_PHRASES stays intact for is_negated() (gender/sex + ethnic candidate
+# dropping). Drops the context-free offenders (exclud/except) and the "not for" branch
+# that fires on "not-for-profit".
+ETHNIC_ANNOTATION_NEGATION_PHRASES = [
+    r"not (target(ing)?|serv(ing|e)|focus(ing|ed)|limited to|exclusively)",
+    r"does not (target|serve|focus|support|cater)",
+    r"do not (target|serve|focus|support|cater)",
+    r"no longer (target(ing)?|serv(ing|e)|focus(ing|ed))",
+    r"not the (primary|main|sole|only) (focus|target|group|population)",
+]
+
 ASPIRATIONAL_PHRASES = [
     r"hop(es?|ing) to (serve|reach|support|engage|include|target)",
     r"plan(s|ning) to (serve|reach|support|engage|include|target)",
@@ -360,13 +379,14 @@ NON_ETHNIC_LEADING_WORDS = {
 # NEVER classifies. NEVER overrides. Review flag only.
 # =================================================
 
+# Only the explicit "cultural" org forms remain. The bare "association",
+# "community association", and "community organization" patterns were too broad —
+# they matched generic non-ethnic orgs (Riverdale Community Association, Tenants
+# Association, etc.) and produced 100% false positives on audit.
 CASE_13_PATTERNS = [
     r"^([a-z][a-z\s\-']+?)\s+cultural\s+association\b",
     r"^([a-z][a-z\s\-']+?)\s+cultural\s+group\b",
     r"^([a-z][a-z\s\-']+?)\s+cultural\s+society\b",
-    r"^([a-z][a-z\s\-']+?)\s+community\s+association\b",
-    r"^([a-z][a-z\s\-']+?)\s+community\s+organization\b",
-    r"^([a-z][a-z\s\-']+?)\s+association\b",
 ]
 
 # ============================================================

@@ -58,7 +58,7 @@ def main():
 
     taxonomy_filepath = bootstrap.PROJECT_ROOT / "Taxonomy" / "Taxonomy - Definitions.xlsx"
     funding_filepath = bootstrap.PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx"
-    OUTPUT_FILE = bootstrap.PROJECT_ROOT / "Data Sheets" / "review_report(Gender and Sex).xlsx"
+    OUTPUT_FILE = bootstrap.PROJECT_ROOT / "Data Sheets" / "review_report(Ethnic Flag fix).xlsx"
 
     tax_df = pd.read_excel(taxonomy_filepath, sheet_name=et.TAXONOMY_SHEET, dtype=str)
     data_df = pd.read_excel(funding_filepath, sheet_name=et.DATA_SHEET, dtype=str)

@@ -68,6 +68,7 @@ from constants import (
     ALWAYS_MULTIPLE_COMPOUNDS, ORG_NAME_ETHNICITY_MAP,
     PATTERN_RULES, COUNTRY_REGION_MAP,
     EXPANSION_PHRASES, HISTORICAL_PHRASES, NEGATION_PHRASES,
+    ETHNIC_ANNOTATION_NEGATION_PHRASES,
     ASPIRATIONAL_PHRASES, EXAMPLE_PHRASES, EXPERT_ROLE_PHRASES,
     SERVING_CONTEXT_WORDS, IDENTITY_PHRASE_REWRITES,
     DIRECTIONAL_AFRICAN_PREFIXES, CASE_13_PATTERNS,
@@ -433,11 +434,11 @@ def extract_context_signals(text):
         "historical":   matches_any(HISTORICAL_PHRASES, text),
         "expansion":    matches_any(EXPANSION_PHRASES, text),
         "aspirational": matches_any(ASPIRATIONAL_PHRASES, text),
-        "negation":     matches_any(NEGATION_PHRASES, text),
+        "negation":     matches_any(ETHNIC_ANNOTATION_NEGATION_PHRASES, text),
         "example":      matches_any(EXAMPLE_PHRASES, text),
     }
 
-def build_context_notes(signals):
+def build_context_notes(signals, ethnic_term_present=False):
     """
     Production annotation notes.
 
@@ -452,7 +453,8 @@ def build_context_notes(signals):
     build_debug_context_notes() for debug overlay use.
     """
     notes = []
-    if signals["negation"]:
+    # Anchor: only surface negation when an ethnic term was actually detected.
+    if signals["negation"] and ethnic_term_present:
         notes.append("Negation detected - verify exclusion vs inclusion intent")
     return notes
 
@@ -615,7 +617,7 @@ def classify_row(row, taxonomy_entries):
     # All discourse signals (historical, expansion, aspirational, negation, example)
     # are recorded as flags. Classification is never branched on them.
     context_signals = extract_context_signals(combined)
-    extra_notes = build_context_notes(context_signals)
+    extra_notes = []
 
     # "Cultural Association" often hides a specific named group (e.g.
     # "Kerala Cultural Association") -- always worth a second look,
@@ -693,6 +695,8 @@ def classify_row(row, taxonomy_entries):
     # bipoc_present above -- the exact same evidence the rest of this
     # function uses, by construction. See check_grassroots_case().
     has_ethnic_signal = bool(candidates) or bipoc_present
+    if context_signals["negation"] and has_ethnic_signal:
+        extra_notes.insert(0, "Negation detected - verify exclusion vs inclusion intent")
     grassroots_state = check_grassroots_case(combined, has_ethnic_signal) # Handle 'ethnocultural', 'marginalized' as well, since they have the same rule as 'grassroots'
     if grassroots_state == "no_signal":
         extra_notes.append("Note (low priority): Ambiguous equity term with no paired ethnic signal")

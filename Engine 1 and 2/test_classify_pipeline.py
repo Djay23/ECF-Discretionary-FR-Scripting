@@ -51,6 +51,13 @@ TAXONOMY = [
         "level3": "Cree",
         "depth": 3,
     },
+    {
+        "keyword": "métis",
+        "level1": "North American Indigenous Origins",
+        "level2": "Métis",
+        "level3": "",
+        "depth": 2,
+    },
     # depth 1 — broad categories (longest keyword first within depth)
     {
         "keyword": "indigenous",
@@ -413,6 +420,61 @@ class TestClassifyPipeline(unittest.TestCase):
         # Guard fired — Case 13 flag must NOT appear
         self.assertNotIn("Potential ethnocultural organization name", flag)
 
+    # ------------------------------------------------------------------
+    # Negation annotation: anchored + pruned (Part 2)
+    # ------------------------------------------------------------------
+    def test_not_for_profit_no_negation_flag(self):
+        """'not-for-profit' with no ethnic term → General Pop, no negation flag."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="A trusted not-for-profit childcare centre serving families for years."),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertNotIn("Negation detected", flag)
+
+    def test_excluded_inclusion_language_no_negation_flag(self):
+        """'voices often excluded' (inclusion framing), no ethnic term → no negation flag."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="Amplifying underrepresented voices often excluded from mainstream conversations."),
+            TAXONOMY,
+        )
+        self.assertNotIn("Negation detected", flag)
+
+    def test_excluded_near_term_pruned_no_negation_flag(self):
+        """Ethnic term present but only benign 'excluded' → pruned, no negation flag."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="Serving Somali families and amplifying voices often excluded."),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "African Origins")
+        self.assertNotIn("Negation detected", flag)
+
+    def test_intentional_negation_still_flags(self):
+        """
+        Real exclusion of a second group ('do not serve Filipino') → flag preserved.
+        Negation is annotation-only (resolver.py never suppresses candidates on it), so
+        both named groups still resolve to Multiple Ethnic — the flag is what matters here.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="We serve Somali families but do not serve Filipino newcomers."),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, MULTIPLE_ETHNIC)
+        self.assertIn("Negation detected", flag)
+
+    # ------------------------------------------------------------------
+    # Case 13 org-name flag: pruned to explicit "cultural" forms (Part 3)
+    # ------------------------------------------------------------------
+    def test_generic_community_association_not_flagged(self):
+        """Generic community/association org titles no longer trigger Case 13."""
+        for title in [
+            "Riverdale Community Association",
+            "Tenants Association",
+            "Millwoods Community Organization",
+        ]:
+            e1, e2, e3, flag = classify_row(row(name=title), TAXONOMY_B2)
+            self.assertNotIn("Potential ethnocultural organization name", flag)
+
 
 
 # ---------------------------------------------------------------------------
@@ -501,6 +563,50 @@ class TestSprint2Fixes(unittest.TestCase):
         )
         self.assertEqual(e1, "African Origins")
         self.assertEqual(e2, "Central and West African Origins")
+
+    # ------------------------------------------------------------------
+    # Indigenous umbrella + specific sub-group → general L1 + review flag
+    # ------------------------------------------------------------------
+    def test_indigenous_umbrella_with_subgroup_widens_and_flags(self):
+        """Cree (specific) + 'Indigenous' (umbrella) → general L1 + flag."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="Programs for Cree families and Indigenous youth in Edmonton."),
+            TAXONOMY_B2,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+        self.assertEqual(e2, "")
+        self.assertEqual(e3, "")
+        self.assertIn("Indigenous umbrella term co-occurs", flag)
+
+    def test_indigenous_umbrella_with_metis_widens_and_flags(self):
+        """Métis (specific, accented) + 'Indigenous' (umbrella) → general L1 + flag."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="Celebrating the Métis Homeland and Indigenous artists at the festival."),
+            TAXONOMY_B2,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+        self.assertEqual(e2, "")
+        self.assertIn("Indigenous umbrella term co-occurs", flag)
+
+    def test_metis_alone_stays_specific(self):
+        """Sub-group with no umbrella word → stays specific, no new flag."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="Supporting Métis entrepreneurs and their families."),
+            TAXONOMY_B2,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+        self.assertEqual(e2, "Métis")
+        self.assertNotIn("Indigenous umbrella term co-occurs", flag)
+
+    def test_indigenous_umbrella_alone_no_flag(self):
+        """Umbrella word with no sub-group → general L1, no new flag."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="Serving Indigenous youth across the region."),
+            TAXONOMY_B2,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+        self.assertEqual(e2, "")
+        self.assertNotIn("Indigenous umbrella term co-occurs", flag)
 
     # ------------------------------------------------------------------
     # S4. Indian + Pakistani → South Asian Origins (rollup, not Multiple)

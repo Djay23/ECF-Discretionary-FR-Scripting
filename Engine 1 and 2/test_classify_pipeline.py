@@ -379,19 +379,18 @@ class TestClassifyPipeline(unittest.TestCase):
     # ------------------------------------------------------------------
     def test_recognized_group_in_org_title_not_flagged(self):
         """
-        When the group name in the Funding Request Name IS recognized by
-        the extractors (e.g. "Somali Cultural Association" — 'Somali' is
-        a taxonomy keyword), the ethnocultural org flag is NOT emitted.
-        Classification proceeds normally from the recognized keyword.
+        A group name that appears ONLY in the Funding Request Name (e.g.
+        "Somali Cultural Association" — no body text) is name-only signal
+        per the body/name split (Plan.md D1): General + name-only flag,
+        not a specific classification, since the served population is
+        unverified.
         """
         e1, e2, e3, flag = classify_row(
             row(name="Somali Cultural Association"),
             TAXONOMY,
         )
-        self.assertEqual(e1, "African Origins")
-        self.assertEqual(e2, "Southern and East African Origins")
-        self.assertEqual(e3, "Somali")
-        self.assertNotIn("Potential ethnocultural organization name", flag)
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertIn("only in the organization/funding-request name", flag)
 
     # ------------------------------------------------------------------
     # 17. Guard clause: Case 13 skips when classification already exists
@@ -707,15 +706,17 @@ class TestSprint2Fixes(unittest.TestCase):
     # ------------------------------------------------------------------
     def test_french_canadian_association_keeps_ethnic_signal(self):
         """
-        A named French ethnic/cultural org matches FRENCH_ETHNIC_KEEP_PATTERNS
-        → the French filter does NOT drop the candidate.
-        French taxonomy match should survive → European Origins.
+        A named French ethnic/cultural org appearing ONLY in the name (no
+        body text) is name-only signal per the body/name split (Plan.md
+        D1): General + name-only flag. The French-language-accommodation
+        filter is irrelevant here since there's no body candidate to filter.
         """
         e1, e2, e3, flag = classify_row(
             row(name="French Canadian Association of Alberta"),
             TAXONOMY_S2,
         )
-        self.assertNotEqual(e1, GENERAL_POP)
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertIn("only in the organization/funding-request name", flag)
         self.assertNotIn("language accommodation", flag)
 
     # ------------------------------------------------------------------
@@ -961,6 +962,61 @@ class TestBlueprint2Fixes(unittest.TestCase):
             self.assertTrue(hasattr(constants, name), f"constants.py missing: {name}")
 
 
+# ---------------------------------------------------------------------------
+# Name/body split (Phase 1, Chunk B) — Plan.md D1: a signal that lives only
+# in the Funding Request Name must not classify on its own.
+# ---------------------------------------------------------------------------
+
+class TestNameBodySplit(unittest.TestCase):
+
+    def test_council_body_black_wins_over_name_african(self):
+        """
+        Body says 'Black Edmontonians'/'Black professionals'; name says
+        'African Canadians'. The body signal wins outright — the name is
+        not even consulted once the body has a candidate.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Council for the Advancement of African Canadians",
+                desc="a health program for Black Edmontonians led by Black professionals",
+            ),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "Other Ethnic and Cultural Origins")
+        self.assertEqual(e2, "Black, not otherwise specified")
+
+    def test_name_only_ethnic_signal_degrades_to_general(self):
+        """'Black Canadian Women in Action' with a neutral body → General +
+        name-only flag, not a specific ethnic classification."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Black Canadian Women in Action",
+                desc="Funding will cover the Executive Director's salary and benefits.",
+            ),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertIn("only in the organization/funding-request name", flag)
+
+    def test_known_org_in_name_still_classifies(self):
+        """Niginan Housing Ventures (curated known-org map) classifies from
+        the name alone even with an empty body — the D1 exception."""
+        e1, e2, e3, flag = classify_row(
+            row(name="Niginan Housing Ventures"),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+
+    def test_body_signal_still_classifies(self):
+        """A real signal in the body classifies normally regardless of the
+        name (regression guard for the split itself)."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="programming for Somali youth"),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "African Origins")
+        self.assertEqual(e3, "Somali")
+
 
 # ---------------------------------------------------------------------------
 # Gender + Sexual Identity classifier tests
@@ -1014,16 +1070,35 @@ class TestGenderSexualClassifier(unittest.TestCase):
     # Item 2 — Org / proper-name context: keep classification + add flag
     # ------------------------------------------------------------------
     def test_boys_girls_club_classified_and_flagged(self):
-        """'Boys & Girls Club' → still classified (Women and/or girls or Multiple)
-        AND FLAG_ORG_NAME is present."""
+        """'Boys & Girls Club' with no body text is name-only signal per the
+        body/name split (Plan.md D1) → General Population + FLAG_ORG_NAME,
+        not a specific gender classification."""
         label, flag = classify_gender(row(name="Boys and Girls Club of Edmonton"))
-        self.assertNotEqual(label, GENDER_GENERAL_POP)
+        self.assertEqual(label, GENDER_GENERAL_POP)
         self.assertIn(FLAG_ORG_NAME, flag)
 
     def test_institute_for_women_classified_and_flagged(self):
         """'Institute for Women' → Women and/or girls + FLAG_ORG_NAME."""
         label, flag = classify_gender(row(desc="The institute for women provides programming."))
         self.assertEqual(label, GENDER_WOMEN_GIRLS)
+        self.assertIn(FLAG_ORG_NAME, flag)
+
+    def test_wardrobe_for_women_name_only_degrades_to_general(self):
+        """'Wardrobe for Women Association' with a neutral body (ED salary)
+        is name-only signal per the body/name split (Plan.md D1) → General
+        Population + FLAG_ORG_NAME."""
+        label, flag = classify_gender(row(
+            name="Suit Yourself - Wardrobe for Women Association",
+            desc="Funding will cover the Executive Director's salary and benefits.",
+        ))
+        self.assertEqual(label, GENDER_GENERAL_POP)
+        self.assertIn(FLAG_ORG_NAME, flag)
+
+    def test_boys_girls_clubs_big_brothers_big_sisters_name_only(self):
+        """'Boys & Girls Clubs Big Brothers Big Sisters' with an empty body
+        is name-only signal → General Population + FLAG_ORG_NAME."""
+        label, flag = classify_gender(row(name="Boys & Girls Clubs Big Brothers Big Sisters"))
+        self.assertEqual(label, GENDER_GENERAL_POP)
         self.assertIn(FLAG_ORG_NAME, flag)
 
     def test_org_flag_not_fired_for_plain_gender_description(self):

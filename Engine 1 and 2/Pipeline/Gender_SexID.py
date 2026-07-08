@@ -14,6 +14,7 @@ from ethnic_taggerv3 import (
     matches_any,
     is_negated,
     is_example_mention,
+    _echoes_org_name,
 )
 from constants import ASPIRATIONAL_PHRASES
 
@@ -96,32 +97,44 @@ def is_org_name_context(text):
 # GENDER IDENTITY — extraction + resolver
 # ===========================================================================
 
-def extract_gender_candidates(text):
+def extract_gender_candidates(text, name_text=""):
     """
     Scan normalized text for gender-identity terms.
 
     Returns
     -------
     keys: set[str]  — accepted identity keys
+    org_echo_keys: set[str]  — subset of keys whose match merely echoes the
+        org's own name inside the body (Plan.md Fix 1 Phase 2 — e.g. "Black
+        Canadian Women in Action is undertaking..." repeating the org name
+        in the description) rather than describing a served population.
     flags_out: set[str]  — annotation flag strings triggered by this text
     any_negated : bool — True if any negation encountered (→ FLAG_NEGATION)
     """
     keys = set()
+    keys_with_served_occurrence = set()
     flags_out = set()
     any_negated = False
 
-    # Standard (unambiguous) patterns
+    # Standard (unambiguous) patterns.
+    # Scan ALL occurrences (not just the first) so that when a term appears
+    # more than once -- e.g. an org restates its own name ("Edmonton Women's
+    # Shelter provides...") AND separately describes who it serves ("...for
+    # women fleeing violence") -- a later served occurrence rescues the key
+    # even if an earlier occurrence was an org-name echo.
     for pattern, identity_key, extra_flag_key in GENDER_TERM_PATTERNS:
-        m = re.search(pattern, text, re.IGNORECASE)
-        if not m:
-            continue
-        term = m.group(0)
-        if is_negated(term, text):
-            any_negated = True
-            continue
-        if is_example_mention(term, text):
-            continue
-        keys.add(identity_key)
+        for m in re.finditer(pattern, text, re.IGNORECASE):
+            term = m.group(0)
+            if is_negated(term, text):
+                any_negated = True
+                continue
+            if is_example_mention(term, text):
+                continue
+            keys.add(identity_key)
+            if not (name_text and _echoes_org_name(text, m.start(), m.end(), name_text)):
+                keys_with_served_occurrence.add(identity_key)
+
+    org_echo_keys = keys - keys_with_served_occurrence
 
     # Bare "queer" — ambiguity check
     # \bqueer\b fires on "queer youth" AND on "gender queer community".
@@ -169,7 +182,7 @@ def extract_gender_candidates(text):
             continue
         flags_out.add(FLAG_AMBIGUOUS_TERM)
 
-    return keys, flags_out, any_negated
+    return keys, org_echo_keys, flags_out, any_negated
 
 def resolve_gender(keys, flags_set, any_negated, aspirational):
     """
@@ -178,18 +191,23 @@ def resolve_gender(keys, flags_set, any_negated, aspirational):
     1 other key     → that key's output group label
     2+ other keys   → Multiple gender identities  (flag lists which identities)
     Annotation flags are appended; they never change the branch.
+
+    Fix 6: Aspirational is a contextual flag (verify-manually), not
+    classification-relevant like negation/BIPOC/two-spirit — it only fires
+    once the row has actually resolved to a specific group, not General.
     """
     flag_parts = sorted(flags_set)
 
     if any_negated:
         flag_parts.append(FLAG_NEGATION)
-    if aspirational:
-        flag_parts.append(FLAG_ASPIRATIONAL)
     if "two_spirit" in keys:
         flag_parts.append(FLAG_TWO_SPIRIT_INDIG)
 
     if not keys:
         return GENDER_GENERAL_POP, "; ".join(flag_parts)
+
+    if aspirational:
+        flag_parts.append(FLAG_ASPIRATIONAL)
 
     # LGBTQ family acronym → always Multiple regardless of other keys present.
     # The acronym inherently spans multiple gender identities; name the source in the flag.
@@ -199,6 +217,17 @@ def resolve_gender(keys, flags_set, any_negated, aspirational):
             label_list = ["2SLGBTQIA+ umbrella"] + other_short
         else:
             label_list = ["2SLGBTQIA+ umbrella acronym"]
+        flag_parts.insert(0, f"Multiple: {', '.join(label_list)}")
+        return GENDER_MULTIPLE, "; ".join(flag_parts)
+
+    # 'gender-diverse' is a distinct concept (Plan.md Fix 2a), not a single
+    # identity — it always routes to Multiple, same short-circuit shape as
+    # the 2SLGBTQIA+ umbrella acronym above.
+    if "gender_diverse" in keys:
+        other_short = sorted(
+            IDENTITY_KEY_SHORT_LABEL[k] for k in keys if k != "gender_diverse"
+        )
+        label_list = ["gender-diverse"] + other_short
         flag_parts.insert(0, f"Multiple: {', '.join(label_list)}")
         return GENDER_MULTIPLE, "; ".join(flag_parts)
 
@@ -214,25 +243,37 @@ def classify_gender(row):
     """Public entry point — gender identity classification for a single row.
 
     A signal must be corroborated in the body to classify (Plan.md D1); a
-    name-only signal degrades to General Population + FLAG_ORG_NAME.
+    name-only signal degrades to General Population + FLAG_ORG_NAME. A body
+    mention that only echoes the org's own name (Plan.md Fix 1 Phase 2, e.g.
+    "Black Canadian Women in Action is undertaking...") is not corroboration
+    either — it degrades to General + a transparency note.
     """
     body_text, name_text = get_body_and_name_texts(row)
     if not (body_text + name_text).strip():
         return GENDER_GENERAL_POP, ""
     body = normalize_text(body_text)
     name = normalize_text(name_text)
-    keys, flags_set, any_negated = extract_gender_candidates(body)
-    # Body is truly silent (no keys, no ambiguous-term/negation annotation) —
-    # only then does a name-only signal matter.
-    if not keys and not flags_set and not any_negated:
-        name_keys, _, _ = extract_gender_candidates(name)
+    keys, org_echo_keys, flags_set, any_negated = extract_gender_candidates(body, name_text=name)
+    served_keys = keys - org_echo_keys
+    # Body is truly silent of served signal (no served keys, no
+    # ambiguous-term/negation annotation) — only then does a name-only or
+    # org-echo-only signal matter.
+    if not served_keys and not flags_set and not any_negated:
+        if org_echo_keys:
+            groups = sorted(IDENTITY_KEY_SHORT_LABEL[k] for k in org_echo_keys)
+            note = (
+                "Note (low priority): " + ", ".join(groups)
+                + " mentioned via org-name self-reference in body - not classified; verify"
+            )
+            return GENDER_GENERAL_POP, note
+        name_keys, _, _, _ = extract_gender_candidates(name)
         if name_keys:
             return GENDER_GENERAL_POP, FLAG_ORG_NAME
         return GENDER_GENERAL_POP, ""
-    if keys and is_org_name_context(body):
+    if served_keys and is_org_name_context(body):
         flags_set.add(FLAG_ORG_NAME)
     aspirational = matches_any(ASPIRATIONAL_PHRASES, body)
-    return resolve_gender(keys, flags_set, any_negated, aspirational)
+    return resolve_gender(served_keys, flags_set, any_negated, aspirational)
 
 # ===========================================================================
 # SEXUAL IDENTITY — extraction + resolver
@@ -248,10 +289,15 @@ def extract_sexual_candidates(text):
     found_gender_diverse: bool — at least one gender-diverse term survived guards
         (SFLAG_GENDER_TERM fires whenever this is True, even alongside orientation terms)
     any_negated : bool — at least one negation encountered
+    example_suppressed : bool — at least one term was dropped ONLY because it
+        appeared in an example/illustrative context ("...groups such as
+        2SLGBTQIA+..."), Plan.md Fix 7 — the caller surfaces this as a
+        transparency note instead of silently dropping it with no trace.
     """
     found_gender_diverse = False
     found_orientation = False
     any_negated = False
+    example_suppressed = False
 
     for pattern in SEXUAL_GENDER_DIVERSE_PATTERNS:
         m = re.search(pattern, text, re.IGNORECASE)
@@ -262,6 +308,7 @@ def extract_sexual_candidates(text):
             any_negated = True
             continue
         if is_example_mention(term, text):
+            example_suppressed = True
             continue
         found_gender_diverse = True
 
@@ -274,19 +321,25 @@ def extract_sexual_candidates(text):
             any_negated = True
             continue
         if is_example_mention(term, text):
+            example_suppressed = True
             continue
         found_orientation = True
 
     found = found_gender_diverse or found_orientation
-    return found, found_gender_diverse, any_negated
+    return found, found_gender_diverse, any_negated, example_suppressed
 
-def resolve_sexual(found, found_gender_diverse, any_negated, aspirational):
+def resolve_sexual(found, found_gender_diverse, any_negated, aspirational, example_suppressed=False):
     """
     found → 2SLGBTQIA+; else → General Population.
     SFLAG_GENDER_TERM fires whenever a gender-diverse term contributed (not only
     when it was the exclusive signal), so every inference from a gender term is
     surfaced for reviewer verification.
     Flags are annotations only — they never change the branch.
+
+    Fix 6: Aspirational is a contextual flag — it only fires once the row
+    has actually resolved to 2SLGBTQIA+, not General.
+    Fix 7: when the only signal was example-suppressed, keep General but
+    name what was dropped instead of silently discarding it with no trace.
     """
     flag_parts = []
 
@@ -299,10 +352,13 @@ def resolve_sexual(found, found_gender_diverse, any_negated, aspirational):
             flag_parts.append(SFLAG_ASPIRATIONAL)
         return SEXUAL_2SLGBTQIA, "; ".join(flag_parts)
 
+    if example_suppressed:
+        flag_parts.append(
+            "Note (low priority): 2SLGBTQIA+ mentioned in example/illustrative "
+            "context - not classified; verify"
+        )
     if any_negated:
         flag_parts.append(SFLAG_NEGATION)
-    if aspirational:
-        flag_parts.append(SFLAG_ASPIRATIONAL)
     return SEXUAL_GENERAL_POP, "; ".join(flag_parts)
 
 def classify_sexual(row):
@@ -316,16 +372,16 @@ def classify_sexual(row):
         return SEXUAL_GENERAL_POP, ""
     body = normalize_text(body_text)
     name = normalize_text(name_text)
-    found, found_gender_diverse, any_negated = extract_sexual_candidates(body)
-    # Body is truly silent (no signal, no negation) — only then does a
-    # name-only signal matter.
-    if not found and not any_negated:
-        name_found, _, _ = extract_sexual_candidates(name)
+    found, found_gender_diverse, any_negated, example_suppressed = extract_sexual_candidates(body)
+    # Body is truly silent (no signal, no negation, no example-suppressed
+    # mention) — only then does a name-only signal matter.
+    if not found and not any_negated and not example_suppressed:
+        name_found, *_ = extract_sexual_candidates(name)
         if name_found:
             return SEXUAL_GENERAL_POP, FLAG_ORG_NAME
         return SEXUAL_GENERAL_POP, ""
     aspirational = matches_any(ASPIRATIONAL_PHRASES, body)
-    label, flag = resolve_sexual(found, found_gender_diverse, any_negated, aspirational)
+    label, flag = resolve_sexual(found, found_gender_diverse, any_negated, aspirational, example_suppressed)
     if found and is_org_name_context(body):
         flag = "; ".join(p for p in [FLAG_ORG_NAME, flag] if p)
     return label, flag

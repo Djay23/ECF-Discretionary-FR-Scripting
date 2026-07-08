@@ -73,6 +73,8 @@ from constants import (
     SERVING_CONTEXT_WORDS, IDENTITY_PHRASE_REWRITES,
     DIRECTIONAL_AFRICAN_PREFIXES, CASE_13_PATTERNS,
     DEMONYM_SUFFIXES, NON_ETHNIC_LEADING_WORDS,
+    ROLE_ORG_NAME_BEFORE_PATTERNS, ROLE_ORG_NAME_AFTER_PATTERNS,
+    ROLE_PROVIDER_BEFORE_PATTERNS, ROLE_PROVIDER_AFTER_PATTERNS,
 )
 
 # =============
@@ -188,6 +190,71 @@ def is_negated(keyword, text):
 def is_example_mention(keyword, text):
     snippet = keyword_context_window(keyword, text)
     return snippet is not None and matches_any(EXAMPLE_PHRASES, snippet)
+
+# ---------------------------------------------------------------------------
+# Phase 2 — Evidence-role inference (Plan.md Fix 1 Phase 2)
+#
+# A matched identity term is "served" (strong, default) unless the text
+# immediately around it frames it as an org name, a service provider, an
+# example/aspirational mention, or a negation -- in which case it's "weak"
+# and should not, on its own, drive a classification.
+# ---------------------------------------------------------------------------
+
+def _echoes_org_name(text, start, end, name_text, min_gram=3, slack=3):
+    """True if THIS SPECIFIC match sits inside (or immediately touches) a
+    verbatim restatement of the org's own name in the body -- e.g. the
+    "women" in "Black Canadian Women in Action (BCW) is undertaking..." --
+    a self-reference to the org's own name, not a served-population claim.
+
+    Requires actual positional overlap with an occurrence of a contiguous
+    min_gram-word run from name_text, NOT just proximity within some fixed
+    character window -- normalize_text strips all punctuation (periods
+    included), so a window-based check can't tell "the org's name and this
+    term are in the same clause" from "the org happens to restate its own
+    name in the very next, unrelated sentence" (e.g. HERizon Healing
+    Society names itself at the start of almost every sentence; a
+    "BIPOC girls and young women" mention two sentences earlier is not an
+    echo just because "HERizon Healing Society" appears soon after it).
+    """
+    if not name_text:
+        return False
+    name_words = re.findall(r"[a-z0-9]+", name_text.lower())
+    if len(name_words) < min_gram:
+        return False
+    for i in range(len(name_words) - min_gram + 1):
+        gram_words = name_words[i:i + min_gram]
+        if sum(len(w) for w in gram_words) < 8:
+            continue
+        gram_pattern = r"\s+".join(re.escape(w) for w in gram_words)
+        for gm in re.finditer(gram_pattern, text, re.IGNORECASE):
+            if gm.start() - slack <= end and start <= gm.end() + slack:
+                return True
+    return False
+
+def infer_role(text, start, end, name_text="", window=60):
+    """Classify the evidence role of a match at text[start:end]:
+    'served' (strong, default) or one of the weak roles
+    'org_name' | 'provider' | 'example' | 'aspirational'.
+
+    Negation is deliberately NOT a role here: negation stays annotation-only
+    (a resolver-level architectural invariant — see resolver.py's module
+    docstring and build_context_notes) rather than suppressing a candidate,
+    unlike org-name/provider/example/aspirational framing which describe
+    what the term refers to, not whether it's included or excluded.
+    """
+    before = text[max(0, start - window):start]
+    after  = text[end:end + window]
+    if matches_any(EXAMPLE_PHRASES, before):
+        return "example"
+    if matches_any(ASPIRATIONAL_PHRASES, before):
+        return "aspirational"
+    if matches_any(ROLE_ORG_NAME_BEFORE_PATTERNS, before) or matches_any(ROLE_ORG_NAME_AFTER_PATTERNS, after):
+        return "org_name"
+    if matches_any(ROLE_PROVIDER_BEFORE_PATTERNS, before) or matches_any(ROLE_PROVIDER_AFTER_PATTERNS, after):
+        return "provider"
+    if _echoes_org_name(text, start, end, name_text, window):
+        return "org_name"
+    return "served"
 
 def phrase_has_serving_context(pattern, text, window=100):
     for m in re.finditer(pattern, text, re.IGNORECASE):

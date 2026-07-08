@@ -33,4 +33,8 @@ Thumbs.db
 *.env
 secrets.json
 
-codebase_and_audit.md
+# --- Plan files ---
+/Plan files/
+**/Plan files/**
+"Plan files/"
+Plan*files/

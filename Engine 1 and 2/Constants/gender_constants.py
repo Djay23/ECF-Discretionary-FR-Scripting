@@ -1,0 +1,238 @@
+"""
+gender_constants.py
+-------------------
+Gender Identity classifier — all data constants.
+No logic. Imported by Gender_SexID.py.
+"""
+
+# ---------------------------------------------------------------------------
+# Output category labels (verbatim — match taxonomy sheet)
+# ---------------------------------------------------------------------------
+GENDER_WOMEN_GIRLS = "Women and/or girls"
+GENDER_MEN_BOYS    = "Men and/or boys"
+GENDER_TWO_SPIRIT  = "Two-Spirit"
+GENDER_OTHER       = "Other (Agender, Gender fluid, Gender neutral, Genderqueer, Non-binary, Transgender)"
+GENDER_MULTIPLE    = "Multiple gender identities"
+GENDER_GENERAL_POP = "General Population (No specific gender served)"
+
+# ---------------------------------------------------------------------------
+# Output column names
+# ---------------------------------------------------------------------------
+OUTPUT_GENDER      = "Gender Id - FR9"
+OUTPUT_GENDER_FLAG = "Gender Classification Flag"
+
+# ---------------------------------------------------------------------------
+# Identity key → output label
+# Each "Other (…)" identity key maps to the same label (the six subtypes are
+# individually distinct for the Multiple rule, but collapse to one label when
+# only one is detected).
+# lgbtq_umbrella short-circuits to GENDER_MULTIPLE in resolve_gender() before
+# IDENTITY_KEY_TO_LABEL is consulted; GENDER_OTHER here is a safe fallback only.
+# ---------------------------------------------------------------------------
+IDENTITY_KEY_TO_LABEL = {
+    "women_girls":    GENDER_WOMEN_GIRLS,
+    "men_boys":       GENDER_MEN_BOYS,
+    "two_spirit":     GENDER_TWO_SPIRIT,
+    "agender":        GENDER_OTHER,
+    "gender_fluid":   GENDER_OTHER,
+    "gender_neutral": GENDER_OTHER,
+    "genderqueer":    GENDER_OTHER,
+    "non_binary":     GENDER_OTHER,
+    "transgender":    GENDER_OTHER,
+    "lgbtq_umbrella": GENDER_OTHER,
+    # gender_diverse short-circuits to GENDER_MULTIPLE in resolve_gender()
+    # (same shape as lgbtq_umbrella) before this table is consulted.
+    "gender_diverse": GENDER_OTHER,
+}
+
+# Short name used inside "Multiple: …" flag text
+IDENTITY_KEY_SHORT_LABEL = {
+    "women_girls":    "women/girls",
+    "men_boys":       "men/boys",
+    "two_spirit":     "Two-Spirit",
+    "agender":        "agender",
+    "gender_fluid":   "gender fluid",
+    "gender_neutral": "gender neutral",
+    "genderqueer":    "genderqueer",
+    "non_binary":     "non-binary",
+    "transgender":    "transgender",
+    "lgbtq_umbrella": "2SLGBTQIA+ umbrella",
+    "gender_diverse": "gender-diverse",
+}
+
+# ---------------------------------------------------------------------------
+# Term patterns
+# Format: (regex, identity_key, extra_flag_key | None)
+# extra_flag_key: "sex_term" when match comes from female/male (biological-sex term)
+#
+# Ordering note — female BEFORE male:
+#   Word-boundary anchors (\b) already prevent \bmale\b from matching inside
+#   "female" (the 'f' and 'e' in "fe" are word-chars, so no \b before the 'm').
+#   The list ordering is belt-and-suspenders for readability and resilience.
+#
+# bare "queer" and bare "trans" are NOT listed here — they are handled
+# separately in Gender_SexID.extract_gender_candidates() because each needs
+# a context check to decide whether to attach an ambiguity flag.
+# ---------------------------------------------------------------------------
+GENDER_TERM_PATTERNS = [
+    # women_girls — female first
+    (r"\bfemales?\b", "women_girls", None),
+    # \bwomens?\b (not \bwomen\b) so the normalized form of "Womens'" (trailing
+    # apostrophe stripped to nothing by normalize_text, leaving "womens" as one
+    # token with no word boundary after "women") is still detected.
+    (r"\bwomens?\b", "women_girls", None),
+    (r"\bwoman\b", "women_girls", None),
+    (r"\bgirls?\b", "women_girls", None),
+    # women_girls — familial / relational (unambiguous gendered terms)
+    # normalize_text strips apostrophes/punctuation, so "mothers'" and "mothers" both → \bmothers\b
+    (r"\bmothers?\b", "women_girls", None),
+    (r"\bmoms?\b", "women_girls", None),
+    (r"\bmaternal\b", "women_girls", None),
+    (r"\bmatriarchs?\b", "women_girls", None),
+    (r"\bmatriarchal\b", "women_girls", None),
+    (r"\bsisters?\b", "women_girls", None),
+    (r"\bdaughters?\b", "women_girls", None),
+    (r"\bgrandmothers?\b", "women_girls", None),
+    (r"\baunts?\b", "women_girls", None),
+    (r"\bwidows?\b", "women_girls", None),
+    (r"\bladies\b", "women_girls", None),
+    (r"\blady\b", "women_girls", None),
+    # French (Fix 8): "femme(s)" = French for woman/women. Ambiguous with the
+    # English coded-slang sense (see AMBIGUOUS_CODED_TERMS below) — both
+    # mechanisms fire together: this classifies, FLAG_AMBIGUOUS_TERM still
+    # flags it so a reviewer double-checks which sense applies.
+    (r"\bfemmes?\b", "women_girls", None),
+    # men_boys
+    (r"\bmales?\b", "men_boys", None),
+    # \bmens?\b (not \bmen\b) — same normalized-possessive-plural reasoning as women.
+    (r"\bmens?\b", "men_boys", None),
+    (r"\bman\b", "men_boys", None),
+    (r"\bboys?\b", "men_boys", None),
+    # men_boys — familial / relational
+    (r"\bfathers?\b", "men_boys", None),
+    (r"\bdads?\b", "men_boys", None),
+    (r"\bpaternal\b", "men_boys", None),
+    (r"\bpatriarchs?\b", "men_boys", None),
+    (r"\bpatriarchal\b", "men_boys", None),
+    (r"\bbrothers?\b", "men_boys", None),
+    (r"\bsons?\b", "men_boys", None),
+    (r"\bgrandfathers?\b", "men_boys", None),
+    (r"\buncles?\b", "men_boys", None),
+    (r"\bwidowers?\b", "men_boys", None),
+    (r"\bgentlem[ae]n\b", "men_boys", None),
+    # French (Fix 8): "homme(s)" = French for man/men.
+    (r"\bhommes?\b", "men_boys", None),
+    # two_spirit
+    (r"\btwo[\-\s]spirited?\b", "two_spirit", None),
+    (r"\b2[\-\s]spirited?\b", "two_spirit", None),
+    (r"\btwospirit\b", "two_spirit", None),
+    # other — each is a distinct identity (drives Multiple if 2+ present)
+    (r"\bagender\b", "agender", None),
+    (r"\bgender[\-\s]?fluid\b", "gender_fluid", None),
+    (r"\bgenderfluid\b", "gender_fluid", None),
+    (r"\bgender[\-\s]?neutral\b", "gender_neutral", None),
+    (r"\bgenderqueer\b", "genderqueer", None),
+    (r"\bgender[\-\s]queer\b", "genderqueer", None),
+    # non_binary
+    (r"\bnon[\-\s]?binary\b", "non_binary", None),
+    (r"\benby\b", "non_binary", None),
+    # transgender (full word — bare "trans" handled separately)
+    (r"\btransgender\b", "transgender", None),
+    # gender-diverse — a distinct umbrella concept (Plan.md Fix 2a): always
+    # routes to Multiple gender identities (see resolve_gender) and, via
+    # SEXUAL_GENDER_DIVERSE_KEYS below, to 2SLGBTQIA+ on the sexual axis.
+    (r"\bgender[\-\s]?diverse\b", "gender_diverse", None),
+]
+
+# Special-case patterns whose flag depends on context — handled inline in extractor
+BARE_QUEER_PATTERN = r"\bqueer\b"
+BARE_TRANS_PATTERN = r"\btrans\b"
+# Used to detect "gender queer" / "genderqueer" context so bare-queer flag is suppressed
+GENDER_QUEER_CONTEXT = r"\bgender[\-\s]?queer\b|\bgenderqueer\b"
+
+# Shared acronym pattern — referenced by SEXUAL_ORIENTATION_PATTERNS and the gender
+# umbrella scan so the regex lives in exactly one place.
+# normalize_text() replaces literal + with space, so \+? matches gracefully without it.
+UMBRELLA_ACRONYM_PATTERN = r"\b(2s)?lgbt(?:q(?:ia?|2s)?)?\+?(?!\w)"
+
+# ---------------------------------------------------------------------------
+# Flag strings (all live here so a reviewer can grep one file)
+# ---------------------------------------------------------------------------
+FLAG_ASPIRATIONAL     = "Aspirational/future language - group may not be current served population"
+FLAG_TWO_SPIRIT_INDIG = "Two-Spirit present - also an Indigenous signal - cross-check ethnic classification"
+FLAG_NEGATION         = "Negation detected - verify exclusion vs inclusion intent"
+FLAG_UMBRELLA_ACRONYM = "Gender identity inferred from 2SLGBTQIA+ umbrella acronym - umbrella also spans cisgender orientations; verify served population"
+FLAG_ORG_NAME         = "Gender/sexual term appears inside an organization or proper name - verify served population vs organization name"
+FLAG_AMBIGUOUS_TERM   = "Ambiguous coded gender/orientation term (femme/masc/butch/...) - verify served population on both gender and sexual-identity axes"
+
+# ---------------------------------------------------------------------------
+# Ambiguous coded terms — flag without classifying (femme/masc/butch are
+# gender-coded AND lesbian-orientation-adjacent; reviewer checks both axes).
+# ---------------------------------------------------------------------------
+AMBIGUOUS_CODED_TERMS = [
+    r"\bfemme\b",
+    r"\bmasc\b",
+    r"\bbutch\b",
+    r"\bstud\b",
+]
+
+# ---------------------------------------------------------------------------
+# Org / proper-name context patterns.
+# Run on normalized text (normalize_text lowercases + replaces all
+# non-word/non-space chars with space, so apostrophes become spaces:
+#   "Women's" → "women s",  "Boys & Girls" → "boys  girls" → "boys girls").
+# When any pattern fires alongside a classification, FLAG_ORG_NAME is appended.
+# ---------------------------------------------------------------------------
+ORG_NAME_CONTEXT_PATTERNS = [
+    # "Boys (and) Girls Club" — & normalized to space; explicit "and" optional
+    r"\bboys?\s+(?:and\s+)?girls?\s+club\b",
+    r"\bgirls?\s+(?:and\s+)?boys?\s+club\b",
+    # "[gender word][s] [org noun]" — "womens association", "ladies institute"
+    # "women s" (from "Women's") is also matched since 's' token can follow
+    r"\b(?:womens?|women\s+s|girls?|mens?|boys?|females?|males?|mothers?|fathers?|ladies|lady)\s+"
+    r"(?:club|society|association|institute|foundation|centre|center|council|league|academy|guild|chapter|network|organization)\b",
+    # "[org noun] for/of [gender word]" — "institute for women", "foundation for girls"
+    r"\b(?:club|society|association|institute|foundation|centre|center|council|league|academy|guild|chapter|network|organization)\s+"
+    r"(?:for|of)\s+(?:women|woman|girls?|men|man|boys?|females?|males?|mothers?|fathers?|ladies|lady)\b",
+]
+
+# ---------------------------------------------------------------------------
+# Sexual Identity — output labels, columns, signals, flags
+# ---------------------------------------------------------------------------
+SEXUAL_2SLGBTQIA   = "2SLGBTQIA+"
+SEXUAL_GENERAL_POP = "General Population (No specific sexual identity served)"
+
+OUTPUT_SEXUAL = "Sexual Id - FR10"
+OUTPUT_SEXUAL_FLAG = "Sexual Classification Flag"
+
+# Gender-diverse identity keys that imply 2SLGBTQIA+ (all gender keys except women/men)
+SEXUAL_GENDER_DIVERSE_KEYS = {
+    "two_spirit", "agender", "gender_fluid", "gender_neutral",
+    "genderqueer", "non_binary", "transgender", "gender_diverse",
+}
+
+# Single source of truth — reuse GENDER_TERM_PATTERNS; no re-listing of trans/non-binary/etc.
+# BARE_TRANS_PATTERN appended because bare "trans" also signals 2SLGBTQIA+.
+SEXUAL_GENDER_DIVERSE_PATTERNS = (
+    [pat for pat, key, _ in GENDER_TERM_PATTERNS if key in SEXUAL_GENDER_DIVERSE_KEYS]
+    + [BARE_TRANS_PATTERN]
+)
+
+# Explicit orientation terms + acronym family.
+# "queer" is treated as an orientation term here — presence alone → 2SLGBTQIA+,
+# no prefix-context check needed (that check only matters for gender classification).
+SEXUAL_ORIENTATION_PATTERNS = [
+    r"\blesbians?\b",
+    r"\bgay\b",
+    r"\bbisexual\b",
+    r"\bqueer\b",
+    r"\bintersex\b",
+    r"\basexual\b",
+    r"\bpansexual\b",
+    UMBRELLA_ACRONYM_PATTERN,   # single source of truth — defined above
+]
+
+# Sexual identity flag strings
+SFLAG_NEGATION = "Negation detected - verify exclusion vs inclusion intent"
+SFLAG_GENDER_TERM = "2SLGBTQIA+ inferred from a gender-identity term (trans/non-binary/two-spirit/...) not an explicit orientation - verify sexual-identity intent"
+SFLAG_ASPIRATIONAL = "Aspirational/future language - group may not be current served population"

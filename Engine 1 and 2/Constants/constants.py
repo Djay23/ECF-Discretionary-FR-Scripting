@@ -11,6 +11,13 @@ MULTIPLE_ETHNIC = "Multiple Ethnic and Cultural Origins"
 OTHER_ETHNIC    = "Other Ethnic and Cultural Origins"
 GENERAL_POP     = "General Population (No specific ethnic and cultural origin group served)"
 
+# North American Indigenous umbrella-widening rule (resolver Step 4a)
+INDIGENOUS_L1 = "North American Indigenous Origins"
+INDIGENOUS_UMBRELLA_FLAG = (
+    "Review: Indigenous umbrella term co-occurs with specific sub-group(s) - "
+    "classified at general North American Indigenous level; verify served population"
+)
+
 # ==================================================
 # CASE 4 — Structured / directional phrase patterns
 # Applied only if no direct taxonomy match found.
@@ -35,6 +42,7 @@ PATTERN_RULES = [
     (r"\bindigenous\b", "North American Indigenous Origins", "", ""),
     (r"\bindiginous\b", "North American Indigenous Origins", "", ""),
     (r"\bindigenious\b", "North American Indigenous Origins", "", ""),
+    (r"\bindingeous\b", "North American Indigenous Origins", "", ""),
     (r"\btreaty 6\b", "North American Indigenous Origins", "", ""),
     (r"\bnorthern european\b", "European Origins", "Northern European Origins", ""),
     (r"\bsouthern european\b", "European Origins", "Southern European Origins", ""),
@@ -111,7 +119,7 @@ BIPOC_KEYWORDS = [
     r"\bbipoc\b",
     r"\bqtbipoc\b",
     r"\bpoc\b",
-    r"\bibpoc\b"
+    r"\bibpoc\b",
     r"\bpeople of colou?r\b",
     #r"\bblack african\b",
     #r"\bracialized\b", # Change to flag if "racialized" is detected
@@ -181,6 +189,7 @@ AMBIGUOUS_EQUITY_WORDS = [
 ORG_NAME_ETHNICITY_MAP = {
     "bent arrow": ("North American Indigenous Origins", "", ""),
     "treaty 6": ("North American Indigenous Origins", "", ""), # Flag for review, as "Treaty 6" could refer to the geographic region (which would be L1 or L2) rather than the organization (which would be Case 10). Only trigger if "Treaty 6" appears in the funding request name or purpose, not just the description.
+    "niginan housing ventures": ("North American Indigenous Origins", "", ""),
     # Add more known organization name -> ethnicity mappings here as identified
 }
 
@@ -226,6 +235,18 @@ NEGATION_PHRASES = [
     r"except(ing)?",
     #r"other than",
     #r"outside of",
+    r"not the (primary|main|sole|only) (focus|target|group|population)",
+]
+
+# Pruned negation list used ONLY by the ethnic annotation flag (extract_context_signals).
+# The full NEGATION_PHRASES stays intact for is_negated() (gender/sex + ethnic candidate
+# dropping). Drops the context-free offenders (exclud/except) and the "not for" branch
+# that fires on "not-for-profit".
+ETHNIC_ANNOTATION_NEGATION_PHRASES = [
+    r"not (target(ing)?|serv(ing|e)|focus(ing|ed)|limited to|exclusively)",
+    r"does not (target|serve|focus|support|cater)",
+    r"do not (target|serve|focus|support|cater)",
+    r"no longer (target(ing)?|serv(ing|e)|focus(ing|ed))",
     r"not the (primary|main|sole|only) (focus|target|group|population)",
 ]
 
@@ -287,6 +308,48 @@ SERVING_CONTEXT_WORDS = [
     #r"\baudience\b",
     #r"\bclients\b",
     ##r"\bgroups\b",
+]
+
+# =============================================================================
+# Phase 2 — Evidence-role frames (Plan.md Fix 1 Phase 2)
+#
+# Weak roles: a matched identity term surrounded by one of these frames
+# describes an ORG NAME or a SERVICE PROVIDER, not the served population.
+# example/aspirational/negated reuse the phrase banks above. Anything that
+# matches none of these frames defaults to "served" (strong).
+# =============================================================================
+ROLE_ORG_NAME_BEFORE_PATTERNS = [
+    r"\bin partnership with\s*$",
+    r"\bin collaboration with\s*$",
+    r"\btogether with\s*$",
+    r"\bpresented by\s*$",
+]
+
+ROLE_ORG_NAME_AFTER_PATTERNS = [
+    # Anchored to the start of the "after" window with a small filler-word
+    # allowance, so this can't bleed forward into an unrelated later mention
+    # (e.g. a second, provider-framed occurrence of the same keyword further
+    # down the sentence).
+    r"^\s*(?:\w+\s+){0,3}(?:institute|association|society|centre|center|"
+    r"foundation|council|collaborative|coalition|club|network|group|"
+    r"company|troupe|theatre|theater|ballet)\b",
+]
+
+ROLE_PROVIDER_BEFORE_PATTERNS = [
+    r"\bled by\s*$",
+    r"\bdelivered by\s*$",
+    r"\bfacilitated by\s*$",
+]
+
+ROLE_PROVIDER_AFTER_PATTERNS = [
+    # Anchored — same bleed-prevention reasoning as ROLE_ORG_NAME_AFTER_PATTERNS.
+    # NOTE: deliberately excludes "elder(s)" -- unlike the other nouns here,
+    # "elder" is at least as commonly a SERVED-population noun ("support for
+    # Indigenous elders") as a provider-role noun ("led by an Elder"), so it's
+    # too ambiguous to use as a standalone weak-role signal.
+    r"^\s*(?:\w+\s+){0,2}(?:nutritionists?|dietitians?|professionals?|"
+    r"facilitators?|instructors?|advisors?|consultants?|artists?|"
+    r"teachers?)\b",
 ]
 
 """
@@ -359,13 +422,14 @@ NON_ETHNIC_LEADING_WORDS = {
 # NEVER classifies. NEVER overrides. Review flag only.
 # =================================================
 
+# Only the explicit "cultural" org forms remain. The bare "association",
+# "community association", and "community organization" patterns were too broad —
+# they matched generic non-ethnic orgs (Riverdale Community Association, Tenants
+# Association, etc.) and produced 100% false positives on audit.
 CASE_13_PATTERNS = [
     r"^([a-z][a-z\s\-']+?)\s+cultural\s+association\b",
     r"^([a-z][a-z\s\-']+?)\s+cultural\s+group\b",
     r"^([a-z][a-z\s\-']+?)\s+cultural\s+society\b",
-    r"^([a-z][a-z\s\-']+?)\s+community\s+association\b",
-    r"^([a-z][a-z\s\-']+?)\s+community\s+organization\b",
-    r"^([a-z][a-z\s\-']+?)\s+association\b",
 ]
 
 # ============================================================

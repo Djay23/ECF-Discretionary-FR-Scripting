@@ -396,6 +396,11 @@ def main():
     funding_filepath = bootstrap.PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx"
 
     print(f"Loading funding requests from: {funding_filepath}")
+    if not funding_filepath.exists():
+        print(f"Error: data workbook not found at '{funding_filepath}'.")
+        print(f"Place the file at: {bootstrap.PROJECT_ROOT / 'Data Sheets' / 'FR testing.xlsx'} "
+              f"(sheet '{DATA_SHEET}').")
+        sys.exit(1)
     try:
         data_df = pd.read_excel(funding_filepath, sheet_name=DATA_SHEET, dtype=str)
     except Exception as e:

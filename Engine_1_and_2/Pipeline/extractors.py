@@ -38,8 +38,10 @@ NOTE on imports:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+ROLE_CONTEXT_WINDOW = 60
+
 def _candidate(level1: str, level2: str, level3: str, depth: int, source: str,
-               role: str = "served") -> dict:
+               role: str = "served", span: str = "", context: str = "") -> dict:
     return {
         "level1": level1,
         "level2": level2,
@@ -47,7 +49,16 @@ def _candidate(level1: str, level2: str, level3: str, depth: int, source: str,
         "depth":  depth,
         "source": source,
         "role":   role,
+        # span/context: the matched text and its local window, kept so the
+        # ML role arbiter (Plan.md Chunk F Phase B) can re-score this exact
+        # occurrence later without re-running extraction. Empty for
+        # org_lookup candidates (not span-anchored, see extract_org_candidates).
+        "span":    span,
+        "context": context,
     }
+
+def _local_context(text: str, start: int, end: int, window: int = ROLE_CONTEXT_WINDOW) -> str:
+    return text[max(0, start - window):end + window]
 
 # ---------------------------------------------------------------------------
 # Public extraction functions
@@ -82,6 +93,8 @@ def extract_taxonomy_candidates(text: str, taxonomy_entries: list, name_text: st
                 entry["depth"],
                 "taxonomy",
                 role,
+                span=m.group(0),
+                context=_local_context(text, m.start(), m.end()),
             ))
     return candidates
 
@@ -101,7 +114,11 @@ def extract_pattern_candidates(text: str, name_text: str = "") -> list:
         depth = 3 if l3 else (2 if l2 else 1)
         for m in re.finditer(pattern, text, re.IGNORECASE):
             role = infer_role(text, m.start(), m.end(), name_text)
-            candidates.append(_candidate(l1, l2, l3, depth, "pattern", role))
+            candidates.append(_candidate(
+                l1, l2, l3, depth, "pattern", role,
+                span=m.group(0),
+                context=_local_context(text, m.start(), m.end()),
+            ))
     return candidates
 
 def extract_country_candidates(text: str, name_text: str = "") -> list:
@@ -121,7 +138,11 @@ def extract_country_candidates(text: str, name_text: str = "") -> list:
         pattern = r'\b(?:' + re.escape(country) + r's?|from\s+' + re.escape(country) + r's?)\b'
         for m in re.finditer(pattern, text, re.IGNORECASE):
             role = infer_role(text, m.start(), m.end(), name_text)
-            candidates.append(_candidate(l1, l2, l3, depth, "country", role))
+            candidates.append(_candidate(
+                l1, l2, l3, depth, "country", role,
+                span=m.group(0),
+                context=_local_context(text, m.start(), m.end()),
+            ))
     return candidates
 
 def extract_compound_candidates(text: str, name_text: str = "") -> list:
@@ -137,8 +158,10 @@ def extract_compound_candidates(text: str, name_text: str = "") -> list:
         m = re.search(compound_pattern, text, re.IGNORECASE)
         if m:
             role = infer_role(text, m.start(), m.end(), name_text)
+            span = m.group(0)
+            context = _local_context(text, m.start(), m.end())
             for l1, l2, l3 in group_tuples:
-                candidates.append(_candidate(l1, l2, l3, 1, "compound", role))
+                candidates.append(_candidate(l1, l2, l3, 1, "compound", role, span=span, context=context))
     return candidates
 
 def extract_broad_identity_candidates(text: str, name_text: str = "") -> list:
@@ -153,7 +176,11 @@ def extract_broad_identity_candidates(text: str, name_text: str = "") -> list:
         m = re.search(kw_pattern, text, re.IGNORECASE)
         if m:
             role = infer_role(text, m.start(), m.end(), name_text)
-            return [_candidate(OTHER_ETHNIC, "", "", 1, "broad_identity", role)]
+            return [_candidate(
+                OTHER_ETHNIC, "", "", 1, "broad_identity", role,
+                span=m.group(0),
+                context=_local_context(text, m.start(), m.end()),
+            )]
     return []
 
 def extract_org_candidates(text: str) -> list:

@@ -171,7 +171,7 @@ AMBIGUOUS_EQUITY_WORDS = [
     #r"\bethnocultural\b",
     r"\bracialized\b",
     #r"\bunderrepresented\b", # Possible to overlook as most times refers to gender and sexual identity
-    r"\bmulticultural\b",
+    #r"\bmulticultural\b",
     #r"\bdiverse\b",
     #r"\brefugee\b",
     #r"\bimmigrant\b",

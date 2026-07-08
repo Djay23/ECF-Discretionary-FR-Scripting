@@ -202,11 +202,23 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
 
 
 ## To run Files:
-- Diagnose_semantic_scores.py:
-    + python diagnose_semantic_scores.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"
 
-- Ethnic_taggerv3.py:
-    + python ethnic_taggerv3.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"
+The scripts do **not** take command-line arguments. They read/write fixed
+locations under the repo root:
+- Taxonomy: `Taxonomy/Taxonomy - Definitions.xlsx`
+- Data:     `Data Sheets/FR testing.xlsx` (sheet `Discretionary Funding Requests`)
+
+Place `FR testing.xlsx` in a `Data Sheets/` folder at the repo root before running.
+
+- **Full pipeline (recommended)** — writes ethnic, gender, and sexual columns in one pass:
+    + `python Engine_1_and_2/run_all.py`
+
+- Or run the engines individually (both write into `Data Sheets/FR testing.xlsx`):
+    + `python Engine_1_and_2/Pipeline/ethnic_taggerv3.py`  — ethnic + semantic columns
+    + `python Engine_1_and_2/Pipeline/Gender_SexID.py`     — gender + sexual columns
+
+- Diagnostic (optional, run before a full pass to inspect embedding thresholds):
+    + `python Engine_1_and_2/Semantic_Engine/diagnose_semantic_scores.py`
 
 
 
@@ -348,5 +360,10 @@ Is this something a human reviewer actually needs to look at?
 
 # 2026-07-08
 ## Sprint 3 - Auditing - Classification of Sexual & Gender Identity
-- Continued implementation and bug fixes from Plan.md\
+- Continued implementation and bug fixes from Plan.md
 - Implement Machine Learning using vectors to locally train to improve classification accuracy from 95% to 99%, reducing number of irrelevant flags as a result.
+
+### To Do:
+- ECF Focus areas classification --> Using ML for quicker mapping.
+- Using country python library.
+- Sector Classification (By Hand)

@@ -453,7 +453,7 @@ def is_bipoc_real_target(text):
 
 def check_grassroots_case(text, has_ethnic_signal):
     """
-    Case 11 (expanded): 'grassroots' / 'marginalized' / 'ethnocultural' /
+    Case 11 (expanded):  'marginalized' / 'racialized' /
     'multicultural' / 'refugee' / 'immigrant' etc. never count as a signal
     on their own. Unlike negation/example-mention, this never suppresses
     silently either way -- caller flags the result whether a real signal
@@ -700,6 +700,11 @@ def main():
         sys.exit(1)
  
     print(f"Loading funding requests from: {funding_filepath}")
+    if not funding_filepath.exists():
+        print(f"Error: data workbook not found at '{funding_filepath}'.")
+        print(f"Place the file at: {bootstrap.PROJECT_ROOT / 'Data Sheets' / 'FR testing.xlsx'} "
+              f"(sheet '{DATA_SHEET}').")
+        sys.exit(1)
     try:
         data_df = pd.read_excel(funding_filepath, sheet_name=DATA_SHEET, dtype=str)
     except Exception as e:
@@ -731,7 +736,9 @@ def main():
     stats = {"3-level": 0, "2-level": 0, "1-level": 0, "multiple": 0,
               "other": 0, "general": 0, "flagged": 0, "pattern": 0,
               "country": 0, "org_lookup": 0, "grassroots_filtered": 0, "semantic_suggested": 0}
- 
+    
+    print(f"\n --- Classification Categories ---\n")
+    
     for idx, row in data_df.iterrows():
         # Route through the canonical refactored pipeline (classify_pipeline → resolver)
         e1, e2, e3, flag = pipeline_classify_row(row, taxonomy_entries)
@@ -749,7 +756,7 @@ def main():
                 sl1, sl2, sl3, score, margin = suggestion
                 parts = [p for p in [sl1, sl2, sl3] if p]
                 data_df.at[idx, OUTPUT_SEMANTIC] = f"{' / '.join(parts)} (similarity: {score:.2f}, margin: {margin:.2f})"
-                stats["semantic_suggested"] += 1
+                #stats["semantic_suggested"] += 1
  
         if e1 == MULTIPLE_ETHNIC:
             stats["multiple"] += 1
@@ -770,8 +777,8 @@ def main():
             stats["country"] += 1
         if "organization name" in flag.lower():
             stats["org_lookup"] += 1
-        if "ambiguous equity" in flag.lower():
-            stats["grassroots_filtered"] += 1
+        # if "ambiguous equity" in flag.lower():
+        #     stats["grassroots_filtered"] += 1
         if flag:
             stats["flagged"] += 1
  

@@ -1,3 +1,4 @@
+import os
 import re
 
 from ethnic_taggerv3 import (
@@ -36,6 +37,68 @@ Classification orchestration layer — wires the 3-layer pipeline:
 This module contains NO classification logic. All ethnic origin decisions
 live in resolver.py. This function is pure orchestration.
 """
+
+# ---------------------------------------------------------------------------
+# ML AUGMENTATION LAYER — Phase B: evidence-role NLI arbiter (Plan.md
+# "ML AUGMENTATION LAYER" section). Off by default so the deterministic
+# rule engine stays the shipping path; set USE_ML_ROLE_ARBITER=1 to A/B
+# test the learned role frames against the regex-only path (audit_score.py
+# picks up the env var the same way — no code change needed to compare).
+# ---------------------------------------------------------------------------
+
+USE_ML_ROLE_ARBITER = os.environ.get("USE_ML_ROLE_ARBITER") == "1"
+
+# Only override a regex "served" call when the NLI arbiter's next-best
+# weak role beats "served" by this margin (raw entailment logits, not
+# probabilities — a margin, not an absolute confidence, is what's
+# comparable across premises). Conservative by construction: silence
+# (no override) is the safe failure mode on these sensitive axes.
+ML_ROLE_OVERRIDE_MARGIN = 1.5
+
+
+def apply_ml_role_arbiter(candidates):
+    """
+    Phase B: for each candidate the regex role frames (infer_role) tagged
+    "served", ask the vendored NLI cross-encoder for a second opinion on
+    that exact span/context. If the arbiter is confidently more specific
+    (e.g. "org_name"/"provider"/"example") than "served", demote the
+    candidate's role and record why — this is the learned generalization
+    of Phase 2 tiering the plan calls for (Alberta Ballet's "Black
+    classical ballet company", Digestive Health's "Indigenous
+    Nutritionist", incidental body mentions the regex frames don't cover).
+
+    Never promotes a regex weak role to "served" — the regex frames are
+    already tuned/regression-tested for the strong case; the arbiter's
+    job here is only to catch regex false positives, not add new signal.
+    Candidates without a captured span/context (e.g. org_lookup) pass
+    through untouched.
+    """
+    if not USE_ML_ROLE_ARBITER:
+        return candidates
+    from ml_arbiter import nli_role
+
+    refined = []
+    for c in candidates:
+        if c.get("role") != "served" or not c.get("span") or not c.get("context"):
+            refined.append(c)
+            continue
+        scores = nli_role(c["span"], c["context"])
+        best = scores["best_role"]
+        if best in ("served", "negated"):
+            refined.append(c)
+            continue
+        if scores[best] - scores["served"] < ML_ROLE_OVERRIDE_MARGIN:
+            refined.append(c)
+            continue
+        c = dict(c)
+        c["role"] = best
+        c["ml_role_note"] = (
+            f'ML role arbiter: "{c["span"]}" reclassified served -> {best} '
+            f'(served={scores["served"]:.2f}, {best}={scores[best]:.2f})'
+        )
+        refined.append(c)
+    return refined
+
 
 # ---------------------------------------------------------------------------
 # P2-1 — French language accommodation filter
@@ -187,6 +250,7 @@ def classify_row(row, taxonomy_entries):
     # echoes the org's own name (e.g. "Black Canadian Women in Action is
     # undertaking...") is tagged role="org_name" (weak) instead of "served".
     body_candidates = _extract(body_text, name_text)
+    body_candidates = apply_ml_role_arbiter(body_candidates)  # Phase B, off by default
     bipoc_present    = is_bipoc_real_target(body_text)   # BIPOC must be in the body
     name_org         = extract_org_candidates(name_text)  # curated known-org from the name
     name_signal      = bool(_extract(name_text)) or is_bipoc_real_target(name_text)
@@ -245,7 +309,8 @@ def classify_row(row, taxonomy_entries):
     # Cultural-association, emphasis, Hindu, and negation checks. Emphasis/
     # Hindu are gated to non-General rows (Fix 6) — see extra_annotation_notes.
     # ------------------------------------------------------------------
-    notes = pre_notes + extra_annotation_notes(combined, states, bipoc_present, resolved_label=e1)
+    ml_notes = [f"Note (low priority): {c['ml_role_note']}" for c in states if c.get("ml_role_note")]
+    notes = pre_notes + ml_notes + extra_annotation_notes(combined, states, bipoc_present, resolved_label=e1)
 
     # ------------------------------------------------------------------
     # Step 7b — Case 13: potential ethnocultural org name in title

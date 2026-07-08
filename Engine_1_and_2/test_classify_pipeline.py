@@ -1423,5 +1423,96 @@ class TestGenderSexualClassifier(unittest.TestCase):
         self.assertEqual(label, GENDER_MEN_BOYS)
 
 
+# ---------------------------------------------------------------------------
+# ML AUGMENTATION LAYER — Phase B: evidence-role NLI arbiter
+# (Plan.md "ML AUGMENTATION LAYER" section). The arbiter is gated behind
+# USE_ML_ROLE_ARBITER (off by default) and calls the real vendored NLI
+# model when on — these tests mock ml_arbiter.nli_role so the plumbing
+# (override/no-override, note text, margin gating) is verified
+# deterministically without depending on the model's exact probabilistic
+# output or paying its load time in every test run.
+# ---------------------------------------------------------------------------
+
+class TestMLRoleArbiter(unittest.TestCase):
+
+    def setUp(self):
+        import classify_pipeline
+        self.classify_pipeline = classify_pipeline
+        self._orig_flag = classify_pipeline.USE_ML_ROLE_ARBITER
+
+    def tearDown(self):
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = self._orig_flag
+
+    def _candidate(self, role="served", span="Somali", context="ctx"):
+        return {
+            "level1": "African Origins", "level2": "Southern and East African Origins",
+            "level3": "Somali", "depth": 3, "source": "taxonomy",
+            "role": role, "span": span, "context": context,
+        }
+
+    def test_flag_off_is_a_no_op(self):
+        """Default state: apply_ml_role_arbiter must not touch candidates
+        when the flag is off — zero behavior change to the shipping
+        rule-only path."""
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = False
+        candidates = [self._candidate()]
+        result = self.classify_pipeline.apply_ml_role_arbiter(candidates)
+        self.assertEqual(result, candidates)
+
+    def test_flag_on_overrides_served_when_margin_cleared(self):
+        """A weak-role NLI verdict that beats 'served' by >= the configured
+        margin demotes the candidate and records why in ml_role_note."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 0.0, "org_name": 2.0, "provider": -5.0,
+                        "example": -5.0, "negated": -5.0, "best_role": "org_name"}
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            result = self.classify_pipeline.apply_ml_role_arbiter([self._candidate()])
+        self.assertEqual(result[0]["role"], "org_name")
+        self.assertIn("Somali", result[0]["ml_role_note"])
+        self.assertIn("served -> org_name", result[0]["ml_role_note"])
+
+    def test_flag_on_keeps_served_when_margin_not_cleared(self):
+        """A weak-role verdict that doesn't clear ML_ROLE_OVERRIDE_MARGIN
+        leaves the regex-assigned role untouched (conservative default)."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 1.0, "org_name": 1.2, "provider": -5.0,
+                        "example": -5.0, "negated": -5.0, "best_role": "org_name"}
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            result = self.classify_pipeline.apply_ml_role_arbiter([self._candidate()])
+        self.assertEqual(result[0]["role"], "served")
+        self.assertNotIn("ml_role_note", result[0])
+
+    def test_flag_on_never_promotes_weak_to_served(self):
+        """A candidate the regex already tagged weak (e.g. 'example') is
+        left alone — the arbiter only demotes 'served', never promotes."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 5.0, "org_name": -5.0, "provider": -5.0,
+                        "example": -5.0, "negated": -5.0, "best_role": "served"}
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            result = self.classify_pipeline.apply_ml_role_arbiter([self._candidate(role="example")])
+        self.assertEqual(result[0]["role"], "example")
+
+    def test_candidate_without_span_passes_through(self):
+        """org_lookup-style candidates (no span/context captured) skip the
+        arbiter entirely rather than erroring on an empty premise."""
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        candidates = [self._candidate(span="", context="")]
+        result = self.classify_pipeline.apply_ml_role_arbiter(candidates)
+        self.assertEqual(result[0]["role"], "served")
+        self.assertNotIn("ml_role_note", result[0])
+
+    def test_env_var_sets_flag_at_import_time(self):
+        """USE_ML_ROLE_ARBITER reads os.environ at import time so
+        audit_score.py can A/B test the arbiter with no code change."""
+        self.assertFalse(
+            self.classify_pipeline.USE_ML_ROLE_ARBITER,
+            "test process must run with USE_ML_ROLE_ARBITER unset for this "
+            "assertion to be meaningful",
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

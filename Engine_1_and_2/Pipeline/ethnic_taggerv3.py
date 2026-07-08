@@ -733,9 +733,9 @@ def main():
         if col not in data_df.columns:
             data_df[col] = ""
     # Count how many rows fall into each outcome bucket, for summary stats at the end. Note that these are not mutually exclusive categories (e.g. a row with a pattern match that's also flagged for aspirational language would count in both "pattern" and "flagged"), but they give a general sense of how many hits came from each detection method and how many were flagged for review.
-    stats = {"3-level": 0, "2-level": 0, "1-level": 0, "multiple": 0,
-              "other": 0, "general": 0, "flagged": 0, "pattern": 0,
-              "country": 0, "org_lookup": 0, "grassroots_filtered": 0, "semantic_suggested": 0}
+    stats = {"-Ethnic → 3-level": 0, "-Ethnic → 2-level": 0, "-Ethnic → 1-level": 0, "-Ethnic → Multiple": 0,
+              "-Ethnic → Other": 0, "-Ethnic → General": 0, "-Flagged → Ethnic": 0, "-Pattern → Ethnic": 0,
+              "-Country → Ethnic": 0, "-Organization Name → Ethnic": 0, "-Grassroots Filtered → Ethnic": 0, "-Semantic Suggested → Ethnic": 0}
     
     print(f"\n --- Classification Categories ---\n")
     
@@ -756,20 +756,20 @@ def main():
                 sl1, sl2, sl3, score, margin = suggestion
                 parts = [p for p in [sl1, sl2, sl3] if p]
                 data_df.at[idx, OUTPUT_SEMANTIC] = f"{' / '.join(parts)} (similarity: {score:.2f}, margin: {margin:.2f})"
-                #stats["semantic_suggested"] += 1
+                stats["semantic_suggested"] += 1
  
         if e1 == MULTIPLE_ETHNIC:
-            stats["multiple"] += 1
+            stats["-Ethnic → Multiple"] += 1
         elif e1 == OTHER_ETHNIC:
-            stats["other"] += 1
+            stats["-Ethnic → Other"] += 1
         elif e1 == GENERAL_POP:
-            stats["general"] += 1
+            stats["-Ethnic → General"] += 1
         elif e3:
-            stats["3-level"] += 1
+            stats["-Ethnic → 3-level"] += 1
         elif e2:
-            stats["2-level"] += 1
+            stats["-Ethnic → 2-level"] += 1
         else:
-            stats["1-level"] += 1
+            stats["-Ethnic → 1-level"] += 1
  
         if "pattern rule" in flag.lower():
             stats["pattern"] += 1

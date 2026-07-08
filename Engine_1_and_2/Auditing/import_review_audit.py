@@ -33,7 +33,7 @@ from gender_constants import (
 )
 
 # --- config ---------------------------------------------------------------
-DEFAULT_REVIEW     = bootstrap.PROJECT_ROOT / "Data Sheets" / "review_report(Gender and Sex).xlsx"
+DEFAULT_REVIEW     = bootstrap.PROJECT_ROOT / "Taxonomy" / "review_report(Gender and Sex).xlsx"
 AUDIT_DETAIL_SHEET = "Audit Detail"
 NOTE_COL           = "Correct Sex & Gender"
 OUT_FILE           = bootstrap.PROJECT_ROOT / "Data Sheets" / "audit_gold_prefilled.xlsx"

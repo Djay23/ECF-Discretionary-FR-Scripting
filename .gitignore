@@ -16,6 +16,10 @@ ENV/
 .claude/
 .cursorignore
 
+# --- Vendored ML models (large binaries; re-download via vendor_models.py) ---
+Engine_1_and_2/Semantic_Engine/models/
+.ml_cache/
+
 # --- IDEs & Code Editors ---
 .vscode/
 .idea/

@@ -1,5 +1,5 @@
 from typing import List, Tuple
-from constants import MULTIPLE_ETHNIC, OTHER_ETHNIC, GENERAL_POP
+from constants import MULTIPLE_ETHNIC, OTHER_ETHNIC, GENERAL_POP, INDIGENOUS_L1, INDIGENOUS_UMBRELLA_FLAG
 
 """
 resolver.py
@@ -74,16 +74,26 @@ def dedup(states: List[State]) -> List[State]:
     Collapse candidates that resolve to the identical (L1, L2, L3) outcome.
     Two detection methods landing on the same conclusion are a single
     confirmed answer, not a multi-group signal.
-    The first-seen entry is kept so the source label is preserved.
+
+    Evidence-role rescue (Plan.md Fix 1 Phase 2): if ANY occurrence of a
+    group was matched with role "served", that group counts as served even
+    if OTHER occurrences of the same group were weak (org_name/provider/
+    example/aspirational/negated) -- e.g. "program for Black Edmontonians
+    ... delivered by Black professionals" keeps Black as served via the
+    first phrase, despite the second being a weak "provider" mention.
+    The first-seen entry is kept as the representative (preserving its
+    source label) unless a later "served" occurrence needs to promote it.
     """
-    seen: set = set()
-    result: List[State] = []
+    best: dict = {}
+    order: List[tuple] = []
     for s in states:
         key = (s["level1"], s["level2"], s["level3"])
-        if key not in seen:
-            seen.add(key)
-            result.append(s)
-    return result
+        if key not in best:
+            best[key] = s
+            order.append(key)
+        elif s.get("role", "served") == "served" and best[key].get("role", "served") != "served":
+            best[key] = s
+    return [best[k] for k in order]
 
 # ---------------------------------------------------------------------------
 # Public entry point
@@ -114,23 +124,36 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
     org = [s for s in states if s["source"] == "org_lookup"]
 
     # -----------------------------------------------------------------------
+    # Evidence-role split (Plan.md Fix 1 Phase 2): classify from "served"
+    # candidates only. dedup() already rescued any group with at least one
+    # served occurrence, so a group surviving in `weak` here was NEVER
+    # mentioned as served population -- only as an org name, provider,
+    # example, aspiration, or negation.
+    # -----------------------------------------------------------------------
+    served = [s for s in primary if s.get("role", "served") == "served"]
+    weak   = [s for s in primary if s.get("role", "served") != "served"]
+
+    # -----------------------------------------------------------------------
     # Step 1 — BIPOC signal
     # BIPOC is checked before the "no candidates" gate because it produces
     # MULTIPLE_ETHNIC regardless of whether other ethnic signals are present.
     # -----------------------------------------------------------------------
     if bipoc_present:
-        if primary:
-            groups = sorted(set(s["level1"] for s in primary))
+        if served:
+            groups = sorted(set(s["level1"] for s in served))
             flag = ("Note (low priority): BIPOC keyword alongside specific group(s) (" + ", ".join(groups) + ") - verify manually")
         else:
             flag = "BIPOC signal detected"
         return build_output(MULTIPLE_ETHNIC, "", "", flag, context_flags)
 
     # -----------------------------------------------------------------------
-    # Step 2 — No primary candidates
-    # Try org fallback first; fall through to General Population if none.
+    # Step 2 — No served candidates
+    # Try org fallback first; if only weak (org_name/provider/example/
+    # aspirational/negated) candidates remain, keep General but name them in
+    # a transparency note (partial Fix 7) instead of silently dropping them.
+    # Otherwise fall through to plain General Population.
     # -----------------------------------------------------------------------
-    if not primary:
+    if not served:
         if org:
             best = org[0]
             return build_output(
@@ -138,7 +161,21 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
                 "Matched via known organization name lookup",
                 context_flags,
             )
+        if weak:
+            groups = sorted({
+                s["level1"] + (f" ({s['level2'] or s['level3']})" if (s["level2"] or s["level3"]) else "")
+                for s in weak
+            })
+            roles = sorted({s.get("role", "served") for s in weak})
+            note = (
+                "Note (low priority): " + ", ".join(groups)
+                + " mentioned in " + "/".join(roles)
+                + " context only - not classified as served population; verify"
+            )
+            return build_output(GENERAL_POP, "", "", note, context_flags)
         return build_output(GENERAL_POP, "", "", "", context_flags)
+
+    primary = served
 
     # -----------------------------------------------------------------------
     # Step 2b — Black + Indigenous / Black + African co-occurrence checks
@@ -177,11 +214,10 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
     # -----------------------------------------------------------------------
     distinct_l1 = set(s["level1"] for s in primary)
     if len(distinct_l1) >= 2:
-        return build_output(
-            MULTIPLE_ETHNIC, "", "",
-            "Review: multiple distinct groups detected",
-            context_flags,
-        )
+        # Fix 4: the generic "Review: multiple distinct groups detected" string
+        # is dropped as pure noise — the Multiple classification itself already
+        # says as much. No primary flag; context flags (if any) still appended.
+        return build_output(MULTIPLE_ETHNIC, "", "", "", context_flags)
 
     # -----------------------------------------------------------------------
     # Step 4 — Deepest shared level within a single L1
@@ -203,6 +239,25 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
     shared_l1 = primary[0]["level1"]
 
     specific = [s for s in primary if s["level2"] or s["level3"]]
+
+    # Step 4a — North American Indigenous umbrella + specific sub-group(s).
+    # Scoped to Indigenous only. (Fix 9) When a broad umbrella signal (L1-only:
+    # indigenous / aboriginal / treaty 6 / indigenous canadian) co-occurs with
+    # TWO OR MORE distinct specific sub-groups (Métis, First Nations, Inuit,
+    # Cree, ...), classify at the general L1 and flag for review — genuinely
+    # ambiguous which sub-group(s) are served. But when exactly ONE distinct
+    # sub-group co-occurs with the umbrella, don't roll up: fall through to
+    # the normal pool resolution below, which narrows to that sub-group
+    # (gold treats "Indigenous men ... Métis Settlements" as Métis, not a
+    # general roll-up).
+    if shared_l1 == INDIGENOUS_L1 and specific:
+        umbrella_present = any(not (s["level2"] or s["level3"]) for s in primary)
+        distinct_subs = {s["level2"] or s["level3"] for s in specific}
+        if umbrella_present and len(distinct_subs) >= 2:
+            subs = sorted(distinct_subs)
+            flag = INDIGENOUS_UMBRELLA_FLAG + " (" + ", ".join(subs) + ")"
+            return build_output(shared_l1, "", "", flag, context_flags)
+
     pool = specific if specific else primary
 
     # Single candidate in the pool — return its full path with source flag.

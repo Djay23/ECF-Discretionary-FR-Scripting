@@ -3,6 +3,7 @@ import os
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bootstrap  
 
 from classify_pipeline import classify_row
 from ethnic_taggerv3 import MULTIPLE_ETHNIC, OTHER_ETHNIC, GENERAL_POP
@@ -49,6 +50,13 @@ TAXONOMY = [
         "level2": "First Nations Origins",
         "level3": "Cree",
         "depth": 3,
+    },
+    {
+        "keyword": "métis",
+        "level1": "North American Indigenous Origins",
+        "level2": "Métis",
+        "level3": "",
+        "depth": 2,
     },
     # depth 1 — broad categories (longest keyword first within depth)
     {
@@ -118,7 +126,10 @@ class TestClassifyPipeline(unittest.TestCase):
         self.assertEqual(e1, MULTIPLE_ETHNIC)
         self.assertEqual(e2, "")
         self.assertEqual(e3, "")
-        self.assertIn("multiple distinct groups", flag)
+        # Fix 4: the generic "Review: multiple distinct groups detected"
+        # string is dropped as noise — the Multiple classification says as
+        # much on its own.
+        self.assertEqual(flag, "")
 
     # ------------------------------------------------------------------
     # 3. Country mapping case
@@ -171,7 +182,8 @@ class TestClassifyPipeline(unittest.TestCase):
         self.assertEqual(e1, MULTIPLE_ETHNIC)
         self.assertEqual(e2, "")
         self.assertEqual(e3, "")
-        self.assertIn("multiple distinct groups", flag)
+        # Fix 4: generic "Review: multiple distinct groups detected" string dropped.
+        self.assertEqual(flag, "")
 
     # ------------------------------------------------------------------
     # 6. BIPOC alone (no other ethnic signal)
@@ -214,8 +226,9 @@ class TestClassifyPipeline(unittest.TestCase):
     def test_grassroots_no_signal_produces_general_pop_with_note(self):
         """
         An AMBIGUOUS_EQUITY_WORD with no real ethnic signal resolves to
-        General Population and appends an annotation note — it does NOT
-        short-circuit classification before other evidence is weighed.
+        General Population — it does NOT short-circuit classification
+        before other evidence is weighed. Fix 4: the "Ambiguous equity term
+        with no paired ethnic signal" note is dropped as noise; no flag.
         """
         e1, e2, e3, flag = classify_row(
             row(desc="A multicultural community event for all residents."),
@@ -224,7 +237,7 @@ class TestClassifyPipeline(unittest.TestCase):
         self.assertEqual(e1, GENERAL_POP)
         self.assertEqual(e2, "")
         self.assertEqual(e3, "")
-        self.assertIn("Ambiguous equity term with no paired ethnic signal", flag)
+        self.assertEqual(flag, "")
 
     # ------------------------------------------------------------------
     # 9. Ambiguous equity word WITH a paired ethnic signal
@@ -232,7 +245,8 @@ class TestClassifyPipeline(unittest.TestCase):
     def test_grassroots_with_signal_classifies_normally_and_flags(self):
         """
         An AMBIGUOUS_EQUITY_WORD alongside a real ethnic signal does NOT
-        block classification — the signal wins and an annotation is added.
+        block classification — the signal wins. Fix 4: the "buzzword"
+        note is dropped as noise; no flag.
         """
         e1, e2, e3, flag = classify_row(
             row(desc="A multicultural program focused on the Somali community."),
@@ -241,7 +255,7 @@ class TestClassifyPipeline(unittest.TestCase):
         self.assertEqual(e1, "African Origins")
         self.assertEqual(e2, "Southern and East African Origins")
         self.assertEqual(e3, "Somali")
-        self.assertIn("buzzword", flag)
+        self.assertEqual(flag, "")
 
     # ------------------------------------------------------------------
     # 10. Historical phrasing DOES NOT suppress classification
@@ -371,19 +385,18 @@ class TestClassifyPipeline(unittest.TestCase):
     # ------------------------------------------------------------------
     def test_recognized_group_in_org_title_not_flagged(self):
         """
-        When the group name in the Funding Request Name IS recognized by
-        the extractors (e.g. "Somali Cultural Association" — 'Somali' is
-        a taxonomy keyword), the ethnocultural org flag is NOT emitted.
-        Classification proceeds normally from the recognized keyword.
+        A group name that appears ONLY in the Funding Request Name (e.g.
+        "Somali Cultural Association" — no body text) is name-only signal
+        per the body/name split (Plan.md D1): General + name-only flag,
+        not a specific classification, since the served population is
+        unverified.
         """
         e1, e2, e3, flag = classify_row(
             row(name="Somali Cultural Association"),
             TAXONOMY,
         )
-        self.assertEqual(e1, "African Origins")
-        self.assertEqual(e2, "Southern and East African Origins")
-        self.assertEqual(e3, "Somali")
-        self.assertNotIn("Potential ethnocultural organization name", flag)
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertIn("only in the organization/funding-request name", flag)
 
     # ------------------------------------------------------------------
     # 17. Guard clause: Case 13 skips when classification already exists
@@ -411,6 +424,61 @@ class TestClassifyPipeline(unittest.TestCase):
         self.assertEqual(e3, "Somali")
         # Guard fired — Case 13 flag must NOT appear
         self.assertNotIn("Potential ethnocultural organization name", flag)
+
+    # ------------------------------------------------------------------
+    # Negation annotation: anchored + pruned (Part 2)
+    # ------------------------------------------------------------------
+    def test_not_for_profit_no_negation_flag(self):
+        """'not-for-profit' with no ethnic term → General Pop, no negation flag."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="A trusted not-for-profit childcare centre serving families for years."),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertNotIn("Negation detected", flag)
+
+    def test_excluded_inclusion_language_no_negation_flag(self):
+        """'voices often excluded' (inclusion framing), no ethnic term → no negation flag."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="Amplifying underrepresented voices often excluded from mainstream conversations."),
+            TAXONOMY,
+        )
+        self.assertNotIn("Negation detected", flag)
+
+    def test_excluded_near_term_pruned_no_negation_flag(self):
+        """Ethnic term present but only benign 'excluded' → pruned, no negation flag."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="Serving Somali families and amplifying voices often excluded."),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "African Origins")
+        self.assertNotIn("Negation detected", flag)
+
+    def test_intentional_negation_still_flags(self):
+        """
+        Real exclusion of a second group ('do not serve Filipino') → flag preserved.
+        Negation is annotation-only (resolver.py never suppresses candidates on it), so
+        both named groups still resolve to Multiple Ethnic — the flag is what matters here.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="We serve Somali families but do not serve Filipino newcomers."),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, MULTIPLE_ETHNIC)
+        self.assertIn("Negation detected", flag)
+
+    # ------------------------------------------------------------------
+    # Case 13 org-name flag: pruned to explicit "cultural" forms (Part 3)
+    # ------------------------------------------------------------------
+    def test_generic_community_association_not_flagged(self):
+        """Generic community/association org titles no longer trigger Case 13."""
+        for title in [
+            "Riverdale Community Association",
+            "Tenants Association",
+            "Millwoods Community Organization",
+        ]:
+            e1, e2, e3, flag = classify_row(row(name=title), TAXONOMY_B2)
+            self.assertNotIn("Potential ethnocultural organization name", flag)
 
 
 
@@ -500,6 +568,67 @@ class TestSprint2Fixes(unittest.TestCase):
         )
         self.assertEqual(e1, "African Origins")
         self.assertEqual(e2, "Central and West African Origins")
+
+    # ------------------------------------------------------------------
+    # Indigenous umbrella + specific sub-group → general L1 + review flag
+    # ------------------------------------------------------------------
+    def test_indigenous_umbrella_with_one_subgroup_narrows_not_widens(self):
+        """
+        Fix 9: exactly ONE distinct sub-group co-occurring with the
+        'Indigenous' umbrella should narrow to that sub-group, not roll up
+        to the general L1 (gold: PCC Prostate 'Indigenous men ... Métis
+        Settlements' → Métis, not general Indigenous)."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="Programs for Cree families and Indigenous youth in Edmonton."),
+            TAXONOMY_B2,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+        self.assertEqual(e2, "First Nations Origins")
+        self.assertEqual(e3, "Cree")
+        self.assertNotIn("Indigenous umbrella term co-occurs", flag)
+
+    def test_indigenous_umbrella_with_metis_narrows_not_widens(self):
+        """Fix 9: Métis (specific, accented) + 'Indigenous' (umbrella), only
+        one distinct sub-group → narrows to Métis, no roll-up flag."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="Celebrating the Métis Homeland and Indigenous artists at the festival."),
+            TAXONOMY_B2,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+        self.assertEqual(e2, "Métis")
+        self.assertNotIn("Indigenous umbrella term co-occurs", flag)
+
+    def test_indigenous_umbrella_with_two_subgroups_still_widens_and_flags(self):
+        """Fix 9: TWO distinct sub-groups (Cree, Métis) + 'Indigenous' umbrella
+        → genuinely ambiguous, still rolls up to general L1 + flag."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="Programs for Cree and Métis families and Indigenous youth in Edmonton."),
+            TAXONOMY_B2,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+        self.assertEqual(e2, "")
+        self.assertEqual(e3, "")
+        self.assertIn("Indigenous umbrella term co-occurs", flag)
+
+    def test_metis_alone_stays_specific(self):
+        """Sub-group with no umbrella word → stays specific, no new flag."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="Supporting Métis entrepreneurs and their families."),
+            TAXONOMY_B2,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+        self.assertEqual(e2, "Métis")
+        self.assertNotIn("Indigenous umbrella term co-occurs", flag)
+
+    def test_indigenous_umbrella_alone_no_flag(self):
+        """Umbrella word with no sub-group → general L1, no new flag."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="Serving Indigenous youth across the region."),
+            TAXONOMY_B2,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+        self.assertEqual(e2, "")
+        self.assertNotIn("Indigenous umbrella term co-occurs", flag)
 
     # ------------------------------------------------------------------
     # S4. Indian + Pakistani → South Asian Origins (rollup, not Multiple)
@@ -600,15 +729,17 @@ class TestSprint2Fixes(unittest.TestCase):
     # ------------------------------------------------------------------
     def test_french_canadian_association_keeps_ethnic_signal(self):
         """
-        A named French ethnic/cultural org matches FRENCH_ETHNIC_KEEP_PATTERNS
-        → the French filter does NOT drop the candidate.
-        French taxonomy match should survive → European Origins.
+        A named French ethnic/cultural org appearing ONLY in the name (no
+        body text) is name-only signal per the body/name split (Plan.md
+        D1): General + name-only flag. The French-language-accommodation
+        filter is irrelevant here since there's no body candidate to filter.
         """
         e1, e2, e3, flag = classify_row(
             row(name="French Canadian Association of Alberta"),
             TAXONOMY_S2,
         )
-        self.assertNotEqual(e1, GENERAL_POP)
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertIn("only in the organization/funding-request name", flag)
         self.assertNotIn("language accommodation", flag)
 
     # ------------------------------------------------------------------
@@ -852,6 +983,444 @@ class TestBlueprint2Fixes(unittest.TestCase):
         ]
         for name in expected:
             self.assertTrue(hasattr(constants, name), f"constants.py missing: {name}")
+
+
+# ---------------------------------------------------------------------------
+# Name/body split (Phase 1, Chunk B) — Plan.md D1: a signal that lives only
+# in the Funding Request Name must not classify on its own.
+# ---------------------------------------------------------------------------
+
+class TestNameBodySplit(unittest.TestCase):
+
+    def test_council_body_black_wins_over_name_african(self):
+        """
+        Body says 'Black Edmontonians'/'Black professionals'; name says
+        'African Canadians'. The body signal wins outright — the name is
+        not even consulted once the body has a candidate.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Council for the Advancement of African Canadians",
+                desc="a health program for Black Edmontonians led by Black professionals",
+            ),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "Other Ethnic and Cultural Origins")
+        self.assertEqual(e2, "Black, not otherwise specified")
+
+    def test_name_only_ethnic_signal_degrades_to_general(self):
+        """'Black Canadian Women in Action' with a neutral body → General +
+        name-only flag, not a specific ethnic classification."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Black Canadian Women in Action",
+                desc="Funding will cover the Executive Director's salary and benefits.",
+            ),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertIn("only in the organization/funding-request name", flag)
+
+    def test_known_org_in_name_still_classifies(self):
+        """Niginan Housing Ventures (curated known-org map) classifies from
+        the name alone even with an empty body — the D1 exception."""
+        e1, e2, e3, flag = classify_row(
+            row(name="Niginan Housing Ventures"),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+
+    def test_body_signal_still_classifies(self):
+        """A real signal in the body classifies normally regardless of the
+        name (regression guard for the split itself)."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="programming for Somali youth"),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "African Origins")
+        self.assertEqual(e3, "Somali")
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — Evidence-role tiering (Plan.md Fix 1 Phase 2), tied to real gold
+# rows: Alberta Ballet 51597 (org_name descriptor demoted, African survives
+# as served) and Digestive Health/CDHF (provider-only mention demotes to
+# General + transparency note).
+# ---------------------------------------------------------------------------
+
+class TestEvidenceRoleTiering(unittest.TestCase):
+
+    def test_alberta_ballet_black_descriptor_demoted_african_survives(self):
+        """
+        Real gold row (Alberta Ballet 51597): 'Black' only appears as a
+        proper-noun descriptor ('the first Black classical ballet company')
+        — org_name role, demoted. 'African' appears as the served population
+        ('dance program for youth of African descent') — served, survives.
+        Resolves to African Origins alone, not Multiple.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Alberta Ballet Company",
+                desc=(
+                    "Alberta Ballet, in partnership with Africa Centre, is expanding its "
+                    "outreach dance program for youth of African descent in Edmonton. The "
+                    "program culminated in a masterclass with the Dance Theatre of Harlem, "
+                    "the first Black classical ballet company."
+                ),
+            ),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "African Origins")
+        self.assertNotEqual(e1, MULTIPLE_ETHNIC)
+
+    def test_provider_only_mention_demotes_to_general_with_note(self):
+        """
+        A group named only via a provider/professional-title construction
+        ('Sharon Swampy, Indigenous Nutritionist') is not the served
+        population — General + a transparency note naming the group and
+        its role (partial Fix 7), not a classification.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc=(
+                "Sharon Swampy, Indigenous Nutritionist, will lead the workshop "
+                "on digestive health for the general public."
+            )),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertIn("provider context only", flag)
+
+    def test_council_51599_provider_mention_does_not_demote_when_served_present(self):
+        """
+        Counter-example (guardrail): when the SAME group has both a served
+        mention and a provider mention ('program for Black Edmontonians ...
+        delivered by Black professionals'), the served mention rescues the
+        group — provider mentions only demote a group that has NO served
+        mention anywhere."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Council for the Advancement of African Canadians",
+                desc=(
+                    "a health program for Black Edmontonians, delivered by "
+                    "Black professionals"
+                ),
+            ),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "Other Ethnic and Cultural Origins")
+        self.assertEqual(e2, "Black, not otherwise specified")
+
+
+# ---------------------------------------------------------------------------
+# Gender + Sexual Identity classifier tests
+# Tests item 1–4 from the audit-driven improvement spec.
+# ---------------------------------------------------------------------------
+
+from Gender_SexID import (
+    classify_gender, classify_sexual,
+    GENDER_GENERAL_POP, GENDER_MULTIPLE, GENDER_OTHER,
+    GENDER_WOMEN_GIRLS, GENDER_MEN_BOYS,
+    SEXUAL_2SLGBTQIA, SEXUAL_GENERAL_POP,
+)
+from gender_constants import FLAG_ORG_NAME, FLAG_AMBIGUOUS_TERM, SFLAG_GENDER_TERM
+
+
+class TestGenderSexualClassifier(unittest.TestCase):
+    """Tests for all five audit-driven fixes to the gender/sexual classifier."""
+
+    # ------------------------------------------------------------------
+    # Item 1 — LGBTQ acronym → Multiple gender identities
+    # ------------------------------------------------------------------
+    def test_lgbtq_alone_produces_multiple(self):
+        """Bare 'lgbtq' → Multiple (not Other); flag names acronym source."""
+        label, flag = classify_gender(row(desc="Services for the lgbtq community."))
+        self.assertEqual(label, GENDER_MULTIPLE)
+        self.assertIn("2SLGBTQIA+", flag)
+
+    def test_lgbtqplus_produces_multiple(self):
+        """'lgbtq+' → Multiple (+ is stripped by normalize_text)."""
+        label, flag = classify_gender(row(desc="Supporting lgbtq+ youth."))
+        self.assertEqual(label, GENDER_MULTIPLE)
+
+    def test_lgbtqia_produces_multiple(self):
+        """'lgbtqia' variant → Multiple."""
+        label, flag = classify_gender(row(desc="Programs for the lgbtqia community."))
+        self.assertEqual(label, GENDER_MULTIPLE)
+
+    def test_2slgbtqia_produces_multiple_with_two_spirit_flag(self):
+        """'2SLGBTQIA+' → Multiple; Two-Spirit cross-check flag present."""
+        label, flag = classify_gender(row(desc="Serving 2SLGBTQIA+ individuals."))
+        self.assertEqual(label, GENDER_MULTIPLE)
+        self.assertIn("Two-Spirit", flag)
+
+    def test_lone_queer_produces_other_not_multiple(self):
+        """A single 'queer' (no umbrella acronym) → Other, not Multiple."""
+        label, flag = classify_gender(row(desc="A queer youth program."))
+        self.assertEqual(label, GENDER_OTHER)
+        self.assertNotEqual(label, GENDER_MULTIPLE)
+
+    # ------------------------------------------------------------------
+    # Item 2 — Org / proper-name context: keep classification + add flag
+    # ------------------------------------------------------------------
+    def test_boys_girls_club_classified_and_flagged(self):
+        """'Boys & Girls Club' with no body text is name-only signal per the
+        body/name split (Plan.md D1) → General Population + FLAG_ORG_NAME,
+        not a specific gender classification."""
+        label, flag = classify_gender(row(name="Boys and Girls Club of Edmonton"))
+        self.assertEqual(label, GENDER_GENERAL_POP)
+        self.assertIn(FLAG_ORG_NAME, flag)
+
+    def test_institute_for_women_classified_and_flagged(self):
+        """'Institute for Women' → Women and/or girls + FLAG_ORG_NAME."""
+        label, flag = classify_gender(row(desc="The institute for women provides programming."))
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+        self.assertIn(FLAG_ORG_NAME, flag)
+
+    def test_wardrobe_for_women_name_only_degrades_to_general(self):
+        """'Wardrobe for Women Association' with a neutral body (ED salary)
+        is name-only signal per the body/name split (Plan.md D1) → General
+        Population + FLAG_ORG_NAME."""
+        label, flag = classify_gender(row(
+            name="Suit Yourself - Wardrobe for Women Association",
+            desc="Funding will cover the Executive Director's salary and benefits.",
+        ))
+        self.assertEqual(label, GENDER_GENERAL_POP)
+        self.assertIn(FLAG_ORG_NAME, flag)
+
+    def test_boys_girls_clubs_big_brothers_big_sisters_name_only(self):
+        """'Boys & Girls Clubs Big Brothers Big Sisters' with an empty body
+        is name-only signal → General Population + FLAG_ORG_NAME."""
+        label, flag = classify_gender(row(name="Boys & Girls Clubs Big Brothers Big Sisters"))
+        self.assertEqual(label, GENDER_GENERAL_POP)
+        self.assertIn(FLAG_ORG_NAME, flag)
+
+    def test_org_name_echoed_in_body_degrades_to_general(self):
+        """
+        Real gold row (Black Canadian Women in Action 54525): the org
+        restates its own name inside the body ('Black Canadian Women in
+        Action (BCW) is undertaking...') — that's an org-name self-reference
+        (Plan.md Fix 1 Phase 2), not a served-population claim → General +
+        transparency note, not Women and/or girls.
+        """
+        label, flag = classify_gender(row(
+            name="Black Canadian Women in Action",
+            desc=(
+                "Black Canadian Women in Action (BCW) is undertaking a major "
+                "capacity-building initiative to adapt to changing demographics "
+                "and ensure long-term sustainability."
+            ),
+        ))
+        self.assertEqual(label, GENDER_GENERAL_POP)
+        self.assertIn("org-name self-reference", flag)
+
+    def test_org_name_echoed_full_name_in_body_degrades_to_general(self):
+        """Real gold row (Alberta Immigrant Women & Children Centre 54640):
+        same org-name-echo pattern, full org name restated in the summary."""
+        label, flag = classify_gender(row(
+            name="Alberta Immigrant Women & Children Centre",
+            summary=(
+                "The Alberta Immigrant Women & Children Centre (AIWCC) seeks "
+                "renewed funding to sustain the Client Services position, "
+                "helping parents connect with autism services."
+            ),
+        ))
+        self.assertEqual(label, GENDER_GENERAL_POP)
+        self.assertIn("org-name self-reference", flag)
+
+    def test_org_name_echoed_abbreviation_in_body_degrades_to_general(self):
+        """Real gold row (Boys & Girls Clubs Big Brothers Big Sisters 50610):
+        the body uses an abbreviated form of the org's own name ('BGC Big
+        Brothers Big Sisters') — still an org-name echo, not served signal."""
+        label, flag = classify_gender(row(
+            name="Boys & Girls Clubs Big Brothers Big Sisters of Edmonton",
+            desc=(
+                "We are asking the Edmonton Community Foundation to support "
+                "BGC Big Brothers Big Sisters to assist with upgrading "
+                "technology across three organizational domains."
+            ),
+        ))
+        self.assertEqual(label, GENDER_GENERAL_POP)
+        self.assertIn("org-name self-reference", flag)
+
+    def test_org_flag_not_fired_for_plain_gender_description(self):
+        """A plain description like 'serving women in Edmonton' has no org noun
+        — FLAG_ORG_NAME must NOT fire."""
+        label, flag = classify_gender(row(desc="Serving women in Edmonton."))
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+        self.assertNotIn(FLAG_ORG_NAME, flag)
+
+    # ------------------------------------------------------------------
+    # Item 3 — Gender-diverse term → Sexual: flag fires even with orientation
+    # ------------------------------------------------------------------
+    def test_trans_youth_produces_sexual_2slgbtqia_with_gender_flag(self):
+        """'trans youth' → Sexual 2SLGBTQIA+ with SFLAG_GENDER_TERM present."""
+        label, flag = classify_sexual(row(desc="Program serving trans youth."))
+        self.assertEqual(label, SEXUAL_2SLGBTQIA)
+        self.assertIn(SFLAG_GENDER_TERM, flag)
+
+    def test_trans_plus_gay_still_flags_gender_term(self):
+        """'trans and gay' → 2SLGBTQIA+; SFLAG_GENDER_TERM fires even though
+        an explicit orientation term (gay) is also present."""
+        label, flag = classify_sexual(row(desc="Resources for trans and gay individuals."))
+        self.assertEqual(label, SEXUAL_2SLGBTQIA)
+        self.assertIn(SFLAG_GENDER_TERM, flag)
+
+    def test_lesbian_only_no_gender_flag(self):
+        """Pure orientation term ('lesbian') → 2SLGBTQIA+; SFLAG_GENDER_TERM absent."""
+        label, flag = classify_sexual(row(desc="A program for lesbian women."))
+        self.assertEqual(label, SEXUAL_2SLGBTQIA)
+        self.assertNotIn(SFLAG_GENDER_TERM, flag)
+
+    # ------------------------------------------------------------------
+    # Item 4 — Vocabulary expansion (familial terms)
+    # ------------------------------------------------------------------
+    def test_single_mothers_classified_as_women_girls(self):
+        """'single mothers' → Women and/or girls."""
+        label, flag = classify_gender(row(desc="Supporting single mothers in our community."))
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+
+    def test_fathers_group_classified_as_men_boys(self):
+        """'fathers group' → Men and/or boys."""
+        label, flag = classify_gender(row(desc="A fathers group for new parents."))
+        self.assertEqual(label, GENDER_MEN_BOYS)
+
+    def test_grandmothers_classified_as_women_girls(self):
+        """'grandmothers' → Women and/or girls."""
+        label, flag = classify_gender(row(desc="Programming for Indigenous grandmothers."))
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+
+    def test_grandfathers_classified_as_men_boys(self):
+        """'grandfathers' → Men and/or boys."""
+        label, flag = classify_gender(row(desc="Cultural program for grandfathers and elders."))
+        self.assertEqual(label, GENDER_MEN_BOYS)
+
+    def test_maternal_classified_as_women_girls(self):
+        """'maternal' → Women and/or girls."""
+        label, flag = classify_gender(row(desc="Addressing maternal health outcomes."))
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+
+    def test_paternal_classified_as_men_boys(self):
+        """'paternal' → Men and/or boys."""
+        label, flag = classify_gender(row(desc="Supporting paternal mental health."))
+        self.assertEqual(label, GENDER_MEN_BOYS)
+
+    # ------------------------------------------------------------------
+    # Item 4 — Ambiguous coded terms: flag only, no classification change
+    # ------------------------------------------------------------------
+    def test_femme_alone_classifies_and_flags_ambiguous(self):
+        """
+        'femme-identified' alone → Women and/or girls (Fix 8: "femme" is
+        French for "woman", now a real classifying signal) + still
+        FLAG_AMBIGUOUS_TERM, since it's also English coded-slang-adjacent —
+        both mechanisms fire together so a reviewer double-checks which
+        sense applies.
+        """
+        label, flag = classify_gender(row(desc="Serving femme-identified individuals."))
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+        self.assertIn(FLAG_AMBIGUOUS_TERM, flag)
+
+    def test_butch_alone_does_not_classify(self):
+        """'butch' alone → General Population + FLAG_AMBIGUOUS_TERM."""
+        label, flag = classify_gender(row(desc="Programming for butch community members."))
+        self.assertEqual(label, GENDER_GENERAL_POP)
+        self.assertIn(FLAG_AMBIGUOUS_TERM, flag)
+
+    def test_femme_with_clear_signal_keeps_classification_and_flags(self):
+        """'femme women' — clear 'women' signal classifies; FLAG_AMBIGUOUS_TERM still fires."""
+        label, flag = classify_gender(row(desc="Support for femme women in the community."))
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+        self.assertIn(FLAG_AMBIGUOUS_TERM, flag)
+
+    # ------------------------------------------------------------------
+    # Fix 8 — French gender terms
+    # ------------------------------------------------------------------
+    def test_french_femmes_plural_classifies_as_women_girls(self):
+        """'femmes' (French plural, no coded-slang ambiguity in this form)
+        → Women and/or girls."""
+        label, flag = classify_gender(row(desc="Un programme pour les femmes immigrantes."))
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+
+    def test_french_hommes_classifies_as_men_boys(self):
+        """'hommes' (French for men) → Men and/or boys."""
+        label, flag = classify_gender(row(desc="Un programme de soutien pour les hommes."))
+        self.assertEqual(label, GENDER_MEN_BOYS)
+
+    def test_association_femme_moderne_name_only_degrades_to_general(self):
+        """Real Plan.md Fix 8 example: 'Association Femme Moderne' is
+        name-only signal (D1) → General + name-only flag, not Women."""
+        label, flag = classify_gender(row(
+            name="Association Femme Moderne",
+            desc="Funding will cover office rent and administrative costs.",
+        ))
+        self.assertEqual(label, GENDER_GENERAL_POP)
+        self.assertIn(FLAG_ORG_NAME, flag)
+
+    # ------------------------------------------------------------------
+    # Regression — negation still suppresses
+    # ------------------------------------------------------------------
+    def test_negation_on_women_suppresses_and_flags(self):
+        """'not serving women' — negation detected; classification may still proceed
+        (negation is annotation-only) but FLAG_NEGATION must appear."""
+        label, flag = classify_gender(row(desc="This program is not serving women exclusively."))
+        self.assertIn("Negation detected", flag)
+
+    def test_empty_row_returns_general_pop(self):
+        """All columns empty → General Population, no crash."""
+        g_label, g_flag = classify_gender(row())
+        s_label, s_flag = classify_sexual(row())
+        self.assertEqual(g_label, GENDER_GENERAL_POP)
+        self.assertEqual(s_label, SEXUAL_GENERAL_POP)
+
+    # ------------------------------------------------------------------
+    # Fix 7 — transparency note for example-suppressed sexual-identity signal
+    # ------------------------------------------------------------------
+    def test_sexual_example_suppression_leaves_transparency_note(self):
+        """'... groups such as 2SLGBTQIA+ ...' is a real gold pattern (Autism
+        54463, CMHA 54531): the signal is correctly suppressed as an
+        example/illustrative mention, but General is annotated with a note
+        naming what was dropped instead of vanishing with no trace."""
+        label, flag = classify_sexual(row(
+            desc="We support equity-deserving groups such as 2SLGBTQIA+ individuals and newcomers."
+        ))
+        self.assertEqual(label, SEXUAL_GENERAL_POP)
+        self.assertIn("2SLGBTQIA+ mentioned in example/illustrative context", flag)
+
+    # ------------------------------------------------------------------
+    # Fix 2a — "gender-diverse" is a distinct concept, not a single identity
+    # ------------------------------------------------------------------
+    def test_gender_diverse_alone_produces_gender_multiple(self):
+        """'gender-diverse' alone → Multiple gender identities (Plan.md Fix 2a)."""
+        label, flag = classify_gender(row(desc="Programming for gender-diverse youth."))
+        self.assertEqual(label, GENDER_MULTIPLE)
+        self.assertIn("gender-diverse", flag)
+
+    def test_gender_diverse_no_hyphen_produces_gender_multiple(self):
+        """'gender diverse' (no hyphen, normalize_text strips punctuation
+        anyway) → Multiple gender identities."""
+        label, flag = classify_gender(row(desc="Support for gender diverse individuals."))
+        self.assertEqual(label, GENDER_MULTIPLE)
+
+    def test_gender_diverse_produces_sexual_2slgbtqia(self):
+        """'gender-diverse' also signals 2SLGBTQIA+ on the sexual axis, via
+        SEXUAL_GENDER_DIVERSE_KEYS (Plan.md Fix 2a)."""
+        label, flag = classify_sexual(row(desc="Programming for gender-diverse youth."))
+        self.assertEqual(label, SEXUAL_2SLGBTQIA)
+        self.assertIn(SFLAG_GENDER_TERM, flag)
+
+    # ------------------------------------------------------------------
+    # Fix 2b — "Womens'"/"Mens'" plural-possessive tokenization
+    # ------------------------------------------------------------------
+    def test_womens_plural_possessive_classified(self):
+        """normalize_text strips the trailing apostrophe in "Womens'" down to
+        one token "womens" (no space) — \\bwomen\\b alone would miss it;
+        \\bwomens?\\b catches it."""
+        label, flag = classify_gender(row(desc="Serving the Womens' outreach group."))
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+
+    def test_mens_plural_possessive_classified(self):
+        """Same plural-possessive tokenization fix, men's side."""
+        label, flag = classify_gender(row(desc="Serving the Mens' outreach group."))
+        self.assertEqual(label, GENDER_MEN_BOYS)
 
 
 if __name__ == "__main__":

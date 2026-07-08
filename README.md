@@ -287,3 +287,66 @@ Is this something a human reviewer actually needs to look at?
 - Hook up old pipeline to new refactored version.
 - Compare new review report with previous pipeline version.
 - Use python library for country matching instead of built out dictionary
+
+# 2026-07-02
+## Sprint 3 - Classifcation of Sexual ID and Gender ID (Sprint 2 Complete)
+### To Date:
+- Classification of Ethnic and Cultural Origins - Complete
+- In depth Flagging of common ambiguities - Complete
+- Engine 2 (Semantic Engine) - Implemented but not currently utilized
+- Classification of Gender Identity - 
+- Classification of Sexual Identity -
+
+### Method of Attack:
+- Random sample of 100 'General Population' Classification generated alongside classification flags (Most error prone section).
+- Sample audited to target weak points in classification logic and highlight Ambiguity/Nuanced Language.
+- Fine-tuning with second most recent pass Yielding 98% Accuracy and Recent pass yielding 100% Accuracy.
+- All Ambiguous Equity Flagged rows pulled and audited - 100% classification accuracy and flag changed to Low Priority review.
+- All 'Multiple Ethnic and Cultural Origins' Audited - 100% classification accuracy - Flags audited as well (Black/African being the cause for majority of flags. Or Asian used as well as BIPOC, but only referring to Asians as BIPOC) - Resulted in all rows being flagged (Fix Priority Hiearchy)
+
+### Points of Contact:
+- African Canadian Changed from 'Black' to 'African Origins', and then further ethnic signal is searched for.
+- Afro-Caribbean, Afro-Latino --> maps to Multiple ethnic.
+- Taxonomy now more in depth (classifies down to 3rd level for countries not listed in taxonomy) but returns Level2 classification if not in Taxonomy sheet. `(Go deeper into level 3)`
+- Is Gender interchangeable with sex. For example: Female --> Women/Woman; Male --> Man/Men (Biological connotation implies difference, may differ from how we use it).
+- How should standalone 'Queer' be classified as compared to 'Genderqueer'/ 'Gender queer'
+- YWCA should be classified as Women or Multiple gender Identities (look for Gender specification) --> Should not be explicitly searched for.
+
+### To Do:
+- Using Python Library `Country_Converter` to pull extensive dictionary of country mappings instead of hardcoding. 
+- Use Python Library to pull extensive dictionary of People Groups.
+- Column in Review sheet of Classification Frequency - Flag frequency for each Ethnic grouping
+- Low priority section for low priority flags.
+- Gazan/Gaza should be handled (not sure if this is handled)
+- Classifcation of ECF Focus Areas.
+- Classification of Sectors. (Dave -> flagging accuracy) 
+
+### Report:
+- What to explore based on gathered data.
+- Present data in a format that means something.
+
+## TO NOTE: Gender & Sex Identity Classification:
+- Flag HERizon mentions - should default to Multiple identities for gender and General for sex, unless something under the umbrella of 2SLGBTQIA+
+- Aspirational language should not be flagged for gender & sex.
+- 
+
+# 2026-07-06
+## Sprint 3 - Auditing - Classification of Sexual & Gender Identity
+- Audit Gender and Sex. ID classification for missed edge cases.
+- Construct review report audit document for this process.
+- Once final Gold standard document produced post-audit, make necessary adjustments.
+
+# 2026-07-07
+- Audit newly compiled 'Audit_gold_prefilled_xlsx' for where the engine matched human classification.
+- Re-check classification flags and note which are ambiguous either for re-vamping/removal.
+- Add Flag evidence as well 
+- Appears current Ethnic Classification flagging is outdated.
+
+## Current area of focus:
+- Classification flags:
+    - Negation detected
+
+# 2026-07-08
+## Sprint 3 - Auditing - Classification of Sexual & Gender Identity
+- Continued implementation and bug fixes from Plan.md\
+- Implement Machine Learning using vectors to locally train to improve classification accuracy from 95% to 99%, reducing number of irrelevant flags as a result.

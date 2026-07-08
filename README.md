@@ -345,3 +345,8 @@ Is this something a human reviewer actually needs to look at?
 ## Current area of focus:
 - Classification flags:
     - Negation detected
+
+# 2026-07-08
+## Sprint 3 - Auditing - Classification of Sexual & Gender Identity
+- Continued implementation and bug fixes from Plan.md\
+- Implement Machine Learning using vectors to locally train to improve classification accuracy from 95% to 99%, reducing number of irrelevant flags as a result.

@@ -310,6 +310,48 @@ SERVING_CONTEXT_WORDS = [
     ##r"\bgroups\b",
 ]
 
+# =============================================================================
+# Phase 2 — Evidence-role frames (Plan.md Fix 1 Phase 2)
+#
+# Weak roles: a matched identity term surrounded by one of these frames
+# describes an ORG NAME or a SERVICE PROVIDER, not the served population.
+# example/aspirational/negated reuse the phrase banks above. Anything that
+# matches none of these frames defaults to "served" (strong).
+# =============================================================================
+ROLE_ORG_NAME_BEFORE_PATTERNS = [
+    r"\bin partnership with\s*$",
+    r"\bin collaboration with\s*$",
+    r"\btogether with\s*$",
+    r"\bpresented by\s*$",
+]
+
+ROLE_ORG_NAME_AFTER_PATTERNS = [
+    # Anchored to the start of the "after" window with a small filler-word
+    # allowance, so this can't bleed forward into an unrelated later mention
+    # (e.g. a second, provider-framed occurrence of the same keyword further
+    # down the sentence).
+    r"^\s*(?:\w+\s+){0,3}(?:institute|association|society|centre|center|"
+    r"foundation|council|collaborative|coalition|club|network|group|"
+    r"company|troupe|theatre|theater|ballet)\b",
+]
+
+ROLE_PROVIDER_BEFORE_PATTERNS = [
+    r"\bled by\s*$",
+    r"\bdelivered by\s*$",
+    r"\bfacilitated by\s*$",
+]
+
+ROLE_PROVIDER_AFTER_PATTERNS = [
+    # Anchored — same bleed-prevention reasoning as ROLE_ORG_NAME_AFTER_PATTERNS.
+    # NOTE: deliberately excludes "elder(s)" -- unlike the other nouns here,
+    # "elder" is at least as commonly a SERVED-population noun ("support for
+    # Indigenous elders") as a provider-role noun ("led by an Elder"), so it's
+    # too ambiguous to use as a standalone weak-role signal.
+    r"^\s*(?:\w+\s+){0,2}(?:nutritionists?|dietitians?|professionals?|"
+    r"facilitators?|instructors?|advisors?|consultants?|artists?|"
+    r"teachers?)\b",
+]
+
 """
 -- Not Necessary to be handled right now for processing sakes.
 

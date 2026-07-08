@@ -11,6 +11,11 @@ __pycache__/
 venv/
 ENV/
 
+# --- Test & Lint Caches ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
 # --- Semantic Search, claude & Embeddings Cache ---
 .semantic_cache/
 .claude/
@@ -31,6 +36,7 @@ Engine_1_and_2/Semantic_Engine/models/
 # --- Operating System Junk ---
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # --- Security & Credentials ---
 .env

@@ -414,10 +414,10 @@ def main():
             data_df[col] = ""
 
     stats = {
-        "gender_women_girls": 0, "gender_men_boys": 0, "gender_two_spirit": 0,
-        "gender_other": 0, "gender_multiple": 0, "gender_general": 0,
-        "sexual_2slgbtqia": 0, "sexual_general": 0,
-        "flagged_gender": 0, "flagged_sexual": 0,
+        "-Gender- Women & Girls": 0, "-Gender- Men & Boys": 0, "-Gender- Two Spirit": 0,
+        "-Gender- Other": 0, "-Gender- Multiple": 0, "-Gender- General": 0,
+        "-Sexual- 2SLGBTQIA": 0, "-Sexual- General": 0,
+        "-Flagged- Gender": 0, "-Flagged- Sexual": 0,
     }
 
     for idx, row in data_df.iterrows():
@@ -429,18 +429,18 @@ def main():
         data_df.at[idx, OUTPUT_SEXUAL]      = s_label
         data_df.at[idx, OUTPUT_SEXUAL_FLAG] = s_flag
 
-        if   g_label == GENDER_WOMEN_GIRLS: stats["gender_women_girls"] += 1
-        elif g_label == GENDER_MEN_BOYS:    stats["gender_men_boys"]    += 1
-        elif g_label == GENDER_TWO_SPIRIT:  stats["gender_two_spirit"]  += 1
-        elif g_label == GENDER_OTHER:       stats["gender_other"]       += 1
-        elif g_label == GENDER_MULTIPLE:    stats["gender_multiple"]    += 1
-        else:                               stats["gender_general"]     += 1
+        if   g_label == GENDER_WOMEN_GIRLS: stats["-Gender- Women & Girls"] += 1
+        elif g_label == GENDER_MEN_BOYS:    stats["-Gender- Men & Boys"]    += 1
+        elif g_label == GENDER_TWO_SPIRIT:  stats["-Gender- Two Spirit"]  += 1
+        elif g_label == GENDER_OTHER:       stats["-Gender- Other"]       += 1
+        elif g_label == GENDER_MULTIPLE:    stats["-Gender- Multiple"]    += 1
+        else:                               stats["-Gender- General"]     += 1
 
-        if s_label == SEXUAL_2SLGBTQIA:     stats["sexual_2slgbtqia"]  += 1
-        else:                               stats["sexual_general"]     += 1
+        if s_label == SEXUAL_2SLGBTQIA:     stats["-Sexual- 2SLGBTQIA"]  += 1
+        else:                               stats["-Sexual- General"]     += 1
 
-        if g_flag: stats["flagged_gender"]  += 1
-        if s_flag: stats["flagged_sexual"]  += 1
+        if g_flag: stats["-Flagged- Gender"]  += 1
+        if s_flag: stats["-Flagged- Sexual"]  += 1
 
     # Write-back via openpyxl header-lookup (never assumes column positions)
     wb = load_workbook(funding_filepath)
@@ -467,7 +467,6 @@ def main():
     print(f"\nOutput written to: {funding_filepath}")
     elapsed = time.time() - start_time
     print(f"Gender + Sexual classification completed in {elapsed:.1f} seconds.")
-
 
 if __name__ == "__main__":
     main()

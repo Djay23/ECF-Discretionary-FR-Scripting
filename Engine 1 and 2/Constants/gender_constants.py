@@ -40,6 +40,9 @@ IDENTITY_KEY_TO_LABEL = {
     "non_binary":     GENDER_OTHER,
     "transgender":    GENDER_OTHER,
     "lgbtq_umbrella": GENDER_OTHER,
+    # gender_diverse short-circuits to GENDER_MULTIPLE in resolve_gender()
+    # (same shape as lgbtq_umbrella) before this table is consulted.
+    "gender_diverse": GENDER_OTHER,
 }
 
 # Short name used inside "Multiple: …" flag text
@@ -54,6 +57,7 @@ IDENTITY_KEY_SHORT_LABEL = {
     "non_binary":     "non-binary",
     "transgender":    "transgender",
     "lgbtq_umbrella": "2SLGBTQIA+ umbrella",
+    "gender_diverse": "gender-diverse",
 }
 
 # ---------------------------------------------------------------------------
@@ -73,7 +77,10 @@ IDENTITY_KEY_SHORT_LABEL = {
 GENDER_TERM_PATTERNS = [
     # women_girls — female first
     (r"\bfemales?\b", "women_girls", None),
-    (r"\bwomen\b", "women_girls", None),
+    # \bwomens?\b (not \bwomen\b) so the normalized form of "Womens'" (trailing
+    # apostrophe stripped to nothing by normalize_text, leaving "womens" as one
+    # token with no word boundary after "women") is still detected.
+    (r"\bwomens?\b", "women_girls", None),
     (r"\bwoman\b", "women_girls", None),
     (r"\bgirls?\b", "women_girls", None),
     # women_girls — familial / relational (unambiguous gendered terms)
@@ -90,9 +97,15 @@ GENDER_TERM_PATTERNS = [
     (r"\bwidows?\b", "women_girls", None),
     (r"\bladies\b", "women_girls", None),
     (r"\blady\b", "women_girls", None),
+    # French (Fix 8): "femme(s)" = French for woman/women. Ambiguous with the
+    # English coded-slang sense (see AMBIGUOUS_CODED_TERMS below) — both
+    # mechanisms fire together: this classifies, FLAG_AMBIGUOUS_TERM still
+    # flags it so a reviewer double-checks which sense applies.
+    (r"\bfemmes?\b", "women_girls", None),
     # men_boys
     (r"\bmales?\b", "men_boys", None),
-    (r"\bmen\b", "men_boys", None),
+    # \bmens?\b (not \bmen\b) — same normalized-possessive-plural reasoning as women.
+    (r"\bmens?\b", "men_boys", None),
     (r"\bman\b", "men_boys", None),
     (r"\bboys?\b", "men_boys", None),
     # men_boys — familial / relational
@@ -107,6 +120,8 @@ GENDER_TERM_PATTERNS = [
     (r"\buncles?\b", "men_boys", None),
     (r"\bwidowers?\b", "men_boys", None),
     (r"\bgentlem[ae]n\b", "men_boys", None),
+    # French (Fix 8): "homme(s)" = French for man/men.
+    (r"\bhommes?\b", "men_boys", None),
     # two_spirit
     (r"\btwo[\-\s]spirited?\b", "two_spirit", None),
     (r"\b2[\-\s]spirited?\b", "two_spirit", None),
@@ -123,6 +138,10 @@ GENDER_TERM_PATTERNS = [
     (r"\benby\b", "non_binary", None),
     # transgender (full word — bare "trans" handled separately)
     (r"\btransgender\b", "transgender", None),
+    # gender-diverse — a distinct umbrella concept (Plan.md Fix 2a): always
+    # routes to Multiple gender identities (see resolve_gender) and, via
+    # SEXUAL_GENDER_DIVERSE_KEYS below, to 2SLGBTQIA+ on the sexual axis.
+    (r"\bgender[\-\s]?diverse\b", "gender_diverse", None),
 ]
 
 # Special-case patterns whose flag depends on context — handled inline in extractor
@@ -189,7 +208,7 @@ OUTPUT_SEXUAL_FLAG = "Sexual Classification Flag"
 # Gender-diverse identity keys that imply 2SLGBTQIA+ (all gender keys except women/men)
 SEXUAL_GENDER_DIVERSE_KEYS = {
     "two_spirit", "agender", "gender_fluid", "gender_neutral",
-    "genderqueer", "non_binary", "transgender",
+    "genderqueer", "non_binary", "transgender", "gender_diverse",
 }
 
 # Single source of truth — reuse GENDER_TERM_PATTERNS; no re-listing of trans/non-binary/etc.

@@ -5,11 +5,9 @@ from ethnic_taggerv3 import (
     extract_context_signals,
     build_context_notes,
     is_bipoc_real_target,
-    check_grassroots_case,
     matches_any,
     detect_ethnocultural_org_name,
     is_non_prefixed,
-    EXPERT_ROLE_PHRASES,
     GENERAL_POP,
 )
 
@@ -73,7 +71,7 @@ def filter_french_language_accommodation(candidates, combined):
 # Annotation helpers — no classification logic, annotation text only
 # ---------------------------------------------------------------------------
 
-def extra_annotation_notes(combined, states, bipoc_present):
+def extra_annotation_notes(combined, states, bipoc_present, resolved_label=None):
     """
     Builds review-flag annotation notes for signals that require human
     judgement but do not change the classification outcome.
@@ -81,6 +79,19 @@ def extra_annotation_notes(combined, states, bipoc_present):
     Excludes: historical / expansion / aspirational / example (debug only).
     Excludes: Case 13 ethnocultural org title — called separately in
               classify_row() because it requires the raw row and taxonomy.
+
+    Fix 4 (noise removal): "Ambiguous equity term with no paired ethnic
+    signal", "Equity/diversity buzzword present alongside a real signal",
+    and "Possible consulted-party mention (expert/advisor role)" no longer
+    fire — check_grassroots_case() and EXPERT_ROLE_PHRASES stay defined and
+    available for other callers; this function just stops emitting their
+    note text.
+
+    Fix 6 (context-only gating): Emphasis and 'Hindu' are CONTEXTUAL —
+    verify-manually notes, not classification-relevant like negation/BIPOC
+    — so only fire when the row actually resolved to something other than
+    General. When resolved_label is None (caller not yet gating), they fire
+    unconditionally, preserving prior behaviour for any other caller.
     """
     notes = []
 
@@ -88,23 +99,15 @@ def extra_annotation_notes(combined, states, bipoc_present):
         notes.append("'Cultural Association' detected - verify named group manually")
 
     # Org candidates are last-resort; exclude them when computing whether a
-    # real ethnic signal is present for the grassroots / equity-word check.
+    # real ethnic signal is present for the negation check below.
     primary_states = [s for s in states if s["source"] != "org_lookup"]
-    has_ethnic_signal = bool(primary_states) or bipoc_present
 
-    grassroots_state = check_grassroots_case(combined, has_ethnic_signal)
-    if grassroots_state == "no_signal":
-        notes.append("Note (low priority): Ambiguous equity term with no paired ethnic signal")
-    if grassroots_state == "has_signal":
-        notes.append("Note (low priority): Equity/diversity buzzword present alongside a real signal - verify manually")
+    is_general = resolved_label is not None and resolved_label == GENERAL_POP
 
-    if primary_states and matches_any(EXPERT_ROLE_PHRASES, combined):
-        notes.append("Note (low priority): Possible consulted-party mention (expert/advisor role) rather than served population - verify manually")
-
-    if primary_states and re.search(r"\b(especially|particularly)\b", combined, re.IGNORECASE):
+    if primary_states and not is_general and re.search(r"\b(especially|particularly)\b", combined, re.IGNORECASE):
         notes.append("Emphasis phrase ('especially'/'particularly') detected — verify specificity of population served")
 
-    if re.search(r"\bhindu\b", combined, re.IGNORECASE):
+    if not is_general and re.search(r"\bhindu\b", combined, re.IGNORECASE):
         notes.append("'Hindu' detected — may imply South Asian/Indian origin; verify as religion vs. ethnicity")
 
     # Non-{group} negation: check if any matched candidate's ethnic keyword appears
@@ -170,17 +173,20 @@ def classify_row(row, taxonomy_entries):
     # The name is only consulted for a curated known-org lookup and to
     # decide whether a name-only signal should be flagged.
     # ------------------------------------------------------------------
-    def _extract(txt):
+    def _extract(txt, name_for_role=""):
         return (
-            extract_taxonomy_candidates(txt, taxonomy_entries)
-            + extract_compound_candidates(txt)
-            + extract_pattern_candidates(txt)
-            + extract_country_candidates(txt)
-            + extract_broad_identity_candidates(txt)
+            extract_taxonomy_candidates(txt, taxonomy_entries, name_for_role)
+            + extract_compound_candidates(txt, name_for_role)
+            + extract_pattern_candidates(txt, name_for_role)
+            + extract_country_candidates(txt, name_for_role)
+            + extract_broad_identity_candidates(txt, name_for_role)
             + extract_org_candidates(txt)
         )
 
-    body_candidates = _extract(body_text)
+    # name_text is passed through so a candidate whose body match merely
+    # echoes the org's own name (e.g. "Black Canadian Women in Action is
+    # undertaking...") is tagged role="org_name" (weak) instead of "served".
+    body_candidates = _extract(body_text, name_text)
     bipoc_present    = is_bipoc_real_target(body_text)   # BIPOC must be in the body
     name_org         = extract_org_candidates(name_text)  # curated known-org from the name
     name_signal      = bool(_extract(name_text)) or is_bipoc_real_target(name_text)
@@ -236,9 +242,10 @@ def classify_row(row, taxonomy_entries):
 
     # ------------------------------------------------------------------
     # Step 7 — Build extra annotation notes
-    # Equity-word, expert-role, cultural association checks.
+    # Cultural-association, emphasis, Hindu, and negation checks. Emphasis/
+    # Hindu are gated to non-General rows (Fix 6) — see extra_annotation_notes.
     # ------------------------------------------------------------------
-    notes = pre_notes + extra_annotation_notes(combined, states, bipoc_present)
+    notes = pre_notes + extra_annotation_notes(combined, states, bipoc_present, resolved_label=e1)
 
     # ------------------------------------------------------------------
     # Step 7b — Case 13: potential ethnocultural org name in title

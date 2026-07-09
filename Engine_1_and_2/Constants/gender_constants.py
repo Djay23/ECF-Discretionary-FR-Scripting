@@ -166,6 +166,16 @@ FLAG_ORG_NAME         = "Gender/sexual term appears inside an organization or pr
 FLAG_AMBIGUOUS_TERM   = "Ambiguous coded gender/orientation term (femme/masc/butch/...) - verify served population on both gender and sexual-identity axes"
 
 # ---------------------------------------------------------------------------
+# Known-org gender fallback (Plan.md Chunk G1 step 4) — name-only last resort
+# for a silent body. Keys checked against the normalized funding-request
+# name only (never the body), mirroring ORG_NAME_ETHNICITY_MAP's ethnic-axis
+# known-org map in constants.py.
+# ---------------------------------------------------------------------------
+GENDER_ORG_NAME_MAP = {
+    "black canadian women in action": GENDER_WOMEN_GIRLS,
+}
+
+# ---------------------------------------------------------------------------
 # Ambiguous coded terms — flag without classifying (femme/masc/butch are
 # gender-coded AND lesbian-orientation-adjacent; reviewer checks both axes).
 # ---------------------------------------------------------------------------

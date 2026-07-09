@@ -367,3 +367,9 @@ Is this something a human reviewer actually needs to look at?
 - ECF Focus areas classification --> Using ML for quicker mapping.
 - Using country python library.
 - Sector Classification (By Hand)
+
+# 2026-07-09
+## Sprint 3 - Auditing Ethnic, Sex & Gender identity
+- Auditing of current classification pipeline and ML implementation
+- Org maps for organizations that might have an ethnic/Gender/Sex implication
+- ECF focus areas classification

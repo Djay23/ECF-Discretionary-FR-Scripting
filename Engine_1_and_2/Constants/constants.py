@@ -190,6 +190,17 @@ ORG_NAME_ETHNICITY_MAP = {
     "bent arrow": ("North American Indigenous Origins", "", ""),
     "treaty 6": ("North American Indigenous Origins", "", ""), # Flag for review, as "Treaty 6" could refer to the geographic region (which would be L1 or L2) rather than the organization (which would be Case 10). Only trigger if "Treaty 6" appears in the funding request name or purpose, not just the description.
     "niginan housing ventures": ("North American Indigenous Origins", "", ""),
+    # Plan.md Chunk G1 step 3 — name-only last resort for silent-body rows.
+    # Keys must match POST identity-phrase-rewrite name text (e.g. "african
+    # canadian(s)" -> "africancanadian" via IDENTITY_PHRASE_REWRITES).
+    "council for the advancement of africancanadian": ("African Origins", "", ""),
+    "council of canadians of african and caribbean": [
+        ("African Origins", "", ""),
+        ("Caribbean Origins", "", ""),
+    ],
+    "aboriginal counseling services": ("North American Indigenous Origins", "", ""),
+    "somali canadian cultural society": ("African Origins", "Southern and East African Origins", "Somali"),
+    "jewish family services": ("Other Ethnic and Cultural Origins", "Jewish", ""),
     # Add more known organization name -> ethnicity mappings here as identified
 }
 

@@ -155,6 +155,13 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
     # -----------------------------------------------------------------------
     if not served:
         if org:
+            org_l1 = set(s["level1"] for s in org)
+            if len(org_l1) >= 2:
+                return build_output(
+                    MULTIPLE_ETHNIC, "", "",
+                    "Matched via known organization name lookup (multiple groups)",
+                    context_flags,
+                )
             best = org[0]
             return build_output(
                 best["level1"], best["level2"], best["level3"],

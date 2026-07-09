@@ -33,7 +33,7 @@ from gender_constants import (
     FLAG_ASPIRATIONAL, FLAG_TWO_SPIRIT_INDIG, FLAG_NEGATION, FLAG_UMBRELLA_ACRONYM,
     FLAG_ORG_NAME, FLAG_AMBIGUOUS_TERM,
     # Org-name and ambiguous-term data
-    ORG_NAME_CONTEXT_PATTERNS, AMBIGUOUS_CODED_TERMS,
+    ORG_NAME_CONTEXT_PATTERNS, AMBIGUOUS_CODED_TERMS, GENDER_ORG_NAME_MAP,
     # Sexual identity labels
     SEXUAL_2SLGBTQIA, SEXUAL_GENERAL_POP,
     # Sexual output columns
@@ -92,6 +92,15 @@ def is_org_name_context(text):
     Classification is kept; caller appends FLAG_ORG_NAME as an annotation.
     """
     return matches_any(ORG_NAME_CONTEXT_PATTERNS, text)
+
+def lookup_gender_org_name(name_text):
+    """Name-only last resort (Plan.md Chunk G1 step 4): return the curated
+    gender fallback label for a known org, or None. Never consulted on body
+    text -- only when the body is truly silent of a served signal."""
+    for org_name, label in GENDER_ORG_NAME_MAP.items():
+        if re.search(r'\b' + re.escape(org_name) + r'\b', name_text, re.IGNORECASE):
+            return label
+    return None
 
 # ===========================================================================
 # GENDER IDENTITY — extraction + resolver
@@ -266,6 +275,9 @@ def classify_gender(row):
                 + " mentioned via org-name self-reference in body - not classified; verify"
             )
             return GENDER_GENERAL_POP, note
+        org_label = lookup_gender_org_name(name)
+        if org_label:
+            return org_label, "Matched via known organization name lookup; " + FLAG_ORG_NAME
         name_keys, _, _, _ = extract_gender_candidates(name)
         if name_keys:
             return GENDER_GENERAL_POP, FLAG_ORG_NAME

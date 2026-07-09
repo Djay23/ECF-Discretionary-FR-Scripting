@@ -188,15 +188,21 @@ def extract_org_candidates(text: str) -> list:
     Case 10: known organization name scan.
 
     Checks ORG_NAME_ETHNICITY_MAP against the full text. Returns all
-    matching entries (in practice at most one, but the function makes no
-    assumption about cardinality — that constraint belongs in the resolver).
+    matching entries. A map value may be a single (L1, L2, L3) tuple, or a
+    list of tuples for an org whose curated fallback spans more than one
+    group (e.g. "Council of Canadians of African and Caribbean Heritage" ->
+    African + Caribbean, which the resolver's distinct-L1 check turns into
+    Multiple).
 
     Not role-tagged: a known-org match is always treated as a definitive
     last-resort lookup by the resolver, independent of served/weak tiering.
     """
     candidates = []
-    for org_name, (l1, l2, l3) in ORG_NAME_ETHNICITY_MAP.items():
-        if re.search(r'\b' + re.escape(org_name) + r'\b', text, re.IGNORECASE):
+    for org_name, mapping in ORG_NAME_ETHNICITY_MAP.items():
+        if not re.search(r'\b' + re.escape(org_name) + r'\b', text, re.IGNORECASE):
+            continue
+        tuples = mapping if isinstance(mapping, list) else [mapping]
+        for l1, l2, l3 in tuples:
             depth = 3 if l3 else (2 if l2 else 1)
             candidates.append(_candidate(l1, l2, l3, depth, "org_lookup"))
     return candidates

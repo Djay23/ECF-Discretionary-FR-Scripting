@@ -236,6 +236,11 @@ def classify_row(row, taxonomy_entries):
     # The name is only consulted for a curated known-org lookup and to
     # decide whether a name-only signal should be flagged.
     # ------------------------------------------------------------------
+    # extract_org_candidates is deliberately NOT part of this bundle: the
+    # known-org map is a name-only last resort (Plan.md Chunk G1 step 2).
+    # Consulting it on body text would let an org's self-reference in its
+    # own description inject a definitive (non-role-tagged) org_lookup
+    # candidate; name_org below is the only place it's consulted.
     def _extract(txt, name_for_role=""):
         return (
             extract_taxonomy_candidates(txt, taxonomy_entries, name_for_role)
@@ -243,7 +248,6 @@ def classify_row(row, taxonomy_entries):
             + extract_pattern_candidates(txt, name_for_role)
             + extract_country_candidates(txt, name_for_role)
             + extract_broad_identity_candidates(txt, name_for_role)
-            + extract_org_candidates(txt)
         )
 
     # name_text is passed through so a candidate whose body match merely

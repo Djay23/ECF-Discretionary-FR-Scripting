@@ -234,13 +234,13 @@ def _echoes_org_name(text, start, end, name_text, min_gram=3, slack=3):
 def infer_role(text, start, end, name_text="", window=60):
     """Classify the evidence role of a match at text[start:end]:
     'served' (strong, default) or one of the weak roles
-    'org_name' | 'provider' | 'example' | 'aspirational'.
+    'org_name' | 'provider' | 'example' | 'aspirational' | 'historical'.
 
     Negation is deliberately NOT a role here: negation stays annotation-only
     (a resolver-level architectural invariant — see resolver.py's module
     docstring and build_context_notes) rather than suppressing a candidate,
-    unlike org-name/provider/example/aspirational framing which describe
-    what the term refers to, not whether it's included or excluded.
+    unlike org-name/provider/example/aspirational/historical framing which
+    describe what the term refers to, not whether it's included or excluded.
     """
     before = text[max(0, start - window):start]
     after  = text[end:end + window]
@@ -252,8 +252,18 @@ def infer_role(text, start, end, name_text="", window=60):
         return "org_name"
     if matches_any(ROLE_PROVIDER_BEFORE_PATTERNS, before) or matches_any(ROLE_PROVIDER_AFTER_PATTERNS, after):
         return "provider"
-    if _echoes_org_name(text, start, end, name_text, window):
+    # A term appearing only as the org's OWN NAME restated in the body (e.g.
+    # "Black Canadian Women in Action (BCW) is undertaking...") is a
+    # self-reference, not a served-population claim -- min_gram/slack use
+    # their own defaults here (previously this positional call clobbered
+    # min_gram with `window`, silently disabling echo detection).
+    if _echoes_org_name(text, start, end, name_text):
         return "org_name"
+    # A term framed as the org's HISTORICAL/PAST focus, or something the org
+    # has EXPANDED BEYOND, describes what the org used to be, not who is
+    # currently served (e.g. "beyond its original focus on Black communities").
+    if matches_any(EXPANSION_PHRASES, before) or matches_any(HISTORICAL_PHRASES, before):
+        return "historical"
     return "served"
 
 def phrase_has_serving_context(pattern, text, window=100):

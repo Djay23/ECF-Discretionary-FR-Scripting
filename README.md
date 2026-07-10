@@ -379,3 +379,7 @@ Is this something a human reviewer actually needs to look at?
 - Continued ML implementation --> Changed Organization map to be 'general' to apply org mapping for previous year data. 
 - Logic fine tuning with deepseek --> Understanding where gaps exist in the way current engine runs for classification, and how it can be fixed/made better.
 - Hand classifying ECF Focus areas until better classification engine brainstormed for Early Childhood Education (ECD) & Affordable Housing (AH)
+
+### Current:
+- Indigenous misfire in cases that should be general: 50616, 50671, 51, 78, 96, 196, 344, 347, 387, 418, 428, 427 --> higher risk. 
+- 

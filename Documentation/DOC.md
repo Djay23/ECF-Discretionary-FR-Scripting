@@ -119,18 +119,36 @@ To add more descriptive language to the flag output logs:
 
 ## 6. Technical Execution Guide
 
-Run these files from your system terminal, utilizing absolute paths to maintain consistent environmental data routing.
+Run these files from your system terminal. The scripts take **no command-line
+arguments** — they read/write fixed paths under the repo root:
+`Taxonomy/Taxonomy - Definitions.xlsx` and `Data Sheets/FR testing.xlsx`
+(sheet `Discretionary Funding Requests`). Place `FR testing.xlsx` in a
+`Data Sheets/` folder at the repo root before running.
 
 ### Step A: Verify Vector Embedding Strengths
 Run the semantic diagnostic script to analyze similarity scores and review confidence thresholds before running full production records:
 
 ```bash
-python diagnose_semantic_scores.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"
+python Engine_1_and_2/Semantic_Engine/diagnose_semantic_scores.py
 ```
 
 ### Step B: Run Classification Pipeline
-Run the primary script to execute the rule engines, process the embeddings, apply the logic cases, and output classifications along with flag notes:
+Run the full pipeline to execute both engines — ethnic (+ semantic fallback) and
+gender/sexual — applying the logic cases and writing classifications plus flag
+notes back into `Data Sheets/FR testing.xlsx`:
 
 ```bash
-python ethnic_taggerv3.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"
+python Engine_1_and_2/run_all.py
 ```
+
+This runs `ethnic_taggerv3.py` (ethnic + `Semantic Suggestion (REVIEW)` columns)
+followed by `Gender_SexID.py` (gender + sexual columns). To run an engine on its
+own instead:
+
+```bash
+python Engine_1_and_2/Pipeline/ethnic_taggerv3.py   # ethnic only
+python Engine_1_and_2/Pipeline/Gender_SexID.py      # gender + sexual only
+```
+
+> Note: running only `ethnic_taggerv3.py` leaves the gender/sexual columns (`Gender Id - FR9`, `Sexual Id - FR10`, and their flags) unpopulated — use:
+> `run_all.py` for a complete output.

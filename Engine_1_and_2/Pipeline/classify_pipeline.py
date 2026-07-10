@@ -1,3 +1,4 @@
+import os
 import re
 
 from ethnic_taggerv3 import (
@@ -8,10 +9,18 @@ from ethnic_taggerv3 import (
     matches_any,
     detect_ethnocultural_org_name,
     is_non_prefixed,
+    normalize_text,
+    apply_identity_phrase_rewrites,
+    parse_raw_org_name,
+    body_names_a_population,
     GENERAL_POP,
+    MULTIPLE_ETHNIC,
 )
 
-from constants import LANGUAGE_ACCOMMODATION_PATTERNS, FRENCH_ETHNIC_KEEP_PATTERNS
+from constants import (
+    LANGUAGE_ACCOMMODATION_PATTERNS, FRENCH_ETHNIC_KEEP_PATTERNS,
+    SILENT_NAME_RELIGION_PATTERN, SILENT_NAME_LANGUAGE_PATTERN,
+)
 
 from extractors import (
     extract_taxonomy_candidates,
@@ -36,6 +45,68 @@ Classification orchestration layer — wires the 3-layer pipeline:
 This module contains NO classification logic. All ethnic origin decisions
 live in resolver.py. This function is pure orchestration.
 """
+
+# ---------------------------------------------------------------------------
+# ML AUGMENTATION LAYER — Phase B: evidence-role NLI arbiter (Plan.md
+# "ML AUGMENTATION LAYER" section). Off by default so the deterministic
+# rule engine stays the shipping path; set USE_ML_ROLE_ARBITER=1 to A/B
+# test the learned role frames against the regex-only path (audit_score.py
+# picks up the env var the same way — no code change needed to compare).
+# ---------------------------------------------------------------------------
+
+USE_ML_ROLE_ARBITER = os.environ.get("USE_ML_ROLE_ARBITER") == "1"
+
+# Only override a regex "served" call when the NLI arbiter's next-best
+# weak role beats "served" by this margin (raw entailment logits, not
+# probabilities — a margin, not an absolute confidence, is what's
+# comparable across premises). Conservative by construction: silence
+# (no override) is the safe failure mode on these sensitive axes.
+ML_ROLE_OVERRIDE_MARGIN = 1.5
+
+
+def apply_ml_role_arbiter(candidates):
+    """
+    Phase B: for each candidate the regex role frames (infer_role) tagged
+    "served", ask the vendored NLI cross-encoder for a second opinion on
+    that exact span/context. If the arbiter is confidently more specific
+    (e.g. "org_name"/"provider"/"example") than "served", demote the
+    candidate's role and record why — this is the learned generalization
+    of Phase 2 tiering the plan calls for (Alberta Ballet's "Black
+    classical ballet company", Digestive Health's "Indigenous
+    Nutritionist", incidental body mentions the regex frames don't cover).
+
+    Never promotes a regex weak role to "served" — the regex frames are
+    already tuned/regression-tested for the strong case; the arbiter's
+    job here is only to catch regex false positives, not add new signal.
+    Candidates without a captured span/context (e.g. org_lookup) pass
+    through untouched.
+    """
+    if not USE_ML_ROLE_ARBITER:
+        return candidates
+    from ml_arbiter import nli_role
+
+    refined = []
+    for c in candidates:
+        if c.get("role") != "served" or not c.get("span") or not c.get("context"):
+            refined.append(c)
+            continue
+        scores = nli_role(c["span"], c["context"])
+        best = scores["best_role"]
+        if best in ("served", "negated"):
+            refined.append(c)
+            continue
+        if scores[best] - scores["served"] < ML_ROLE_OVERRIDE_MARGIN:
+            refined.append(c)
+            continue
+        c = dict(c)
+        c["role"] = best
+        c["ml_role_note"] = (
+            f'ML role arbiter: "{c["span"]}" reclassified served -> {best} '
+            f'(served={scores["served"]:.2f}, {best}={scores[best]:.2f})'
+        )
+        refined.append(c)
+    return refined
+
 
 # ---------------------------------------------------------------------------
 # P2-1 — French language accommodation filter
@@ -65,6 +136,74 @@ def filter_french_language_accommodation(candidates, combined):
     if len(filtered) == len(candidates):
         return candidates, note
     return filtered, note
+
+
+# ---------------------------------------------------------------------------
+# G1 step 5 — Generalizable silent-body name rule
+# ---------------------------------------------------------------------------
+
+SILENT_NAME_FLAG = "Classified from organization name (silent body) - verify served population"
+
+def classify_from_raw_name(raw_name, taxonomy_entries):
+    """
+    Plan.md Chunk G1 step 5. Only called when the body carries no signal at
+    all (the existing "not body_candidates and not bipoc_present" guard in
+    classify_row) -- i.e. a truly silent body, NOT merely a body with a
+    weak/org_name-echo mention (a body that DOES mention an identity term,
+    even as a self-reference or historical aside, is handled by the normal
+    resolver weak-candidate path instead; see infer_role's org-name-echo
+    demotion).
+
+    Classifies from identity terms in the RAW (pre-normalize, pre-identity-
+    rewrite) funding-request account name, generalizing the old per-org
+    ORG_NAME_ETHNICITY_MAP last resort to any unseen org (2024/2023-ready).
+
+    Returns (l1, l2, l3, flag) — ALWAYS flagged when non-None — or None if
+    nothing in the name is recognized.
+
+    Order of decision:
+      1. Religion/language-only exclusions ("Islamic Missionary
+         Association", "French Canadian Association") -> General + a
+         targeted note. These never guess an ethnicity from an inherently
+         ambiguous religious/linguistic marker, even if a bare "french"
+         keyword would otherwise match a real taxonomy L3 entry.
+      2. BIPOC / two-or-more distinct L1 groups -> Multiple.
+      3. Any single recognized identity/country/pattern term -> that group.
+      4. Nothing recognized -> None (caller falls back to existing
+         name-only-signal / plain General handling).
+    """
+    org = parse_raw_org_name(raw_name)
+    if not org:
+        return None
+    org_norm = apply_identity_phrase_rewrites(normalize_text(org))
+    if not org_norm:
+        return None
+
+    if matches_any([SILENT_NAME_RELIGION_PATTERN], org_norm):
+        return (GENERAL_POP, "", "",
+                "Religious organization name only - not an ethnic signal; verify served population")
+    if matches_any([SILENT_NAME_LANGUAGE_PATTERN], org_norm):
+        return (GENERAL_POP, "", "",
+                "Francophone/language organization name only - not an ethnic signal; verify served population")
+
+    name_candidates = (
+        extract_taxonomy_candidates(org_norm, taxonomy_entries)
+        + extract_compound_candidates(org_norm)
+        + extract_pattern_candidates(org_norm)
+        + extract_country_candidates(org_norm)
+        + extract_broad_identity_candidates(org_norm)
+    )
+    bipoc_hit = is_bipoc_real_target(org_norm)
+
+    if not name_candidates and not bipoc_hit:
+        return None
+
+    distinct_l1 = set(c["level1"] for c in name_candidates)
+    if bipoc_hit or len(distinct_l1) >= 2:
+        return (MULTIPLE_ETHNIC, "", "", SILENT_NAME_FLAG)
+
+    best = max(name_candidates, key=lambda c: c["depth"])
+    return (best["level1"], best["level2"], best["level3"], SILENT_NAME_FLAG)
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +312,11 @@ def classify_row(row, taxonomy_entries):
     # The name is only consulted for a curated known-org lookup and to
     # decide whether a name-only signal should be flagged.
     # ------------------------------------------------------------------
+    # extract_org_candidates is deliberately NOT part of this bundle: the
+    # known-org map is a name-only last resort (Plan.md Chunk G1 step 2).
+    # Consulting it on body text would let an org's self-reference in its
+    # own description inject a definitive (non-role-tagged) org_lookup
+    # candidate; name_org below is the only place it's consulted.
     def _extract(txt, name_for_role=""):
         return (
             extract_taxonomy_candidates(txt, taxonomy_entries, name_for_role)
@@ -180,27 +324,47 @@ def classify_row(row, taxonomy_entries):
             + extract_pattern_candidates(txt, name_for_role)
             + extract_country_candidates(txt, name_for_role)
             + extract_broad_identity_candidates(txt, name_for_role)
-            + extract_org_candidates(txt)
         )
 
     # name_text is passed through so a candidate whose body match merely
     # echoes the org's own name (e.g. "Black Canadian Women in Action is
     # undertaking...") is tagged role="org_name" (weak) instead of "served".
     body_candidates = _extract(body_text, name_text)
+    body_candidates = apply_ml_role_arbiter(body_candidates)  # Phase B, off by default
     bipoc_present    = is_bipoc_real_target(body_text)   # BIPOC must be in the body
     name_org         = extract_org_candidates(name_text)  # curated known-org from the name
     name_signal      = bool(_extract(name_text)) or is_bipoc_real_target(name_text)
 
     # Name-only guard: nothing in the body, but the name carries a signal.
     if not body_candidates and not bipoc_present:
-        if name_org:  # known org (e.g. Niginan) classifies
+        if name_org:  # known org (e.g. Niginan) classifies -- tiny curated map first
             candidates = name_org
-        elif name_signal:
-            return (GENERAL_POP, "", "",
-                    "Signal appears only in the organization/funding-request name - "
-                    "classified General; verify served population")
         else:
-            candidates = []
+            # Generalizable silent-body name rule (Plan.md Chunk G1 step 5):
+            # a TRULY silent body (zero candidates of any role -- this branch
+            # is not reached at all when the body has even a weak/org_name-
+            # echo mention, e.g. 54525's "beyond its original focus on Black
+            # communities") classifies from the raw account-name identity
+            # terms instead of defaulting flat to General.
+            #
+            # Cross-axis gate (Plan.md Chunk G1 FIX): only apply the name
+            # rule when the body is truly ADMINISTRATIVE -- no served
+            # population named on ANY axis, not just this one. A body that
+            # names a real population on a different axis (e.g. BCW 51622's
+            # "Haitian youth" -- an ethnic signal, gender-neutral) must NOT
+            # borrow an ethnic guess from the org name either; it falls
+            # through to the plain name-only-signal message below instead.
+            name_rule = None
+            if not body_names_a_population(body_text):
+                name_rule = classify_from_raw_name(row.get("Funding Request Name", ""), taxonomy_entries)
+            if name_rule is not None:
+                return name_rule
+            if name_signal:
+                return (GENERAL_POP, "", "",
+                        "Signal appears only in the organization/funding-request name - "
+                        "classified General; verify served population")
+            else:
+                candidates = []
     else:
         candidates = body_candidates
 
@@ -245,7 +409,8 @@ def classify_row(row, taxonomy_entries):
     # Cultural-association, emphasis, Hindu, and negation checks. Emphasis/
     # Hindu are gated to non-General rows (Fix 6) — see extra_annotation_notes.
     # ------------------------------------------------------------------
-    notes = pre_notes + extra_annotation_notes(combined, states, bipoc_present, resolved_label=e1)
+    ml_notes = [f"Note (low priority): {c['ml_role_note']}" for c in states if c.get("ml_role_note")]
+    notes = pre_notes + ml_notes + extra_annotation_notes(combined, states, bipoc_present, resolved_label=e1)
 
     # ------------------------------------------------------------------
     # Step 7b — Case 13: potential ethnocultural org name in title

@@ -4,13 +4,16 @@ audit_score.py
 Gold-standard audit scorer — two modes:
 
     python audit_score.py --init
-        Creates Data Sheets/audit_gold.xlsx: one row per data row,
+        Creates Taxonomy/audit_gold.xlsx: one row per data row,
         pre-filled with live engine output and blank correction columns
         ready for the auditor to fill in.  Rows missing SF_18_ID are
         skipped and counted.
 
+    Workflow: fill in the correction columns, then save the completed file
+    as  Taxonomy/audit_gold_audited.xlsx  (same folder) before scoring.
+
     python audit_score.py
-        Loads the filled audit_gold.xlsx, re-runs classifiers on live
+        Loads Taxonomy/audit_gold_audited.xlsx, re-runs classifiers on live
         data, joins on stable_id, and over the audited (non-blank) rows
         computes precision/recall/F1 per category.  Writes
         Data Sheets/audit_scorecard.xlsx.
@@ -262,10 +265,11 @@ def cmd_init():
                 ETHNIC_FLAG_OK, GENDER_FLAG_OK, SEXUAL_FLAG_OK, NOTES_COL]:
         gold_df[col] = ""
 
-    out_path = bootstrap.PROJECT_ROOT / "Data Sheets" / GOLD_FILE
+    out_path = bootstrap.PROJECT_ROOT / "Taxonomy" / GOLD_FILE
     gold_df.to_excel(out_path, index=False)
     print(f"Written {len(gold_df)} rows → {out_path}")
     print("\nFill in 'Correct *' and 'Flag OK?' columns for audited rows,")
+    print(f"save the completed file as Taxonomy/{AUDITED_GOLD_FILE},")
     print("then run:  python audit_score.py")
 
 

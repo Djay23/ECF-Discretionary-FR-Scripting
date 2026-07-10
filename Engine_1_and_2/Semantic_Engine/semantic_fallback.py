@@ -40,7 +40,22 @@ funding request text leaves this machine. The first run on a new
 machine will download the model from Hugging Face (a few hundred MB),
 which requires a normal internet connection; after that it's cached
 locally and works offline.
+
+ML AUGMENTATION LAYER, Phase A (Plan.md): this module now also re-exports
+ml_arbiter.py's embed/knn/nli_role helpers (frozen multilingual-e5-small +
+NLI cross-encoder, vendored offline — see vendor_models.py) so this stays
+the single entry point for "semantic" functionality. Purely additive: the
+existing MiniLM taxonomy-suggestion flow above is untouched, and nothing
+here is wired into classify_pipeline.py/resolver.py yet (that's Phase B).
 """
+
+# Pin Hugging Face to offline BEFORE sentence-transformers is imported in
+# get_model(), so loading the cached MiniLM weights never reaches the network
+# (mirrors ml_arbiter.py). setdefault, not hard-set: offline by default, but a
+# fresh machine that still needs the one-time model download can opt back in
+# with HF_HUB_OFFLINE=0 in the environment.
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
 MODEL_NAME = "all-MiniLM-L6-v2"
 SIMILARITY_THRESHOLD = 0.55
@@ -167,3 +182,34 @@ def find_semantic_suggestion(text, unique_entries, taxonomy_embeddings):
         return (best_entry["level1"], best_entry["level2"], best_entry["level3"], best_score, best_score - second_best_score)
 
     return (best_entry["level1"], best_entry["level2"], best_entry["level3"], best_score, best_score - second_best_score)
+
+
+# ---------------------------------------------------------------------------
+# ML AUGMENTATION LAYER, Phase A — re-exported ml_arbiter.py helpers.
+# Lazily imported (not at module load time) so importing semantic_fallback
+# for the existing MiniLM taxonomy-suggestion flow above never pulls in
+# torch/the vendored models unless one of these is actually called.
+# ---------------------------------------------------------------------------
+
+def embed(text, kind="query"):
+    """See ml_arbiter.embed — multilingual-e5-small, vendored offline."""
+    import ml_arbiter
+    return ml_arbiter.embed(text, kind=kind)
+
+
+def knn(vec, k, store, field="body_vecs"):
+    """See ml_arbiter.knn — k nearest neighbors in a gold-embedding store."""
+    import ml_arbiter
+    return ml_arbiter.knn(vec, k, store, field=field)
+
+
+def nli_role(span, text):
+    """See ml_arbiter.nli_role — zero-shot evidence-role scoring."""
+    import ml_arbiter
+    return ml_arbiter.nli_role(span, text)
+
+
+def build_gold_embedding_store(gold_rows, force=False):
+    """See ml_arbiter.build_gold_embedding_store."""
+    import ml_arbiter
+    return ml_arbiter.build_gold_embedding_store(gold_rows, force=force)

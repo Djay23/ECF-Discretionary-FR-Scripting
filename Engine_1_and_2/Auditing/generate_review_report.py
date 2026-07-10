@@ -11,7 +11,7 @@ from classify_pipeline import classify_row as pipeline_classify_row
 import Gender_SexID as gs
 import audit_evidence as ae
 from pathlib import Path
-
+ 
 """
 generate_review_report.py
 ---------------------------
@@ -43,7 +43,7 @@ To Run:
     python generate_review_report.py
 
 Output:
-    review_reportV3(new pipeline).xlsx  (separate workbook — FR testing.xlsx is never modified)
+    Data Sheets/review_report(07-08 new implement).xlsx  (separate workbook — FR testing.xlsx is never modified)
 """
 
 SAMPLE_SIZE = 100
@@ -58,7 +58,7 @@ def main():
 
     taxonomy_filepath = bootstrap.PROJECT_ROOT / "Taxonomy" / "Taxonomy - Definitions.xlsx"
     funding_filepath = bootstrap.PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx"
-    OUTPUT_FILE = bootstrap.PROJECT_ROOT / "Data Sheets" / "review_report(Ethnic Flag fix).xlsx"
+    OUTPUT_FILE = bootstrap.PROJECT_ROOT / "Data Sheets" / "review_report(07-08 new implement).xlsx"
 
     tax_df = pd.read_excel(taxonomy_filepath, sheet_name=et.TAXONOMY_SHEET, dtype=str)
     data_df = pd.read_excel(funding_filepath, sheet_name=et.DATA_SHEET, dtype=str)

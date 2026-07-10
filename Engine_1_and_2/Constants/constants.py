@@ -171,7 +171,7 @@ AMBIGUOUS_EQUITY_WORDS = [
     #r"\bethnocultural\b",
     r"\bracialized\b",
     #r"\bunderrepresented\b", # Possible to overlook as most times refers to gender and sexual identity
-    r"\bmulticultural\b",
+    #r"\bmulticultural\b",
     #r"\bdiverse\b",
     #r"\brefugee\b",
     #r"\bimmigrant\b",
@@ -190,8 +190,47 @@ ORG_NAME_ETHNICITY_MAP = {
     "bent arrow": ("North American Indigenous Origins", "", ""),
     "treaty 6": ("North American Indigenous Origins", "", ""), # Flag for review, as "Treaty 6" could refer to the geographic region (which would be L1 or L2) rather than the organization (which would be Case 10). Only trigger if "Treaty 6" appears in the funding request name or purpose, not just the description.
     "niginan housing ventures": ("North American Indigenous Origins", "", ""),
-    # Add more known organization name -> ethnicity mappings here as identified
+    # Add more known organization name -> ethnicity mappings here as identified.
+    # NOTE: this map is a tiny curated last resort ONLY -- do not add more
+    # per-org entries. Plan.md Chunk G1 step 5's generalizable silent-body
+    # name rule (see classify_pipeline.classify_from_raw_name) covers
+    # unknown orgs generically and is the correct place for new coverage.
 }
+
+# ============================================================
+# G1 step 2 — Served-frame rescue patterns.
+#
+# An identity term sitting in one of these explicit "who is served" frames
+# IS the served population, even if it also happens to echo the org's own
+# name, or follows historical/expansion framing, elsewhere in the same
+# text. This precedence check runs BEFORE the org-name-echo demotion in
+# infer_role() -- e.g. "Somali Canadian Cultural Society ... serves the
+# Somali community" must keep Somali as served despite "Somali" also
+# appearing in the org's own name.
+# ============================================================
+SERVED_FRAME_BEFORE_PATTERNS = [
+    r"\bfor\s*(?:the\s+)?$",
+    r"\bserving\s*(?:the\s+)?$",
+    r"\bserves?\s*(?:the\s+)?$",
+]
+
+SERVED_FRAME_CONTINUATION_PATTERNS = [
+    r"\bcontinues?\s+today\b",
+    r"\bcontinues?\s+to\s+serve\b",
+]
+
+# ============================================================
+# G1 step 5 — Generalizable silent-body name rule: exclusions.
+#
+# A silent-body org name that contains ONLY a religion or language signal
+# (no real ethnic/country/pattern term) stays General Population + a
+# targeted flag, rather than guessing an ethnicity from an ambiguous
+# religious or linguistic marker (e.g. "Islamic Missionary Association",
+# "French Canadian Association" -- language service, not necessarily
+# French ethnic identity).
+# ============================================================
+SILENT_NAME_RELIGION_PATTERN = r"\b(islamic|muslim|hindu|sikh|church)\b"
+SILENT_NAME_LANGUAGE_PATTERN = r"\b(french|francophone)\b"
 
 # ============================================================
 # Context-override / historical / negation / aspirational / example
@@ -350,6 +389,49 @@ ROLE_PROVIDER_AFTER_PATTERNS = [
     r"^\s*(?:\w+\s+){0,2}(?:nutritionists?|dietitians?|professionals?|"
     r"facilitators?|instructors?|advisors?|consultants?|artists?|"
     r"teachers?)\b",
+]
+
+# ============================================================
+# G3 — Indigenous pattern-path role-tiering (Plan.md Chunk G3).
+#
+# Indigenous PATTERN candidates ("indigenous"/"aboriginal"/"metis"/etc,
+# matched via PATTERN_RULES) already flow through infer_role like any
+# other candidate (extract_pattern_candidates calls it), but two framings
+# weren't covered by the existing provider/org_name weak-role frames
+# above: a curriculum/awareness TOPIC being taught ("...teach eco-action
+# strategies, and Indigenous perspectives") and a CONSULTED-PARTY mention
+# ("consult wildlife biologists, conservation experts, and Indigenous
+# knowledge holders"). Neither names the served population, so both get a
+# new weak "topic" role here -- same mechanism as ROLE_PROVIDER/
+# ROLE_ORG_NAME, just a new frame; see infer_role().
+#
+# Scoped narrowly to the exact nouns that actually appear in a topic/
+# consultation frame (not a bare "knowledge"/"awareness" keyword), so this
+# never catches a genuine served mention such as "Indigenous knowledge"
+# (traditional healing services), "Indigenous Peoples Exhibit Tours", or
+# "Indigenous Awareness Training" delivered ABOUT a served population --
+# see the 50596/54528/50681/51620 regression rows, all of which must stay
+# Indigenous.
+# ============================================================
+ROLE_TOPIC_AFTER_PATTERNS = [
+    r"^\s*(?:\w+\s+){0,2}perspectives?\b",
+    r"^\s*(?:\w+\s+){0,3}knowledge\s+holders?\b",
+]
+
+# G3 — served-frame rescue extension (used alongside SERVED_FRAME_BEFORE/
+# CONTINUATION_PATTERNS in infer_role): residential-school / Truth-and-
+# Reconciliation / ceremony context ANYWHERE in the body text is strong
+# evidence that the Indigenous mention(s) in this row concern a genuinely
+# served population (survivors of historical trauma, ceremony
+# participants) even when the specific occurrence itself reads as staff-
+# training/topic framing (e.g. "Indigenous Awareness Training" delivered
+# to staff so they can better serve a population affected by residential
+# schools -- row 51620). Checked text-wide, same mechanism as
+# SERVED_FRAME_CONTINUATION_PATTERNS above.
+INDIGENOUS_CONTEXT_RESCUE_PATTERNS = [
+    r"\bresidential school",
+    r"\btruth and reconciliation\b",
+    r"\bceremon(y|ies)\b",
 ]
 
 """

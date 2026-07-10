@@ -33,7 +33,7 @@ from gender_constants import (
 )
 
 # --- config ---------------------------------------------------------------
-DEFAULT_REVIEW     = bootstrap.PROJECT_ROOT / "Data Sheets" / "review_report(Gender and Sex).xlsx"
+DEFAULT_REVIEW     = bootstrap.PROJECT_ROOT / "Taxonomy" / "review_report(Gender and Sex).xlsx"
 AUDIT_DETAIL_SHEET = "Audit Detail"
 NOTE_COL           = "Correct Sex & Gender"
 OUT_FILE           = bootstrap.PROJECT_ROOT / "Data Sheets" / "audit_gold_prefilled.xlsx"
@@ -132,7 +132,7 @@ def parse_note(note, rr_gender, rr_sexual):
             out["correct_sexual"] = sl or (SEXUAL_GENERAL_POP if (wants_general or flaggy) else "")
         return out
 
-    out["notes"] = raw                             # unknown verdict -> safe
+    out["notes"] = raw                            
     return out
 
 

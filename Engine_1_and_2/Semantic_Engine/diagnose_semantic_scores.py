@@ -9,6 +9,7 @@ import bootstrap
 
 import ethnic_taggerv3 as et
 import semantic_fallback as sf
+from classify_pipeline import classify_row as pipeline_classify_row  # production classifier (ethnic_taggerv3.classify_row removed)
 
 from pathlib import Path 
 
@@ -56,7 +57,7 @@ def main():
     results = []  # (score, name, best_label, combined_text, margin)
  
     for idx, row in data_df.iterrows():
-        e1, e2, e3, flag = et.classify_row(row, taxonomy_entries)
+        e1, e2, e3, flag = pipeline_classify_row(row, taxonomy_entries)
         if e1 != et.GENERAL_POP:
             continue  # only General Population rows reach the semantic step in the real run
  

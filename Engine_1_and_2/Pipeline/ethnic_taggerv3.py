@@ -2,6 +2,7 @@ import sys
 import re
 import pandas as pd
 import time
+from collections import defaultdict
 
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
@@ -75,7 +76,14 @@ from constants import (
     DEMONYM_SUFFIXES, NON_ETHNIC_LEADING_WORDS,
     ROLE_ORG_NAME_BEFORE_PATTERNS, ROLE_ORG_NAME_AFTER_PATTERNS,
     ROLE_PROVIDER_BEFORE_PATTERNS, ROLE_PROVIDER_AFTER_PATTERNS,
+    SERVED_FRAME_BEFORE_PATTERNS, SERVED_FRAME_CONTINUATION_PATTERNS,
+    ROLE_TOPIC_AFTER_PATTERNS, INDIGENOUS_CONTEXT_RESCUE_PATTERNS,
 )
+
+# gender_constants.py is a pure-data module (no imports of its own) so
+# pulling in its taxonomy-independent term patterns here creates no
+# circular dependency. Used only by body_names_a_population() below.
+from gender_constants import GENDER_TERM_PATTERNS, SEXUAL_ORIENTATION_PATTERNS
 
 # =============
 # CONFIGURATION 
@@ -231,6 +239,32 @@ def _echoes_org_name(text, start, end, name_text, min_gram=3, slack=3):
                 return True
     return False
 
+def _name_word_echo(span, name_text):
+    """True if the matched span's bare word also appears, as a standalone
+    word, in the funding-request NAME text (Plan.md Chunk G1 step 4 — echo
+    demotion upgrade). This is a looser check than _echoes_org_name's
+    contiguous multi-word positional overlap: it catches a single-word
+    identity term (e.g. "Black") that the org's OWN NAME also carries (e.g.
+    "Black Canadian Women in Action"), even when the body mention doesn't
+    restate the full name verbatim near this occurrence (e.g. "...beyond
+    its original focus on Black communities" — no "Canadian Women in
+    Action" nearby, so _echoes_org_name alone would miss it).
+    """
+    if not name_text or not span:
+        return False
+    word = span.strip().lower()
+    if not word:
+        return False
+    # Also try the singular form so "Somalis" (body) still echoes "Somali"
+    # (name) and vice versa.
+    candidates = {word}
+    if word.endswith("s") and len(word) > 3:
+        candidates.add(word[:-1])
+    return any(
+        re.search(r'\b' + re.escape(c) + r'\b', name_text, re.IGNORECASE)
+        for c in candidates
+    )
+
 def infer_role(text, start, end, name_text="", window=60):
     """Classify the evidence role of a match at text[start:end]:
     'served' (strong, default) or one of the weak roles
@@ -241,9 +275,17 @@ def infer_role(text, start, end, name_text="", window=60):
     docstring and build_context_notes) rather than suppressing a candidate,
     unlike org-name/provider/example/aspirational framing which describe
     what the term refers to, not whether it's included or excluded.
+
+    Historical/expansion framing ("beyond its original focus on X",
+    "historically served X") is likewise NOT its own role (Plan.md Chunk G1
+    step 3 — annotation-only invariant, see extract_context_signals). It
+    demotes a candidate only indirectly: when it coincides with an org-name
+    echo (step 2/4 below), the echo role wins; otherwise the match falls
+    through to "served" like any other unclassified framing.
     """
     before = text[max(0, start - window):start]
     after  = text[end:end + window]
+    span   = text[start:end]
     if matches_any(EXAMPLE_PHRASES, before):
         return "example"
     if matches_any(ASPIRATIONAL_PHRASES, before):
@@ -252,8 +294,52 @@ def infer_role(text, start, end, name_text="", window=60):
         return "org_name"
     if matches_any(ROLE_PROVIDER_BEFORE_PATTERNS, before) or matches_any(ROLE_PROVIDER_AFTER_PATTERNS, after):
         return "provider"
-    if _echoes_org_name(text, start, end, name_text, window):
+    # Served-frame rescue (Plan.md Chunk G1 step 2) — MUST run before the
+    # echo checks below. An explicit "for X"/"serving X" lead-in, or a
+    # service-continuity phrase ("continues today"), means this occurrence
+    # IS the served population even if it also happens to echo the org's
+    # own name elsewhere in the same text (e.g. "Somali Canadian Cultural
+    # Society ... serving the Somali community").
+    if matches_any(SERVED_FRAME_BEFORE_PATTERNS, before) or matches_any(SERVED_FRAME_CONTINUATION_PATTERNS, text) \
+            or matches_any(INDIGENOUS_CONTEXT_RESCUE_PATTERNS, text):
+        return "served"
+    # Org-name echo (Plan.md Chunk G1 step 1 KEEP): a term that restates a
+    # contiguous run of the org's own name near this exact position is a
+    # self-reference (e.g. "Black Canadian Women in Action (BCW) is
+    # undertaking..."), not a served-population claim. Precise/unconditional
+    # -- requires an actual multi-word positional overlap, so it does not
+    # fire on ordinary prose that merely happens to share one word with the
+    # org's name (e.g. "Jewish Federation of Edmonton ... Jewish culture" is
+    # NOT an echo of anything beyond the single shared word).
+    if _echoes_org_name(text, start, end, name_text):
         return "org_name"
+    # Org-name-word echo, but ONLY when this occurrence is ALSO framed as
+    # the org's HISTORICAL/PAST focus or something it has EXPANDED BEYOND
+    # (Plan.md Chunk G1 step 4 upgrade — e.g. "beyond its original focus on
+    # Black communities" when the org itself is named "Black Canadian Women
+    # in Action"). The historical/expansion framing is required, not
+    # optional: a bare single-word overlap with the org's name (e.g.
+    # "support for Black mothers", "the Ukrainian community", "Jewish
+    # culture") is the overwhelmingly common, legitimate way an
+    # ethnicity-named org describes its actual served population, and must
+    # NOT be demoted on its own -- only historical/expansion phrasing
+    # narrows this to the org's own past/self-identity instead of who it
+    # currently serves.
+    if (matches_any(EXPANSION_PHRASES, before) or matches_any(HISTORICAL_PHRASES, before)) \
+            and _name_word_echo(span, name_text):
+        return "org_name"
+    # Topic / consultation framing (Plan.md Chunk G3): a term immediately
+    # followed by "perspectives" or "knowledge holders" describes a
+    # CURRICULUM TOPIC being taught or a CONSULTED-PARTY mention, not the
+    # served population -- e.g. "...teach eco-action strategies, and
+    # Indigenous perspectives" (course content); "consult wildlife
+    # biologists, conservation experts, and Indigenous knowledge holders"
+    # (advisory role). The served-frame rescue above already runs first, so
+    # any row where this framing coexists with an explicit served mention,
+    # or a residential-school/Truth-and-Reconciliation/ceremony frame
+    # elsewhere in the text, keeps "served" and never reaches this check.
+    if matches_any(ROLE_TOPIC_AFTER_PATTERNS, after):
+        return "topic"
     return "served"
 
 def phrase_has_serving_context(pattern, text, window=100):
@@ -453,7 +539,7 @@ def is_bipoc_real_target(text):
 
 def check_grassroots_case(text, has_ethnic_signal):
     """
-    Case 11 (expanded): 'grassroots' / 'marginalized' / 'ethnocultural' /
+    Case 11 (expanded):  'marginalized' / 'racialized' /
     'multicultural' / 'refugee' / 'immigrant' etc. never count as a signal
     on their own. Unlike negation/example-mention, this never suppresses
     silently either way -- caller flags the result whether a real signal
@@ -666,6 +752,69 @@ def get_column_texts(row):
         texts.append(raw)
     return texts
 
+def parse_raw_org_name(raw_name):
+    """
+    Plan.md Chunk G1 step 5 — strip the "Funding Request for ... NNNNN"
+    wrapper and trailing FR-id off the RAW (pre-normalize, pre-identity-
+    rewrite) funding-request account name, leaving just the org name text.
+    Used by the generalizable silent-body name rule so identity-phrase
+    rewrites (e.g. "african canadian" -> "africancanadian") never hide a
+    term that should drive name-only classification.
+
+    Tolerates both the canonical "NAME 12345" form and a display-truncated
+    "NAME ...-12345" form (seen in some exported review sheets).
+    Falls back to the raw text unchanged if it doesn't match either shape.
+    """
+    text = (raw_name or "").strip()
+    if not text:
+        return ""
+    m = re.match(r'^funding request for\s+(.+)$', text, re.IGNORECASE)
+    if m:
+        text = m.group(1).strip()
+    text = re.sub(r'\s*(\.\.\.)?[\s\-]*\d+\s*$', '', text).strip()
+    return text
+
+def body_names_a_population(text):
+    """
+    Lightweight, taxonomy-independent check: does this (already normalized)
+    body text name ANY identifiable served population at all -- ethnic,
+    national, or gender/sexual-identity?
+
+    Used to gate the generalizable silent-body name rule (Plan.md Chunk G1
+    FIX): the name fallback on any ONE axis must fire ONLY when the body is
+    truly administrative -- no served population named on ANY axis. e.g.
+    BCW 51622's body serves "Haitian youth" -- a real (ethnic) served
+    population that simply isn't gendered -- so the GENDER axis must stay
+    General rather than borrowing "Women" from the org's own name; but a
+    genuinely administrative body (bathroom-vanity replacement, ED-salary
+    continuity, a website update) has no population signal on any axis, so
+    the org name IS the best available evidence.
+
+    Deliberately does NOT require taxonomy_entries (not available to the
+    gender/sexual classifiers, which don't load the taxonomy sheet) --
+    limited to the taxonomy-independent ethnic signal sources
+    (COUNTRY_REGION_MAP, PATTERN_RULES, BROAD_IDENTITY_KEYWORDS, BIPOC) plus
+    the gender/sexual term patterns (also plain regex, no taxonomy). This
+    misses a body whose ONLY ethnic signal is a pure taxonomy keyword not
+    covered by those sources (e.g. bare "Jewish"/"Cree") -- an accepted,
+    narrow approximation given the cross-module constraint.
+    """
+    if not text:
+        return False
+    if is_bipoc_real_target(text):
+        return True
+    if matches_any(BROAD_IDENTITY_KEYWORDS, text):
+        return True
+    if find_pattern_match(text) is not None:
+        return True
+    if find_country_match(text) is not None:
+        return True
+    if any(re.search(p, text, re.IGNORECASE) for p, _, _ in GENDER_TERM_PATTERNS):
+        return True
+    if matches_any(SEXUAL_ORIENTATION_PATTERNS, text):
+        return True
+    return False
+
 def get_body_and_name_texts(row):
     """Return (body_text, name_text), each normalized + identity-rewritten
     exactly like get_column_texts, so callers can require a served-population
@@ -679,168 +828,6 @@ def get_body_and_name_texts(row):
 # ==========================
 # MAIN CLASSIFICATION LOGIC
 # =============================
-
-def classify_row(row, taxonomy_entries):
-    col_texts = get_column_texts(row)
-    combined  = " ".join(t for t in col_texts if t.strip())
-
-    # Extra notes (buzzword / cultural association mentions) appended to whatever flag this function ends up returning, no matter which branch below resolves the classification.
-    extra_notes = []
-
-    def finalize(e1, e2, e3, flag):
-        if extra_notes:
-            note_text = "; ".join(extra_notes)
-            flag = f"{flag}; {note_text}" if flag else note_text
-        return (e1, e2, e3, flag)
-
-    if not combined.strip():
-        return finalize(GENERAL_POP, "", "", "Empty input")
-
-    # Context signal layer — annotation only, no control flow.
-    # All discourse signals (historical, expansion, aspirational, negation, example)
-    # are recorded as flags. Classification is never branched on them.
-    context_signals = extract_context_signals(combined)
-    extra_notes = []
-
-    # "Cultural Association" often hides a specific named group (e.g.
-    # "Kerala Cultural Association") -- always worth a second look,
-    # regardless of how this row otherwise resolves.
-    if re.search(r"\bcultural association\b", combined, re.IGNORECASE): # Add check for {group} cultur(e/al) or association
-        extra_notes.append("'Cultural Association' detected - verify named group manually")
-
-    # Cases 1-3: direct taxonomy matches, across FR columns
-    all_matches = []
-    for col_text in col_texts:
-        if col_text.strip():
-            all_matches.extend(find_taxonomy_matches(col_text, taxonomy_entries))
-
-    seen = set()
-    unique_matches = []
-    for m in all_matches:
-        if m["keyword"] not in seen:
-            seen.add(m["keyword"])
-            unique_matches.append(m)
-
-    # Build a unified candidate pool: taxonomy + compound + pattern +
-    # country + broad identity. Each candidate: (level1, level2, level3, depth, source)
-    # Built BEFORE the buzzword check below so that check has the SAME
-    # evidence the rest of this function uses -- see check_grassroots_case().
-    candidates = []
-    for m in unique_matches:
-        candidates.append((m["level1"], m["level2"] or "", m["level3"] or "",
-                            m["depth"], "taxonomy"))
-
-    # Afro-Caribbean / Afro-Latino -- add BOTH halves as candidates so
-    # they combine into Multiple the same way two separate mentions would.
-    for compound_pattern, group_tuples in ALWAYS_MULTIPLE_COMPOUNDS.items():
-        if re.search(compound_pattern, combined, re.IGNORECASE):
-            for (l1, l2, l3) in group_tuples:
-                candidates.append((l1, l2, l3, 1, "compound"))
-
-    pattern_result = find_pattern_match(combined)
-    if pattern_result:
-        l1, l2, l3, depth = pattern_result
-        candidates.append((l1, l2, l3, depth, "pattern"))
-
-    country_result = find_country_match(combined)
-    if country_result:
-        l1, l2, l3, depth = country_result
-        candidates.append((l1, l2, l3, depth, "country"))
-
-    # Broad identity labels with no specific taxonomy entry (Hispanic,
-    # Latino, etc. -- NOT Black/Jewish/Arab, real taxonomy entries now,
-    # already came through find_taxonomy_matches above). Folded into
-    # the same pool so they can combine into Multiple alongside a
-    # separately-named group too.
-    if detect_broad_identity(combined):
-        candidates.append((OTHER_ETHNIC, "", "", 1, "broad_identity"))
-
-    # Dedupe by actual (level1, level2, level3) outcome; two different
-    # detection methods (e.g. pattern rule + country map) landing on the
-    # exact same conclusion is a single confirmed answer, not a multi-
-    # group signal. Keeps the first-seen source label for the flag text.
-    seen_outcomes = set()
-    deduped_candidates = []
-    for c in candidates:
-        outcome_key = (c[0], c[1], c[2])
-        if outcome_key not in seen_outcomes:
-            seen_outcomes.add(outcome_key)
-            deduped_candidates.append(c)
-    candidates = deduped_candidates
-
-    # Case 9: BIPOC (context-aware), computed here -- before the buzzword
-    # check below -- so it can feed into has_ethnic_signal too.
-    bipoc_present = is_bipoc_real_target(combined)
-
-    # Case 11: grassroots / ambiguous equity words -- never suppress
-    # silently now, always flagged whether or not a real signal is present.
-    # has_ethnic_signal reads straight from the candidate pool and
-    # bipoc_present above -- the exact same evidence the rest of this
-    # function uses, by construction. See check_grassroots_case().
-    has_ethnic_signal = bool(candidates) or bipoc_present
-    if context_signals["negation"] and has_ethnic_signal:
-        extra_notes.insert(0, "Negation detected - verify exclusion vs inclusion intent")
-    grassroots_state = check_grassroots_case(combined, has_ethnic_signal) # Handle 'ethnocultural', 'marginalized' as well, since they have the same rule as 'grassroots'
-    if grassroots_state == "no_signal":
-        extra_notes.append("Note (low priority): Ambiguous equity term with no paired ethnic signal")
-    if grassroots_state == "has_signal":
-        extra_notes.append("Note (low priority): Equity/diversity buzzword present alongside a real signal - verify manually")
-
-    # Possible consulted-party mention (expert/advisor/biologist role)
-    # rather than the population served -- flagged, never suppressed.
-    if candidates and matches_any(EXPERT_ROLE_PHRASES, combined):
-        extra_notes.append("Note (low priority): Possible consulted-party mention (expert/advisor role) rather than served population - verify manually")
-
-    # Checked here (after candidates are gathered) so we can tell whether
-    # BIPOC is mentioned ALONGSIDE a real specific group (the ambiguous nuance from the README) vs. BIPOC being the only signal.
-    if bipoc_present:
-        if candidates:
-            # BIPOC + a specific named group both present. Do not silently resolve, flag for manual review. # We can set this as a generic 'Ambiguous: BIPOC mentioned alongside specific group(s) flag so number of unique classification flags are smaller
-            other_groups = sorted(set(c[0] for c in candidates))
-            flag = ("Ambiguous: BIPOC mentioned alongside specific group(s) ("
-                    + ", ".join(other_groups) + ") - verify manually")
-        else:
-            flag = "BIPOC signal detected"
-        return finalize(MULTIPLE_ETHNIC, "", "", flag)
-
-    # Resolve candidates: distinct Level 1 groups ANYWHERE in the pool
-    # (not just tied at the deepest level) mean Multiple -- lets "African" (depth 1) combine with "Black" (depth 2, a different L1 branch
-    # under "Other Ethnic and Cultural Origins") instead of the deeper one silently winning by depth alone.
-    if candidates:
-        distinct_l1 = set(c[0] for c in candidates)
-
-        if len(distinct_l1) >= 2:
-            return finalize(MULTIPLE_ETHNIC, "", "", "Review: multiple distinct groups detected")
-
-        # All candidates share one Level 1 -- use depth to pick the most
-        # specific. If several DIFFERENT branches still tie at the
-        # deepest level within this one Level 1, that's still Multiple.
-        max_depth = max(c[3] for c in candidates)
-        deepest = [c for c in candidates if c[3] == max_depth]
-
-        if len(deepest) >= 2:
-            return finalize(MULTIPLE_ETHNIC, "", "", "Review: multiple sub-groups within same origin")
-
-        l1, l2, l3, depth, source = deepest[0]
-        flag = ""
-        if source == "pattern":
-            flag = "Pattern rule match (Directional phrase, e.g. North African)"
-        elif source == "country":
-            flag = "Country/nationality mapping match"
-        elif source == "compound":
-            flag = "Compound identity term match"
-        elif source == "broad_identity":
-            flag = "Broad identity term - review recommended"
-        return finalize(l1, l2, l3, flag)
-
-    # Case 10: organization name lookup (LAST RESORT before General) NOTE: Need to highlight Black Canadian Women to flag
-    org_result = check_org_name_lookup(combined)
-    if org_result:
-        l1, l2, l3 = org_result
-        return finalize(l1, l2, l3, "Matched via known organization name lookup")
-
-    # Case 12: fallback
-    return finalize(GENERAL_POP, "", "", "")
 
 # =====
 # MAIN
@@ -862,6 +849,11 @@ def main():
         sys.exit(1)
  
     print(f"Loading funding requests from: {funding_filepath}")
+    if not funding_filepath.exists():
+        print(f"Error: data workbook not found at '{funding_filepath}'.")
+        print(f"Place the file at: {bootstrap.PROJECT_ROOT / 'Data Sheets' / 'FR testing.xlsx'} "
+              f"(sheet '{DATA_SHEET}').")
+        sys.exit(1)
     try:
         data_df = pd.read_excel(funding_filepath, sheet_name=DATA_SHEET, dtype=str)
     except Exception as e:
@@ -890,10 +882,17 @@ def main():
         if col not in data_df.columns:
             data_df[col] = ""
     # Count how many rows fall into each outcome bucket, for summary stats at the end. Note that these are not mutually exclusive categories (e.g. a row with a pattern match that's also flagged for aspirational language would count in both "pattern" and "flagged"), but they give a general sense of how many hits came from each detection method and how many were flagged for review.
-    stats = {"3-level": 0, "2-level": 0, "1-level": 0, "multiple": 0,
-              "other": 0, "general": 0, "flagged": 0, "pattern": 0,
-              "country": 0, "org_lookup": 0, "grassroots_filtered": 0, "semantic_suggested": 0}
- 
+    # defaultdict so the diagnostic counters incremented below
+    # (stats["pattern"], stats["country"], stats["org_lookup"],
+    # stats["semantic_suggested"], stats["flagged"]) auto-initialize — these
+    # keys were never in the seeded dict, which KeyError'd the full main() run
+    # (the unit tests exercise classify_row directly and never hit this path).
+    stats = defaultdict(int, {"-Ethnic → 3-level": 0, "-Ethnic → 2-level": 0, "-Ethnic → 1-level": 0, "-Ethnic → Multiple": 0,
+              "-Ethnic → Other": 0, "-Ethnic → General": 0, "-Flagged → Ethnic": 0, "-Pattern → Ethnic": 0,
+              "-Country → Ethnic": 0, "-Organization Name → Ethnic": 0, "-Grassroots Filtered → Ethnic": 0, "-Semantic Suggested → Ethnic": 0})
+    
+    print(f"\n --- Classification Categories ---\n")
+    
     for idx, row in data_df.iterrows():
         # Route through the canonical refactored pipeline (classify_pipeline → resolver)
         e1, e2, e3, flag = pipeline_classify_row(row, taxonomy_entries)
@@ -914,17 +913,17 @@ def main():
                 stats["semantic_suggested"] += 1
  
         if e1 == MULTIPLE_ETHNIC:
-            stats["multiple"] += 1
+            stats["-Ethnic → Multiple"] += 1
         elif e1 == OTHER_ETHNIC:
-            stats["other"] += 1
+            stats["-Ethnic → Other"] += 1
         elif e1 == GENERAL_POP:
-            stats["general"] += 1
+            stats["-Ethnic → General"] += 1
         elif e3:
-            stats["3-level"] += 1
+            stats["-Ethnic → 3-level"] += 1
         elif e2:
-            stats["2-level"] += 1
+            stats["-Ethnic → 2-level"] += 1
         else:
-            stats["1-level"] += 1
+            stats["-Ethnic → 1-level"] += 1
  
         if "pattern rule" in flag.lower():
             stats["pattern"] += 1
@@ -932,8 +931,8 @@ def main():
             stats["country"] += 1
         if "organization name" in flag.lower():
             stats["org_lookup"] += 1
-        if "ambiguous equity" in flag.lower():
-            stats["grassroots_filtered"] += 1
+        # if "ambiguous equity" in flag.lower():
+        #     stats["grassroots_filtered"] += 1
         if flag:
             stats["flagged"] += 1
  

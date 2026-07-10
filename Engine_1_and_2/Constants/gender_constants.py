@@ -166,6 +166,57 @@ FLAG_ORG_NAME         = "Gender/sexual term appears inside an organization or pr
 FLAG_AMBIGUOUS_TERM   = "Ambiguous coded gender/orientation term (femme/masc/butch/...) - verify served population on both gender and sexual-identity axes"
 
 # ---------------------------------------------------------------------------
+# G2 — Incidental family-context guard (Plan.md Chunk G2, row 54093).
+#
+# Bare relational-male nouns (fathers/brothers/sons/dads) are ambiguous:
+# they can name the actual served population ("a fathers group for new
+# parents" -> Men and/or boys) OR merely mention an absent/left-behind
+# family member while the real served population is someone else (e.g.
+# "...their fathers... remain in Ukraine" -- the served population is
+# Ukrainian youth, not fathers). Mirrors the served-vs-mentioned weak-role
+# pattern already used in ethnic_taggerv3.infer_role (org_name/provider/
+# example/aspirational) and in extract_gender_candidates' existing
+# org-echo rescue: a match sitting in one of these LEFT-BEHIND frames is a
+# weak "family_context" occurrence, not a served-population claim, unless
+# a later occurrence of the same term IS in a served frame.
+# ---------------------------------------------------------------------------
+RELATIONAL_MALE_GUARD_PATTERNS = [
+    r"\bfathers?\b",
+    r"\bdads?\b",
+    r"\bbrothers?\b",
+    r"\bsons?\b",
+]
+
+FAMILY_LEFT_BEHIND_BEFORE_PATTERNS = [
+    r"\bseparated\s+from\s*(?:their|his|her)?\s*$",
+    r"\bwithout\s+(?:their|his|her)\s*$",
+]
+
+FAMILY_LEFT_BEHIND_AFTER_PATTERNS = [
+    # Filler-word allowance (other family nouns: "friends", "extended
+    # family", commas) between the relational term and the verb phrase
+    # that places it elsewhere/absent -- same bleed-prevention shape as
+    # ROLE_ORG_NAME_AFTER_PATTERNS (anchored, bounded filler).
+    r"^\s*(?:\w+\s+){0,6}remain(?:s|ed|ing)?\s+(?:in|behind)\b",
+    r"^\s*(?:\w+\s+){0,6}(?:stay(?:ed|ing)?|left)\s+behind\b",
+    r"^\s*(?:\w+\s+){0,6}back\s+(?:home|in\b)",
+    r"^\s*(?:\w+\s+){0,6}still\s+(?:in|living|residing)\b",
+    r"^\s*(?:\w+\s+){0,6}unable\s+to\s+(?:join|leave|come)\b",
+]
+
+# ---------------------------------------------------------------------------
+# Generalizable silent-body name rule (Plan.md Chunk G1 step 5) — when the
+# body carries NO gender/sexual-identity signal at all (not even a weak
+# org-name-echo mention), classify from women/men/2SLGBTQIA+ terms found in
+# the RAW funding-request account name instead of defaulting flat to
+# General. See Gender_SexID.classify_gender_from_raw_name /
+# classify_sexual_from_raw_name.
+# ---------------------------------------------------------------------------
+GENDER_SILENT_NAME_WOMEN_PATTERN = r"\b(women|woman|girls?|mothers?|sisters?|femmes?)\b"
+GENDER_SILENT_NAME_MEN_PATTERN   = r"\b(men|man|boys?|fathers?|brothers?|hommes?)\b"
+SEXUAL_SILENT_NAME_PATTERN       = r"\b(pride|queer|trans\w*|2slgbtq\w*|lgbt\w*|rainbow)\b"
+
+# ---------------------------------------------------------------------------
 # Ambiguous coded terms — flag without classifying (femme/masc/butch are
 # gender-coded AND lesbian-orientation-adjacent; reviewer checks both axes).
 # ---------------------------------------------------------------------------

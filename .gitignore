@@ -11,10 +11,19 @@ __pycache__/
 venv/
 ENV/
 
+# --- Test & Lint Caches ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
 # --- Semantic Search, claude & Embeddings Cache ---
 .semantic_cache/
 .claude/
 .cursorignore
+
+# --- Vendored ML models (large binaries; re-download via vendor_models.py) ---
+Engine_1_and_2/Semantic_Engine/models/
+.ml_cache/
 
 # --- IDEs & Code Editors ---
 .vscode/
@@ -27,10 +36,15 @@ ENV/
 # --- Operating System Junk ---
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # --- Security & Credentials ---
 .env
 *.env
 secrets.json
 
-codebase_and_audit.md
+# --- Plan files ---
+/Plan files/
+**/Plan files/**
+"Plan files/"
+Plan*files/

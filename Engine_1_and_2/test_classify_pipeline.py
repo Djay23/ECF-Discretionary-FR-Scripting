@@ -1787,5 +1787,169 @@ class TestG2GenderIncidentalFamilyContextGuard(unittest.TestCase):
         self.assertEqual(label, GENDER_MEN_BOYS)
 
 
+class TestG3IndigenousPatternPathRoleTiering(unittest.TestCase):
+    """Plan.md Chunk G3: Indigenous PATTERN candidates ('indigenous'/
+    'aboriginal'/etc, matched via PATTERN_RULES) already flowed through
+    infer_role, but a curriculum/topic framing ('Indigenous perspectives'
+    as course content) and a consulted-party framing ('Indigenous
+    knowledge holders' consulted alongside other experts) weren't covered
+    by the existing provider/org_name weak-role frames -- both wrongly
+    classified as served. A new weak 'topic' role demotes them when no
+    served-Indigenous frame rescues the row elsewhere; served mentions,
+    residential-school/Truth-and-Reconciliation/ceremony context, and
+    served-population lists are preserved. Verified over all 448 live
+    Audit Detail rows: exactly 50600 and 51569 flip Indigenous->General
+    (53717 was already General beforehand); 54535/51620/54538/54484/54529
+    stay Indigenous; zero other rows changed."""
+
+    def test_row_50600_curriculum_topic_list_demotes_to_general(self):
+        """Real gold row shape (ACEE 50600): 'Indigenous perspectives' is
+        one item in a list of curriculum content taught to educators
+        ('eco-action strategies, and Indigenous perspectives') -- a topic
+        being taught, not the served population (educators/students).
+        Demotes to General."""
+        e1, e2, e3, flag = classify_row(
+            row(desc=(
+                "This course equips educators with the tools to teach "
+                "environmental principles, climate justice, eco-action "
+                "strategies, and Indigenous perspectives. The program "
+                "addresses a gap in teacher education."
+            )),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertIn("topic context only", flag)
+
+    def test_row_51569_consulted_knowledge_holders_demotes_to_general(self):
+        """Real gold row shape (Exposed Wildlife Conservancy 51569):
+        'Indigenous knowledge holders' are consulted as advisors alongside
+        wildlife biologists and conservation experts -- a consulted-party
+        mention, not the served population (municipalities/general
+        public). Demotes to General."""
+        e1, e2, e3, flag = classify_row(
+            row(desc=(
+                "The toolkit will guide communities on safe wildlife "
+                "coexistence. We will consult wildlife biologists, "
+                "conservation experts, and Indigenous knowledge holders to "
+                "ensure the resource reflects the latest science and "
+                "culturally relevant perspectives for municipal officials "
+                "and the general public."
+            )),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertIn("topic context only", flag)
+
+    def test_row_53717_no_indigenous_signal_stays_general(self):
+        """Real gold row shape (Chronos Music Society of Alberta 53717): a
+        touring music ensemble's capacity-building request carries no
+        Indigenous (or other ethnic) signal at all -- plain General,
+        unaffected by the G3 role-tiering change (this row was already
+        General before G3; included as a regression guard)."""
+        e1, e2, e3, flag = classify_row(
+            row(desc=(
+                "Chronos Vocal Ensemble's staff, board members, singers, "
+                "and volunteers will invest time in planning, system-"
+                "building, and process-documenting for an out-of-province "
+                "touring season, including a new recording release."
+            )),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, GENERAL_POP)
+
+    def test_row_54535_intersectional_served_list_stays_indigenous(self):
+        """Real gold row shape (Edmonton Association of the Deaf 54535):
+        an explicit list of populations continuing to use a renovated
+        space -- 'seniors, disabled people, youth, families, Indigenous
+        peoples, and LGBTQ community members' -- is a served-population
+        list, not a topic mention. Must stay Indigenous."""
+        e1, e2, e3, flag = classify_row(
+            row(desc=(
+                "Renovations will ensure seniors, disabled people, youth, "
+                "families, Indigenous peoples, and LGBTQ community members "
+                "continue gathering in a safe, accessible space."
+            )),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+
+    def test_row_51620_residential_school_context_rescues_training_topic(self):
+        """Real gold row shape (Boyle McCauley Health Centre/Radius
+        51620): every Indigenous mention in the body is staff-training/
+        topic framing ('Indigenous Awareness Training', 'Indigenous
+        Perspectives workshops') with no explicit 'for Indigenous X'
+        served phrase -- but the body also references residential schools
+        and Truth and Reconciliation, which rescues the row (the training
+        exists so staff can better serve a population affected by that
+        history). Must stay Indigenous, not fall to General."""
+        e1, e2, e3, flag = classify_row(
+            row(desc=(
+                "Staff will receive Indigenous Awareness Training and "
+                "attend Indigenous Perspectives workshops. A large number "
+                "of the population we serve have been impacted by "
+                "historical trauma and the adverse impacts of residential "
+                "schools, and this training supports our contribution to "
+                "Truth and Reconciliation efforts in our community."
+            )),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+
+    def test_row_54538_explicit_served_frame_survivors_stays_indigenous(self):
+        """Real gold row shape (HERizon Healing Society 54538): 'justice
+        navigation services for Indigenous Survivors of exploitation' is
+        an explicit served-frame mention ('services for Indigenous X').
+        Must stay Indigenous."""
+        e1, e2, e3, flag = classify_row(
+            row(desc=(
+                "The Federal Department of Justice approved a grant for "
+                "justice navigation services for Indigenous Survivors of "
+                "exploitation and trafficking, alongside cultural healing, "
+                "teachings, and ceremony for all survivors served."
+            )),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+
+    def test_row_54484_served_youth_and_ceremony_stays_indigenous(self):
+        """Real gold row shape (Mountain Plains Family Service Society
+        54484): 'unique needs of Indigenous youth' is a served-population
+        mention, and the body also references ceremony (drumming,
+        storytelling) -- both preserve the classification. Must stay
+        Indigenous."""
+        e1, e2, e3, flag = classify_row(
+            row(desc=(
+                "This mentorship initiative gives particular attention to "
+                "the unique needs of Indigenous youth. All activities will "
+                "be guided by a Cultural Advisor, ensuring Indigenous "
+                "traditions and protocols are honored through drumming, "
+                "storytelling, and ceremony."
+            )),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+
+    def test_row_54529_provider_mention_rescued_by_served_list(self):
+        """Real gold row shape (Canadian Digestive Health Foundation
+        54529): 'Sharon Swampy, Indigenous Nutritionist' is a
+        provider-role mention (demoted on its own), and 'Esquao Institute
+        for the Advancement of Aboriginal Women' is a partner org name --
+        but the body elsewhere explicitly names Indigenous residents as a
+        served population ('to serve Edmonton's Indigenous ...
+        populations'), which rescues the group per the existing
+        served-frame-wins-dedup rule. Must stay Indigenous."""
+        e1, e2, e3, flag = classify_row(
+            row(desc=(
+                "Workshops led by local registered dietitians, including "
+                "Sharon Swampy, Indigenous Nutritionist, in partnership "
+                "with Esquao - Institute for the Advancement of Aboriginal "
+                "Women, bring cultural relevance to serve Edmonton's "
+                "Indigenous and Ethnocultural populations."
+            )),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

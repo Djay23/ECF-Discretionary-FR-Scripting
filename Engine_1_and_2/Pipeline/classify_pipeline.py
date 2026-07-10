@@ -9,10 +9,18 @@ from ethnic_taggerv3 import (
     matches_any,
     detect_ethnocultural_org_name,
     is_non_prefixed,
+    normalize_text,
+    apply_identity_phrase_rewrites,
+    parse_raw_org_name,
+    body_names_a_population,
     GENERAL_POP,
+    MULTIPLE_ETHNIC,
 )
 
-from constants import LANGUAGE_ACCOMMODATION_PATTERNS, FRENCH_ETHNIC_KEEP_PATTERNS
+from constants import (
+    LANGUAGE_ACCOMMODATION_PATTERNS, FRENCH_ETHNIC_KEEP_PATTERNS,
+    SILENT_NAME_RELIGION_PATTERN, SILENT_NAME_LANGUAGE_PATTERN,
+)
 
 from extractors import (
     extract_taxonomy_candidates,
@@ -128,6 +136,74 @@ def filter_french_language_accommodation(candidates, combined):
     if len(filtered) == len(candidates):
         return candidates, note
     return filtered, note
+
+
+# ---------------------------------------------------------------------------
+# G1 step 5 — Generalizable silent-body name rule
+# ---------------------------------------------------------------------------
+
+SILENT_NAME_FLAG = "Classified from organization name (silent body) - verify served population"
+
+def classify_from_raw_name(raw_name, taxonomy_entries):
+    """
+    Plan.md Chunk G1 step 5. Only called when the body carries no signal at
+    all (the existing "not body_candidates and not bipoc_present" guard in
+    classify_row) -- i.e. a truly silent body, NOT merely a body with a
+    weak/org_name-echo mention (a body that DOES mention an identity term,
+    even as a self-reference or historical aside, is handled by the normal
+    resolver weak-candidate path instead; see infer_role's org-name-echo
+    demotion).
+
+    Classifies from identity terms in the RAW (pre-normalize, pre-identity-
+    rewrite) funding-request account name, generalizing the old per-org
+    ORG_NAME_ETHNICITY_MAP last resort to any unseen org (2024/2023-ready).
+
+    Returns (l1, l2, l3, flag) — ALWAYS flagged when non-None — or None if
+    nothing in the name is recognized.
+
+    Order of decision:
+      1. Religion/language-only exclusions ("Islamic Missionary
+         Association", "French Canadian Association") -> General + a
+         targeted note. These never guess an ethnicity from an inherently
+         ambiguous religious/linguistic marker, even if a bare "french"
+         keyword would otherwise match a real taxonomy L3 entry.
+      2. BIPOC / two-or-more distinct L1 groups -> Multiple.
+      3. Any single recognized identity/country/pattern term -> that group.
+      4. Nothing recognized -> None (caller falls back to existing
+         name-only-signal / plain General handling).
+    """
+    org = parse_raw_org_name(raw_name)
+    if not org:
+        return None
+    org_norm = apply_identity_phrase_rewrites(normalize_text(org))
+    if not org_norm:
+        return None
+
+    if matches_any([SILENT_NAME_RELIGION_PATTERN], org_norm):
+        return (GENERAL_POP, "", "",
+                "Religious organization name only - not an ethnic signal; verify served population")
+    if matches_any([SILENT_NAME_LANGUAGE_PATTERN], org_norm):
+        return (GENERAL_POP, "", "",
+                "Francophone/language organization name only - not an ethnic signal; verify served population")
+
+    name_candidates = (
+        extract_taxonomy_candidates(org_norm, taxonomy_entries)
+        + extract_compound_candidates(org_norm)
+        + extract_pattern_candidates(org_norm)
+        + extract_country_candidates(org_norm)
+        + extract_broad_identity_candidates(org_norm)
+    )
+    bipoc_hit = is_bipoc_real_target(org_norm)
+
+    if not name_candidates and not bipoc_hit:
+        return None
+
+    distinct_l1 = set(c["level1"] for c in name_candidates)
+    if bipoc_hit or len(distinct_l1) >= 2:
+        return (MULTIPLE_ETHNIC, "", "", SILENT_NAME_FLAG)
+
+    best = max(name_candidates, key=lambda c: c["depth"])
+    return (best["level1"], best["level2"], best["level3"], SILENT_NAME_FLAG)
 
 
 # ---------------------------------------------------------------------------
@@ -261,14 +337,34 @@ def classify_row(row, taxonomy_entries):
 
     # Name-only guard: nothing in the body, but the name carries a signal.
     if not body_candidates and not bipoc_present:
-        if name_org:  # known org (e.g. Niginan) classifies
+        if name_org:  # known org (e.g. Niginan) classifies -- tiny curated map first
             candidates = name_org
-        elif name_signal:
-            return (GENERAL_POP, "", "",
-                    "Signal appears only in the organization/funding-request name - "
-                    "classified General; verify served population")
         else:
-            candidates = []
+            # Generalizable silent-body name rule (Plan.md Chunk G1 step 5):
+            # a TRULY silent body (zero candidates of any role -- this branch
+            # is not reached at all when the body has even a weak/org_name-
+            # echo mention, e.g. 54525's "beyond its original focus on Black
+            # communities") classifies from the raw account-name identity
+            # terms instead of defaulting flat to General.
+            #
+            # Cross-axis gate (Plan.md Chunk G1 FIX): only apply the name
+            # rule when the body is truly ADMINISTRATIVE -- no served
+            # population named on ANY axis, not just this one. A body that
+            # names a real population on a different axis (e.g. BCW 51622's
+            # "Haitian youth" -- an ethnic signal, gender-neutral) must NOT
+            # borrow an ethnic guess from the org name either; it falls
+            # through to the plain name-only-signal message below instead.
+            name_rule = None
+            if not body_names_a_population(body_text):
+                name_rule = classify_from_raw_name(row.get("Funding Request Name", ""), taxonomy_entries)
+            if name_rule is not None:
+                return name_rule
+            if name_signal:
+                return (GENERAL_POP, "", "",
+                        "Signal appears only in the organization/funding-request name - "
+                        "classified General; verify served population")
+            else:
+                candidates = []
     else:
         candidates = body_candidates
 

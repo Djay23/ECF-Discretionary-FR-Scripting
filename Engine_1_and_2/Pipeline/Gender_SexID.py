@@ -15,6 +15,8 @@ from ethnic_taggerv3 import (
     is_negated,
     is_example_mention,
     _echoes_org_name,
+    parse_raw_org_name,
+    body_names_a_population,
 )
 from constants import ASPIRATIONAL_PHRASES
 
@@ -33,7 +35,13 @@ from gender_constants import (
     FLAG_ASPIRATIONAL, FLAG_TWO_SPIRIT_INDIG, FLAG_NEGATION, FLAG_UMBRELLA_ACRONYM,
     FLAG_ORG_NAME, FLAG_AMBIGUOUS_TERM,
     # Org-name and ambiguous-term data
-    ORG_NAME_CONTEXT_PATTERNS, AMBIGUOUS_CODED_TERMS, GENDER_ORG_NAME_MAP,
+    ORG_NAME_CONTEXT_PATTERNS, AMBIGUOUS_CODED_TERMS,
+    # Generalizable silent-body name rule (Plan.md Chunk G1 step 5)
+    GENDER_SILENT_NAME_WOMEN_PATTERN, GENDER_SILENT_NAME_MEN_PATTERN,
+    SEXUAL_SILENT_NAME_PATTERN,
+    # Incidental family-context guard (Plan.md Chunk G2)
+    RELATIONAL_MALE_GUARD_PATTERNS,
+    FAMILY_LEFT_BEHIND_BEFORE_PATTERNS, FAMILY_LEFT_BEHIND_AFTER_PATTERNS,
     # Sexual identity labels
     SEXUAL_2SLGBTQIA, SEXUAL_GENERAL_POP,
     # Sexual output columns
@@ -93,13 +101,59 @@ def is_org_name_context(text):
     """
     return matches_any(ORG_NAME_CONTEXT_PATTERNS, text)
 
-def lookup_gender_org_name(name_text):
-    """Name-only last resort (Plan.md Chunk G1 step 4): return the curated
-    gender fallback label for a known org, or None. Never consulted on body
-    text -- only when the body is truly silent of a served signal."""
-    for org_name, label in GENDER_ORG_NAME_MAP.items():
-        if re.search(r'\b' + re.escape(org_name) + r'\b', name_text, re.IGNORECASE):
-            return label
+SILENT_NAME_FLAG_TEXT = "Classified from organization name (silent body) - verify served population"
+
+# ===========================================================================
+# INCIDENTAL FAMILY-CONTEXT GUARD (Plan.md Chunk G2, row 54093)
+# ===========================================================================
+
+def _is_family_left_behind_mention(text, start, end, window=60):
+    """Weak 'family_context' occurrence -- mirrors ethnic_taggerv3.infer_role's
+    weak-role frame checks (org_name/provider/example/aspirational). True
+    when a relational-male kinship term (fathers/dads/brothers/sons) sits in
+    a frame describing an ABSENT/left-behind family member (e.g. "...their
+    fathers... remain in Ukraine") rather than naming the served population
+    directly (e.g. "a fathers group for new parents", which matches
+    neither frame and stays served)."""
+    before = text[max(0, start - window):start]
+    after = text[end:end + window]
+    return (
+        matches_any(FAMILY_LEFT_BEHIND_BEFORE_PATTERNS, before)
+        or matches_any(FAMILY_LEFT_BEHIND_AFTER_PATTERNS, after)
+    )
+
+def classify_gender_from_raw_name(raw_name):
+    """
+    Generalizable silent-body name rule (Plan.md Chunk G1 step 5) — gender
+    axis. Only consulted when the body carries NO gender-term mention at
+    all (not even a weak org-name echo — see classify_gender). Classifies
+    from women/men terms in the RAW funding-request account name; both
+    present (e.g. "Boys & Girls Club") -> General. Returns (label, flag) or
+    None if the name carries no gender term either.
+    """
+    org = parse_raw_org_name(raw_name)
+    if not org:
+        return None
+    org_norm = normalize_text(org)
+    has_women = bool(re.search(GENDER_SILENT_NAME_WOMEN_PATTERN, org_norm, re.IGNORECASE))
+    has_men = bool(re.search(GENDER_SILENT_NAME_MEN_PATTERN, org_norm, re.IGNORECASE))
+    if has_women and has_men:
+        return GENDER_GENERAL_POP, SILENT_NAME_FLAG_TEXT
+    if has_women:
+        return GENDER_WOMEN_GIRLS, SILENT_NAME_FLAG_TEXT
+    if has_men:
+        return GENDER_MEN_BOYS, SILENT_NAME_FLAG_TEXT
+    return None
+
+def classify_sexual_from_raw_name(raw_name):
+    """Generalizable silent-body name rule — sexual-identity axis. Mirrors
+    classify_gender_from_raw_name; returns (label, flag) or None."""
+    org = parse_raw_org_name(raw_name)
+    if not org:
+        return None
+    org_norm = normalize_text(org)
+    if re.search(SEXUAL_SILENT_NAME_PATTERN, org_norm, re.IGNORECASE):
+        return SEXUAL_2SLGBTQIA, SILENT_NAME_FLAG_TEXT
     return None
 
 # ===========================================================================
@@ -117,11 +171,16 @@ def extract_gender_candidates(text, name_text=""):
         org's own name inside the body (Plan.md Fix 1 Phase 2 — e.g. "Black
         Canadian Women in Action is undertaking..." repeating the org name
         in the description) rather than describing a served population.
+    family_context_keys: set[str]  — subset of keys whose match is only an
+        incidental family-context mention of an absent/left-behind relative
+        (Plan.md Chunk G2 — e.g. "...their fathers... remain in Ukraine")
+        rather than the served population. Disjoint from org_echo_keys.
     flags_out: set[str]  — annotation flag strings triggered by this text
     any_negated : bool — True if any negation encountered (→ FLAG_NEGATION)
     """
     keys = set()
     keys_with_served_occurrence = set()
+    keys_with_org_echo_occurrence = set()
     flags_out = set()
     any_negated = False
 
@@ -130,7 +189,8 @@ def extract_gender_candidates(text, name_text=""):
     # more than once -- e.g. an org restates its own name ("Edmonton Women's
     # Shelter provides...") AND separately describes who it serves ("...for
     # women fleeing violence") -- a later served occurrence rescues the key
-    # even if an earlier occurrence was an org-name echo.
+    # even if an earlier occurrence was an org-name echo (or, Plan.md Chunk
+    # G2, an incidental family-context mention).
     for pattern, identity_key, extra_flag_key in GENDER_TERM_PATTERNS:
         for m in re.finditer(pattern, text, re.IGNORECASE):
             term = m.group(0)
@@ -140,10 +200,23 @@ def extract_gender_candidates(text, name_text=""):
             if is_example_mention(term, text):
                 continue
             keys.add(identity_key)
-            if not (name_text and _echoes_org_name(text, m.start(), m.end(), name_text)):
+            is_org_echo = bool(name_text) and _echoes_org_name(text, m.start(), m.end(), name_text)
+            is_family_incidental = (
+                not is_org_echo
+                and pattern in RELATIONAL_MALE_GUARD_PATTERNS
+                and _is_family_left_behind_mention(text, m.start(), m.end())
+            )
+            if is_org_echo:
+                keys_with_org_echo_occurrence.add(identity_key)
+            elif not is_family_incidental:
                 keys_with_served_occurrence.add(identity_key)
+            # else: a family-incidental-only occurrence contributes to
+            # neither served nor org-echo -- falls into the weak bucket
+            # below unless a later occurrence rescues it.
 
-    org_echo_keys = keys - keys_with_served_occurrence
+    weak_keys = keys - keys_with_served_occurrence
+    org_echo_keys = weak_keys & keys_with_org_echo_occurrence
+    family_context_keys = weak_keys - org_echo_keys
 
     # Bare "queer" — ambiguity check
     # \bqueer\b fires on "queer youth" AND on "gender queer community".
@@ -191,7 +264,7 @@ def extract_gender_candidates(text, name_text=""):
             continue
         flags_out.add(FLAG_AMBIGUOUS_TERM)
 
-    return keys, org_echo_keys, flags_out, any_negated
+    return keys, org_echo_keys, family_context_keys, flags_out, any_negated
 
 def resolve_gender(keys, flags_set, any_negated, aspirational):
     """
@@ -255,30 +328,51 @@ def classify_gender(row):
     name-only signal degrades to General Population + FLAG_ORG_NAME. A body
     mention that only echoes the org's own name (Plan.md Fix 1 Phase 2, e.g.
     "Black Canadian Women in Action is undertaking...") is not corroboration
-    either — it degrades to General + a transparency note.
+    either — it degrades to General + a transparency note. Likewise, a bare
+    relational-male noun that only mentions an absent/left-behind family
+    member (Plan.md Chunk G2, e.g. "...their fathers... remain in Ukraine")
+    is not corroboration — General + a transparency note.
     """
     body_text, name_text = get_body_and_name_texts(row)
     if not (body_text + name_text).strip():
         return GENDER_GENERAL_POP, ""
     body = normalize_text(body_text)
     name = normalize_text(name_text)
-    keys, org_echo_keys, flags_set, any_negated = extract_gender_candidates(body, name_text=name)
-    served_keys = keys - org_echo_keys
+    keys, org_echo_keys, family_context_keys, flags_set, any_negated = extract_gender_candidates(body, name_text=name)
+    served_keys = keys - org_echo_keys - family_context_keys
     # Body is truly silent of served signal (no served keys, no
-    # ambiguous-term/negation annotation) — only then does a name-only or
-    # org-echo-only signal matter.
+    # ambiguous-term/negation annotation) — only then does a name-only,
+    # org-echo-only, or family-context-only signal matter.
     if not served_keys and not flags_set and not any_negated:
+        notes = []
         if org_echo_keys:
             groups = sorted(IDENTITY_KEY_SHORT_LABEL[k] for k in org_echo_keys)
-            note = (
+            notes.append(
                 "Note (low priority): " + ", ".join(groups)
                 + " mentioned via org-name self-reference in body - not classified; verify"
             )
-            return GENDER_GENERAL_POP, note
-        org_label = lookup_gender_org_name(name)
-        if org_label:
-            return org_label, "Matched via known organization name lookup; " + FLAG_ORG_NAME
-        name_keys, _, _, _ = extract_gender_candidates(name)
+        if family_context_keys:
+            groups = sorted(IDENTITY_KEY_SHORT_LABEL[k] for k in family_context_keys)
+            notes.append(
+                "Note (low priority): " + ", ".join(groups)
+                + " mentioned only in incidental family context (e.g. relatives left behind) "
+                "- not the served population; verify"
+            )
+        if notes:
+            return GENDER_GENERAL_POP, "; ".join(notes)
+        # Truly silent body (org_echo_keys and family_context_keys both
+        # empty implies keys itself is empty here, since served_keys is
+        # already empty in this branch) -- generalizable silent-body name
+        # rule (Plan.md Chunk G1 step 5). Cross-axis gate (Plan.md Chunk G1
+        # FIX): only apply it when the body is truly administrative -- no
+        # served population on ANY axis (e.g. BCW 51622 serves "Haitian
+        # youth": a real, gender-neutral ethnic signal -- gender must stay
+        # General, not borrow "Women" from the org name).
+        if not body_names_a_population(body):
+            name_rule = classify_gender_from_raw_name(row.get("Funding Request Name", ""))
+            if name_rule is not None:
+                return name_rule
+        name_keys, _, _, _, _ = extract_gender_candidates(name)
         if name_keys:
             return GENDER_GENERAL_POP, FLAG_ORG_NAME
         return GENDER_GENERAL_POP, ""
@@ -388,6 +482,14 @@ def classify_sexual(row):
     # Body is truly silent (no signal, no negation, no example-suppressed
     # mention) — only then does a name-only signal matter.
     if not found and not any_negated and not example_suppressed:
+        # Truly silent body -- generalizable silent-body name rule
+        # (Plan.md Chunk G1 step 5). Cross-axis gate (Plan.md Chunk G1 FIX):
+        # only apply it when the body is truly administrative -- no served
+        # population on ANY axis.
+        if not body_names_a_population(body):
+            name_rule = classify_sexual_from_raw_name(row.get("Funding Request Name", ""))
+            if name_rule is not None:
+                return name_rule
         name_found, *_ = extract_sexual_candidates(name)
         if name_found:
             return SEXUAL_GENERAL_POP, FLAG_ORG_NAME

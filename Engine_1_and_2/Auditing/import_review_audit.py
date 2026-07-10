@@ -132,7 +132,7 @@ def parse_note(note, rr_gender, rr_sexual):
             out["correct_sexual"] = sl or (SEXUAL_GENERAL_POP if (wants_general or flaggy) else "")
         return out
 
-    out["notes"] = raw                             # unknown verdict -> safe
+    out["notes"] = raw                            
     return out
 
 

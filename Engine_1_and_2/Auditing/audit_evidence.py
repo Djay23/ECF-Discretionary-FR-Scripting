@@ -109,7 +109,6 @@ def org_ambiguous_evidence(row):
                     parts.append(f"ambiguous_coded({term}) [{col}]: {snip}")
     return parts
 
-
 def ethnic_evidence(row, taxonomy_entries):
     """
     Re-scan each input column for ethnic signals. Returns a pipe-separated

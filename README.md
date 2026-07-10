@@ -373,3 +373,8 @@ Is this something a human reviewer actually needs to look at?
 - Auditing of current classification pipeline and ML implementation
 - Org maps for organizations that might have an ethnic/Gender/Sex implication
 - ECF focus areas classification
+
+# 2027-07-09
+## Sprint 3
+- Continued ML implementation --> Changed Organization map to be 'general' to apply org mapping for previous year data. 
+- Logic fine tuning with deepseek --> Understanding where gaps exist in the way current engine runs for classification, and how it can be fixed/made better.

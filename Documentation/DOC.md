@@ -150,6 +150,5 @@ python Engine_1_and_2/Pipeline/ethnic_taggerv3.py   # ethnic only
 python Engine_1_and_2/Pipeline/Gender_SexID.py      # gender + sexual only
 ```
 
-> Note: running only `ethnic_taggerv3.py` leaves the gender/sexual columns
-> (`Gender Id - FR9`, `Sexual Id - FR10`, and their flags) unpopulated — use
+> Note: running only `ethnic_taggerv3.py` leaves the gender/sexual columns (`Gender Id - FR9`, `Sexual Id - FR10`, and their flags) unpopulated — use:
 > `run_all.py` for a complete output.

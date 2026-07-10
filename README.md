@@ -378,3 +378,4 @@ Is this something a human reviewer actually needs to look at?
 ## Sprint 3
 - Continued ML implementation --> Changed Organization map to be 'general' to apply org mapping for previous year data. 
 - Logic fine tuning with deepseek --> Understanding where gaps exist in the way current engine runs for classification, and how it can be fixed/made better.
+- Hand classifying ECF Focus areas until better classification engine brainstormed for Early Childhood Education (ECD) & Affordable Housing (AH)

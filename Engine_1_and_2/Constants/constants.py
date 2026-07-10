@@ -252,6 +252,22 @@ EXPANSION_PHRASES = [
     r"inclusive of all",
 ]
 
+# Tight subset of EXPANSION_PHRASES that specifically DISCLAIMS an org's own
+# named identity as its CURRENT served population ("beyond its original focus
+# on Black communities", "no longer limited to X"). Used only in the silent-
+# body name-rule branch (classify_pipeline / Gender_SexID): when an org-name
+# echo is the body's only signal, the org's name is the best evidence AND is
+# classified from -- UNLESS one of these disclaimers says the org has moved
+# past that identity (BCW 54525 -> stays General). Deliberately excludes the
+# broad EXPANSION_PHRASES entries ("expansion", "increasingly diverse",
+# "welcoming all") that legitimately appear in ordinary silent-body grant
+# text and must NOT suppress the name rule.
+IDENTITY_EXPANSION_DISCLAIMER_PATTERNS = [
+    r"beyond (its|their|our|the) (original|previous|former|initial|traditional|historic(al)?)",
+    r"no longer (limited|restricted|focused|exclusively)",
+    r"not (exclusively|solely|limited to|just|restricted to) (?:serving |for |focused on )?(?:the )?[a-z]",
+]
+
 HISTORICAL_PHRASES = [
     r"historic(al(ly)?)?",
     r"former(ly)?",

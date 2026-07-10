@@ -17,8 +17,9 @@ from ethnic_taggerv3 import (
     _echoes_org_name,
     parse_raw_org_name,
     body_names_a_population,
+    _body_without_org_name,
 )
-from constants import ASPIRATIONAL_PHRASES
+from constants import ASPIRATIONAL_PHRASES, IDENTITY_EXPANSION_DISCLAIMER_PATTERNS
 
 from gender_constants import (
     # Gender identity labels
@@ -344,6 +345,22 @@ def classify_gender(row):
     # ambiguous-term/negation annotation) — only then does a name-only,
     # org-echo-only, or family-context-only signal matter.
     if not served_keys and not flags_set and not any_negated:
+        # Org-echo-only body: the org's own gender-named identity is restated
+        # in an otherwise administrative body ("Women Building Futures must
+        # replace servers"). Per the org-name ladder (Plan.md step 3) this is
+        # NOT a served signal but the org name IS the best available evidence,
+        # so classify from the raw org name -- UNLESS the identity is disclaimed
+        # ("beyond its original focus ...") or the body serves a real population
+        # on another axis. The cross-axis gate runs on the org-name-STRIPPED
+        # body so the echo itself is not miscounted as a served population.
+        # Family-context-only mentions (Chunk G2, "their fathers ... remain in
+        # Ukraine") are NOT an org identity and fall through to General below.
+        disclaimed = matches_any(IDENTITY_EXPANSION_DISCLAIMER_PATTERNS, body)
+        if org_echo_keys and not disclaimed and not body_names_a_population(
+                _body_without_org_name(body, row.get("Funding Request Name", ""))):
+            name_rule = classify_gender_from_raw_name(row.get("Funding Request Name", ""))
+            if name_rule is not None:
+                return name_rule
         notes = []
         if org_echo_keys:
             groups = sorted(IDENTITY_KEY_SHORT_LABEL[k] for k in org_echo_keys)

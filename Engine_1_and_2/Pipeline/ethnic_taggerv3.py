@@ -774,6 +774,30 @@ def parse_raw_org_name(raw_name):
     text = re.sub(r'\s*(\.\.\.)?[\s\-]*\d+\s*$', '', text).strip()
     return text
 
+def _body_without_org_name(body_norm, raw_name):
+    """Return the (already-normalized) body with the org's OWN name word
+    tokens removed, so a self-reference echo ("Women Building Futures must
+    replace servers", "The Ukrainian Shumka Dancers are undertaking...") is
+    not mistaken for a served population by the cross-axis
+    body_names_a_population() gate.
+
+    Only meaningful in the silent-body name-rule branch, where the body has
+    already been shown to carry no SERVED candidate on the classifying axis --
+    so any body word that coincides with the org name is, by construction, the
+    echo and safe to drop. A body that genuinely serves a population on
+    ANOTHER axis (BCW 51622's "Haitian youth") keeps that term, since it is
+    not part of the org name, so the gate still fires and blocks the borrow.
+    """
+    org = parse_raw_org_name(raw_name)
+    if not org:
+        return body_norm
+    org_norm = apply_identity_phrase_rewrites(normalize_text(org))
+    tokens = {w for w in re.findall(r'[a-z0-9]+', org_norm) if len(w) > 2}
+    if not tokens:
+        return body_norm
+    pattern = r'\b(?:' + '|'.join(re.escape(t) for t in tokens) + r')\b'
+    return re.sub(pattern, ' ', body_norm, flags=re.IGNORECASE)
+
 def body_names_a_population(text):
     """
     Lightweight, taxonomy-independent check: does this (already normalized)

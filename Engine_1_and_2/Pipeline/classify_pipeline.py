@@ -13,6 +13,7 @@ from ethnic_taggerv3 import (
     apply_identity_phrase_rewrites,
     parse_raw_org_name,
     body_names_a_population,
+    _body_without_org_name,
     GENERAL_POP,
     MULTIPLE_ETHNIC,
 )
@@ -20,6 +21,7 @@ from ethnic_taggerv3 import (
 from constants import (
     LANGUAGE_ACCOMMODATION_PATTERNS, FRENCH_ETHNIC_KEEP_PATTERNS,
     SILENT_NAME_RELIGION_PATTERN, SILENT_NAME_LANGUAGE_PATTERN,
+    IDENTITY_EXPANSION_DISCLAIMER_PATTERNS,
 )
 
 from extractors import (
@@ -335,31 +337,48 @@ def classify_row(row, taxonomy_entries):
     name_org         = extract_org_candidates(name_text)  # curated known-org from the name
     name_signal      = bool(_extract(name_text)) or is_bipoc_real_target(name_text)
 
-    # Name-only guard: nothing in the body, but the name carries a signal.
-    if not body_candidates and not bipoc_present:
+    # A body mention only corroborates when its role is "served". An org-name
+    # echo (or provider/example/aspirational mention) is weak, NOT
+    # corroboration: a body whose only ethnic mention is the org's own name
+    # restated ("Jewish Family Services is migrating its files to SharePoint")
+    # is administratively silent, exactly like a body with no mention at all.
+    served_body = [c for c in body_candidates if c.get("role", "served") == "served"]
+
+    # Name-only / silent-body guard: no served signal in the body.
+    if not served_body and not bipoc_present:
         if name_org:  # known org (e.g. Niginan) classifies -- tiny curated map first
             candidates = name_org
         else:
-            # Generalizable silent-body name rule (Plan.md Chunk G1 step 5):
-            # a TRULY silent body (zero candidates of any role -- this branch
-            # is not reached at all when the body has even a weak/org_name-
-            # echo mention, e.g. 54525's "beyond its original focus on Black
-            # communities") classifies from the raw account-name identity
+            # Generalizable silent-body name rule (Plan.md Chunk G1 step 5 +
+            # org-name-ladder step 3): a body with no served signal -- whether
+            # truly empty OR carrying only a weak org-name echo of the org's
+            # own identity -- classifies from the raw account-name identity
             # terms instead of defaulting flat to General.
             #
-            # Cross-axis gate (Plan.md Chunk G1 FIX): only apply the name
-            # rule when the body is truly ADMINISTRATIVE -- no served
-            # population named on ANY axis, not just this one. A body that
-            # names a real population on a different axis (e.g. BCW 51622's
-            # "Haitian youth" -- an ethnic signal, gender-neutral) must NOT
-            # borrow an ethnic guess from the org name either; it falls
-            # through to the plain name-only-signal message below instead.
+            # Guard 1 (identity disclaimer): if the body explicitly says the
+            # org has moved BEYOND its named identity ("beyond its original
+            # focus on Black communities" -> BCW 54525), do NOT borrow that
+            # identity -- stay General.
+            #
+            # Guard 2 (cross-axis): only apply the name rule when the body is
+            # truly ADMINISTRATIVE -- no served population named on ANY axis.
+            # The check runs on the org-name-STRIPPED body so the echo itself
+            # (e.g. "Women" in "Women Building Futures ... servers") is not
+            # miscounted as a served population, while a real other-axis
+            # population (BCW 51622's "Haitian youth") still blocks the borrow.
+            disclaimed = matches_any(IDENTITY_EXPANSION_DISCLAIMER_PATTERNS, body_text)
             name_rule = None
-            if not body_names_a_population(body_text):
+            if not disclaimed and not body_names_a_population(
+                    _body_without_org_name(body_text, row.get("Funding Request Name", ""))):
                 name_rule = classify_from_raw_name(row.get("Funding Request Name", ""), taxonomy_entries)
             if name_rule is not None:
                 return name_rule
-            if name_signal:
+            if body_candidates:
+                # Weak-only body (org-echo / provider / etc.) that the name
+                # rule did not resolve: fall through so the resolver emits its
+                # "mentioned in <role> context only" transparency note (General).
+                candidates = body_candidates
+            elif name_signal:
                 return (GENERAL_POP, "", "",
                         "Signal appears only in the organization/funding-request name - "
                         "classified General; verify served population")

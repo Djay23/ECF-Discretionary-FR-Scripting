@@ -334,9 +334,12 @@ class TestClassifyPipeline(unittest.TestCase):
         """
         When no taxonomy/pattern/country/compound signal is present,
         a known organization name resolves the row via last-resort lookup.
+        Org lookup is name-only (Plan.md Chunk G1) -- real data always
+        embeds the account name in the Funding Request Name column, not
+        the body, so the token belongs in `name`, not `desc`.
         """
         e1, e2, e3, flag = classify_row(
-            row(desc="Support through Bent Arrow programs for participants."),
+            row(name="Support through Bent Arrow programs for participants."),
             TAXONOMY,
         )
         self.assertEqual(e1, "North American Indigenous Origins")
@@ -386,17 +389,19 @@ class TestClassifyPipeline(unittest.TestCase):
     def test_recognized_group_in_org_title_not_flagged(self):
         """
         A group name that appears ONLY in the Funding Request Name (e.g.
-        "Somali Cultural Association" — no body text) is name-only signal
-        per the body/name split (Plan.md D1): General + name-only flag,
-        not a specific classification, since the served population is
-        unverified.
+        "Somali Cultural Association" — no body text) is a truly silent
+        body. Plan.md Chunk G1 step 5's generalizable silent-body name rule
+        classifies from that name instead of defaulting flat to General —
+        always flagged for manual verification of the served population.
         """
         e1, e2, e3, flag = classify_row(
             row(name="Somali Cultural Association"),
             TAXONOMY,
         )
-        self.assertEqual(e1, GENERAL_POP)
-        self.assertIn("only in the organization/funding-request name", flag)
+        self.assertEqual(e1, "African Origins")
+        self.assertEqual(e2, "Southern and East African Origins")
+        self.assertEqual(e3, "Somali")
+        self.assertIn("silent body", flag)
 
     # ------------------------------------------------------------------
     # 17. Guard clause: Case 13 skips when classification already exists
@@ -729,17 +734,20 @@ class TestSprint2Fixes(unittest.TestCase):
     # ------------------------------------------------------------------
     def test_french_canadian_association_keeps_ethnic_signal(self):
         """
-        A named French ethnic/cultural org appearing ONLY in the name (no
-        body text) is name-only signal per the body/name split (Plan.md
-        D1): General + name-only flag. The French-language-accommodation
-        filter is irrelevant here since there's no body candidate to filter.
+        A named French org appearing ONLY in the name (no body text) is a
+        truly silent body. Plan.md Chunk G1 step 5 explicitly EXCLUDES
+        French/francophone as a name-only ethnic signal (too ambiguous
+        with language-accommodation service orgs) -- General + a targeted
+        exclusion note, not a French/European classification and not the
+        generic "language accommodation" body-text note (that filter never
+        runs here since there's no body candidate to filter).
         """
         e1, e2, e3, flag = classify_row(
             row(name="French Canadian Association of Alberta"),
             TAXONOMY_S2,
         )
         self.assertEqual(e1, GENERAL_POP)
-        self.assertIn("only in the organization/funding-request name", flag)
+        self.assertIn("not an ethnic signal", flag)
         self.assertNotIn("language accommodation", flag)
 
     # ------------------------------------------------------------------
@@ -1009,8 +1017,13 @@ class TestNameBodySplit(unittest.TestCase):
         self.assertEqual(e2, "Black, not otherwise specified")
 
     def test_name_only_ethnic_signal_degrades_to_general(self):
-        """'Black Canadian Women in Action' with a neutral body → General +
-        name-only flag, not a specific ethnic classification."""
+        """'Black Canadian Women in Action' with a truly neutral body (zero
+        Black mentions anywhere, unlike real gold row 54525 which has a
+        weak historical/self-reference mention -- see
+        TestGenderSexualClassifier.test_org_name_echoed_in_body_degrades_to_general)
+        is a silent body. Plan.md Chunk G1 step 5's generalizable
+        silent-body name rule classifies from the name instead of the old
+        flat General default -- always flagged."""
         e1, e2, e3, flag = classify_row(
             row(
                 name="Black Canadian Women in Action",
@@ -1018,8 +1031,9 @@ class TestNameBodySplit(unittest.TestCase):
             ),
             TAXONOMY_S2,
         )
-        self.assertEqual(e1, GENERAL_POP)
-        self.assertIn("only in the organization/funding-request name", flag)
+        self.assertEqual(e1, "Other Ethnic and Cultural Origins")
+        self.assertEqual(e2, "Black, not otherwise specified")
+        self.assertIn("silent body", flag)
 
     def test_known_org_in_name_still_classifies(self):
         """Niginan Housing Ventures (curated known-org map) classifies from
@@ -1163,12 +1177,14 @@ class TestGenderSexualClassifier(unittest.TestCase):
     # Item 2 — Org / proper-name context: keep classification + add flag
     # ------------------------------------------------------------------
     def test_boys_girls_club_classified_and_flagged(self):
-        """'Boys & Girls Club' with no body text is name-only signal per the
-        body/name split (Plan.md D1) → General Population + FLAG_ORG_NAME,
-        not a specific gender classification."""
+        """'Boys & Girls Club' with no body text is a silent body. Plan.md
+        Chunk G1 step 5's name rule finds BOTH women/men terms in the name
+        ("boys" and "girls") -> General Population (the "both present"
+        case), flagged for verification -- not FLAG_ORG_NAME (that fires
+        only on a body-text org-name construct, and there's no body here)."""
         label, flag = classify_gender(row(name="Boys and Girls Club of Edmonton"))
         self.assertEqual(label, GENDER_GENERAL_POP)
-        self.assertIn(FLAG_ORG_NAME, flag)
+        self.assertIn("silent body", flag)
 
     def test_institute_for_women_classified_and_flagged(self):
         """'Institute for Women' → Women and/or girls + FLAG_ORG_NAME."""
@@ -1177,22 +1193,25 @@ class TestGenderSexualClassifier(unittest.TestCase):
         self.assertIn(FLAG_ORG_NAME, flag)
 
     def test_wardrobe_for_women_name_only_degrades_to_general(self):
-        """'Wardrobe for Women Association' with a neutral body (ED salary)
-        is name-only signal per the body/name split (Plan.md D1) → General
-        Population + FLAG_ORG_NAME."""
+        """'Wardrobe for Women Association' with a neutral body (ED salary,
+        zero gender-term mentions) is a silent body. Plan.md Chunk G1 step 5
+        classifies from the name's "Women" term instead of the old flat
+        General default -- Women and/or girls, flagged for verification."""
         label, flag = classify_gender(row(
             name="Suit Yourself - Wardrobe for Women Association",
             desc="Funding will cover the Executive Director's salary and benefits.",
         ))
-        self.assertEqual(label, GENDER_GENERAL_POP)
-        self.assertIn(FLAG_ORG_NAME, flag)
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+        self.assertIn("silent body", flag)
 
     def test_boys_girls_clubs_big_brothers_big_sisters_name_only(self):
         """'Boys & Girls Clubs Big Brothers Big Sisters' with an empty body
-        is name-only signal → General Population + FLAG_ORG_NAME."""
+        is a silent body; the name carries BOTH women/men terms (girls/
+        sisters AND boys/brothers) -> General Population (Plan.md Chunk G1
+        step 5's "both present" case), flagged for verification."""
         label, flag = classify_gender(row(name="Boys & Girls Clubs Big Brothers Big Sisters"))
         self.assertEqual(label, GENDER_GENERAL_POP)
-        self.assertIn(FLAG_ORG_NAME, flag)
+        self.assertIn("silent body", flag)
 
     def test_org_name_echoed_in_body_degrades_to_general(self):
         """
@@ -1346,14 +1365,17 @@ class TestGenderSexualClassifier(unittest.TestCase):
         self.assertEqual(label, GENDER_MEN_BOYS)
 
     def test_association_femme_moderne_name_only_degrades_to_general(self):
-        """Real Plan.md Fix 8 example: 'Association Femme Moderne' is
-        name-only signal (D1) → General + name-only flag, not Women."""
+        """'Association Femme Moderne' with a neutral body (zero gender-term
+        mentions) is a silent body. Plan.md Chunk G1 step 5 classifies from
+        the name's "Femme" term (French for woman) -> Women and/or girls,
+        flagged for verification -- superseding the old Fix 8 flat-General
+        default for this exact silent-body shape."""
         label, flag = classify_gender(row(
             name="Association Femme Moderne",
             desc="Funding will cover office rent and administrative costs.",
         ))
-        self.assertEqual(label, GENDER_GENERAL_POP)
-        self.assertIn(FLAG_ORG_NAME, flag)
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+        self.assertIn("silent body", flag)
 
     # ------------------------------------------------------------------
     # Regression — negation still suppresses
@@ -1512,6 +1534,257 @@ class TestMLRoleArbiter(unittest.TestCase):
             "test process must run with USE_ML_ROLE_ARBITER unset for this "
             "assertion to be meaningful",
         )
+
+
+
+# ---------------------------------------------------------------------------
+# Chunk G1 — Org-name handling (echo demotion + generalizable silent-body
+# name rule). Tied to real gold rows: 54525 (Black Canadian Women in Action,
+# ethnic + gender), 51622 (BCW/Haitian youth, gender cross-axis gate), the
+# SCERDO/Somali silent-body rows, and the reviewer-verified "Correct Sex &
+# Gender" column for the Edmonton Women's Shelter / Wardrobe for Women /
+# Alberta Immigrant Women & Children Centre rows.
+# ---------------------------------------------------------------------------
+
+class TestG1SilentBodyNameRule(unittest.TestCase):
+    """Ethnic axis — generalizable silent-body name rule (Plan.md step 5)."""
+
+    def test_silent_body_umbrella_term_classifies_umbrella(self):
+        """A truly silent body (no desc) with an umbrella ethnic term
+        ('African') in the name classifies at the umbrella L1, flagged."""
+        e1, e2, e3, flag = classify_row(
+            row(name="African Heritage Foundation"),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "African Origins")
+        self.assertEqual(e2, "")
+        self.assertIn("silent body", flag)
+
+    def test_silent_body_two_distinct_groups_produces_multiple(self):
+        """Two distinct L1 identity terms in a silent-body name -> Multiple."""
+        e1, e2, e3, flag = classify_row(
+            row(name="African and Caribbean Descendants Society"),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, MULTIPLE_ETHNIC)
+        self.assertIn("silent body", flag)
+
+    def test_silent_body_bipoc_name_produces_multiple(self):
+        """A BIPOC-only silent-body name -> Multiple, same umbrella treatment
+        as a body-text BIPOC mention."""
+        e1, e2, e3, flag = classify_row(
+            row(name="BIPOC Arts Collective"),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, MULTIPLE_ETHNIC)
+        self.assertIn("silent body", flag)
+
+    def test_silent_body_islamic_org_stays_general(self):
+        """Exclusion (Plan.md step 5): religion-only silent-body name
+        ('Islamic') stays General + a targeted note, not a guessed ethnicity."""
+        e1, e2, e3, flag = classify_row(
+            row(name="Islamic Relief Foundation"),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertIn("not an ethnic signal", flag)
+
+    def test_silent_body_francophone_org_stays_general(self):
+        """Exclusion: language-only silent-body name ('Francophone') stays
+        General + a targeted note."""
+        e1, e2, e3, flag = classify_row(
+            row(name="Francophone Community Centre"),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertIn("not an ethnic signal", flag)
+
+
+class TestG1EchoDemotionAndServedRescue(unittest.TestCase):
+    """Ethnic axis — org-name echo demotion (steps 1/4) vs served-frame
+    rescue (step 2). Regression guards for the real gold row 54525 shape
+    (org self-intro + historical framing -> General) and the over-broad
+    name-word-echo bug this work order caught and fixed (a body mention
+    that merely shares a word with the org's name, but is a genuine served
+    claim in ordinary prose, must NOT be demoted)."""
+
+    def test_org_self_intro_plus_historical_focus_demotes_to_general(self):
+        """Real gold row 54525 shape: the org restates its own name AND
+        separately describes Black as its HISTORICAL focus ('beyond its
+        original focus on') with no served frame anywhere -> General."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Black Advocates in Action",
+                desc=(
+                    "Black Advocates in Action (BAA) is undertaking a "
+                    "rebranding initiative. As the organization grows beyond "
+                    "its original focus on Black communities, it now serves "
+                    "diverse communities across the city."
+                ),
+            ),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertIn("not classified as served population", flag)
+
+    def test_served_claim_sharing_a_word_with_org_name_is_not_demoted(self):
+        """Regression guard: ordinary prose describing the served population
+        ('support ... Black mothers') must classify normally even though
+        the org's own name ('Black Mothers Support Network') shares the
+        word 'Black' -- there is no historical/expansion framing here, so
+        the echo-demotion upgrade (step 4) must NOT fire."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Black Mothers Support Network",
+                desc=(
+                    "Our volunteer-run circles support immigrant and Black "
+                    "mothers facing isolation and financial strain."
+                ),
+            ),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "Other Ethnic and Cultural Origins")
+        self.assertEqual(e2, "Black, not otherwise specified")
+
+    def test_ethnic_org_name_serving_language_rescues_despite_name_overlap(self):
+        """Served-frame rescue (step 2): an explicit 'serving X' lead-in
+        keeps the group served even though the org's own name also carries
+        that word -- 'Somali Canadian Cultural Society ... serving the
+        Somali community' must stay Somali, not demote to an org-name echo."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Somali Canadian Cultural Society",
+                desc="Historically serving the Somali community, this program continues today.",
+            ),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "African Origins")
+        self.assertEqual(e3, "Somali")
+
+
+class TestG1GenderSexualSilentBodyAndCrossAxisGate(unittest.TestCase):
+    """Gender/Sexual axes — generalizable silent-body name rule (Plan.md
+    step 5) plus the cross-axis 'truly administrative' gate (Plan.md FIX,
+    validated against the reviewer 'Correct Sex & Gender' column for real
+    gold rows 51622/54130/54496)."""
+
+    def test_silent_body_men_org_classifies_men_boys(self):
+        """A truly silent body with a men/boys term in the name (Plan.md
+        step 5's GENDER_SILENT_NAME_MEN_PATTERN) classifies Men and/or boys."""
+        label, flag = classify_gender(row(name="Fathers Support Circle"))
+        self.assertEqual(label, GENDER_MEN_BOYS)
+        self.assertIn("silent body", flag)
+
+    def test_silent_body_pride_org_classifies_2slgbtqia(self):
+        """A truly silent body with a sexual-identity term in the name
+        (Plan.md step 5's SEXUAL_SILENT_NAME_PATTERN) classifies 2SLGBTQIA+."""
+        label, flag = classify_sexual(row(name="Pride Alliance Network"))
+        self.assertEqual(label, SEXUAL_2SLGBTQIA)
+        self.assertIn("silent body", flag)
+
+    def test_gender_stays_general_when_body_serves_nongendered_population(self):
+        """Real gold row 51622 shape (reviewer 'Correct Sex & Gender' = NO,
+        should be General): the body genuinely serves a real population
+        ('Haitian youth') that simply isn't gendered -- the cross-axis gate
+        must block the gender name rule from borrowing 'Women' off the org
+        name, leaving plain General + the old org-name-context flag."""
+        label, flag = classify_gender(row(
+            name="Haitian Women's Network",
+            desc="Our program serves Haitian youth with after-school tutoring.",
+        ))
+        self.assertEqual(label, GENDER_GENERAL_POP)
+        self.assertIn(FLAG_ORG_NAME, flag)
+
+    def test_gender_classifies_from_name_when_body_truly_administrative(self):
+        """Real gold row shape (Edmonton Women's Shelter bathroom-vanity
+        replacement / Wardrobe for Women ED-salary continuity -- reviewer
+        'Correct Sex & Gender' = YES): a genuinely administrative body (no
+        population named on any axis) lets the org name drive the gender
+        classification."""
+        label, flag = classify_gender(row(
+            name="Edmonton Women's Shelter Ltd.",
+            desc="This project will replace worn-out bathroom vanities to meet health inspection standards.",
+        ))
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+        self.assertIn("silent body", flag)
+
+
+# ---------------------------------------------------------------------------
+# Chunk G2 — Gender incidental family-context guard (row 54093)
+# ---------------------------------------------------------------------------
+
+TAXONOMY_G2 = TAXONOMY + [
+    {
+        "keyword": "ukrainian",
+        "level1": "European Origins",
+        "level2": "Eastern European Origins",
+        "level3": "Ukrainian",
+        "depth": 3,
+    },
+]
+
+
+class TestG2GenderIncidentalFamilyContextGuard(unittest.TestCase):
+    """Plan.md Chunk G2: a bare relational-male noun (fathers/brothers/sons/
+    dads) that only mentions an absent/left-behind family member is NOT a
+    served-gender signal -- mirrors the served-vs-mentioned weak-role
+    pattern already used for org-name echoes."""
+
+    def test_row_54093_fathers_left_behind_demotes_to_general_ethnic_unchanged(self):
+        """Real gold row shape (54093): 'their fathers... remain in Ukraine'
+        is an incidental mention of an absent relative, not the served
+        population (Ukrainian youth) -- gender degrades to General
+        Population + a transparency note. Ethnic classification (European
+        Origins / Eastern European Origins -- matches the real production
+        row's evidence, where the co-occurring "Eastern European" phrase
+        keeps resolution at L2) is driven by the separate ethnic pipeline
+        and must stay unaffected by the gender guard."""
+        r = row(
+            desc=(
+                "We are planning a Christmas celebration for 110 Ukrainian and "
+                "Eastern European youth who have arrived in Edmonton since 2022 "
+                "after fleeing the war in Ukraine. Many of these youth came with "
+                "only one parent while their fathers, friends, and extended "
+                "family remain in Ukraine. They are experiencing stress, "
+                "language barriers, and financial hardship."
+            ),
+        )
+        g_label, g_flag = classify_gender(r)
+        self.assertEqual(g_label, GENDER_GENERAL_POP)
+        self.assertIn("incidental family context", g_flag)
+
+        e1, e2, e3, _ = classify_row(r, TAXONOMY_G2)
+        self.assertEqual(e1, "European Origins")
+        self.assertEqual(e2, "Eastern European Origins")
+
+    def test_genuine_served_men_and_boys_body_still_classifies_men_boys(self):
+        """Guard must not be over-broad: a body that genuinely serves men
+        and boys (no left-behind/family-context framing) still classifies
+        Men and/or boys."""
+        label, flag = classify_gender(row(
+            desc="This program provides after-school recreational activities for young men and boys in the community."
+        ))
+        self.assertEqual(label, GENDER_MEN_BOYS)
+
+    def test_fathers_separated_from_children_stays_general(self):
+        """A second left-behind phrasing ('separated from their fathers who
+        stayed behind') -- still an incidental mention, not served."""
+        label, flag = classify_gender(row(
+            desc=(
+                "These newcomer youth were separated from their fathers, who "
+                "stayed behind during the evacuation. The program supports the "
+                "youth with counselling and peer connection."
+            )
+        ))
+        self.assertEqual(label, GENDER_GENERAL_POP)
+        self.assertIn("incidental family context", flag)
+
+    def test_fathers_group_unaffected_by_guard(self):
+        """Regression guard: a direct 'fathers group' mention (no
+        left-behind framing) is unaffected by the G2 guard -- still Men
+        and/or boys (mirrors the existing test_fathers_group_classified_as_men_boys)."""
+        label, flag = classify_gender(row(desc="A fathers group for new parents."))
+        self.assertEqual(label, GENDER_MEN_BOYS)
 
 
 if __name__ == "__main__":

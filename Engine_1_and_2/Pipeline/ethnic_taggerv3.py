@@ -75,7 +75,14 @@ from constants import (
     DEMONYM_SUFFIXES, NON_ETHNIC_LEADING_WORDS,
     ROLE_ORG_NAME_BEFORE_PATTERNS, ROLE_ORG_NAME_AFTER_PATTERNS,
     ROLE_PROVIDER_BEFORE_PATTERNS, ROLE_PROVIDER_AFTER_PATTERNS,
+    SERVED_FRAME_BEFORE_PATTERNS, SERVED_FRAME_CONTINUATION_PATTERNS,
+    ROLE_TOPIC_AFTER_PATTERNS, INDIGENOUS_CONTEXT_RESCUE_PATTERNS,
 )
+
+# gender_constants.py is a pure-data module (no imports of its own) so
+# pulling in its taxonomy-independent term patterns here creates no
+# circular dependency. Used only by body_names_a_population() below.
+from gender_constants import GENDER_TERM_PATTERNS, SEXUAL_ORIENTATION_PATTERNS
 
 # =============
 # CONFIGURATION 
@@ -231,19 +238,53 @@ def _echoes_org_name(text, start, end, name_text, min_gram=3, slack=3):
                 return True
     return False
 
+def _name_word_echo(span, name_text):
+    """True if the matched span's bare word also appears, as a standalone
+    word, in the funding-request NAME text (Plan.md Chunk G1 step 4 — echo
+    demotion upgrade). This is a looser check than _echoes_org_name's
+    contiguous multi-word positional overlap: it catches a single-word
+    identity term (e.g. "Black") that the org's OWN NAME also carries (e.g.
+    "Black Canadian Women in Action"), even when the body mention doesn't
+    restate the full name verbatim near this occurrence (e.g. "...beyond
+    its original focus on Black communities" — no "Canadian Women in
+    Action" nearby, so _echoes_org_name alone would miss it).
+    """
+    if not name_text or not span:
+        return False
+    word = span.strip().lower()
+    if not word:
+        return False
+    # Also try the singular form so "Somalis" (body) still echoes "Somali"
+    # (name) and vice versa.
+    candidates = {word}
+    if word.endswith("s") and len(word) > 3:
+        candidates.add(word[:-1])
+    return any(
+        re.search(r'\b' + re.escape(c) + r'\b', name_text, re.IGNORECASE)
+        for c in candidates
+    )
+
 def infer_role(text, start, end, name_text="", window=60):
     """Classify the evidence role of a match at text[start:end]:
     'served' (strong, default) or one of the weak roles
-    'org_name' | 'provider' | 'example' | 'aspirational' | 'historical'.
+    'org_name' | 'provider' | 'example' | 'aspirational'.
 
     Negation is deliberately NOT a role here: negation stays annotation-only
     (a resolver-level architectural invariant — see resolver.py's module
     docstring and build_context_notes) rather than suppressing a candidate,
-    unlike org-name/provider/example/aspirational/historical framing which
-    describe what the term refers to, not whether it's included or excluded.
+    unlike org-name/provider/example/aspirational framing which describe
+    what the term refers to, not whether it's included or excluded.
+
+    Historical/expansion framing ("beyond its original focus on X",
+    "historically served X") is likewise NOT its own role (Plan.md Chunk G1
+    step 3 — annotation-only invariant, see extract_context_signals). It
+    demotes a candidate only indirectly: when it coincides with an org-name
+    echo (step 2/4 below), the echo role wins; otherwise the match falls
+    through to "served" like any other unclassified framing.
     """
     before = text[max(0, start - window):start]
     after  = text[end:end + window]
+    span   = text[start:end]
     if matches_any(EXAMPLE_PHRASES, before):
         return "example"
     if matches_any(ASPIRATIONAL_PHRASES, before):
@@ -252,18 +293,52 @@ def infer_role(text, start, end, name_text="", window=60):
         return "org_name"
     if matches_any(ROLE_PROVIDER_BEFORE_PATTERNS, before) or matches_any(ROLE_PROVIDER_AFTER_PATTERNS, after):
         return "provider"
-    # A term appearing only as the org's OWN NAME restated in the body (e.g.
-    # "Black Canadian Women in Action (BCW) is undertaking...") is a
-    # self-reference, not a served-population claim -- min_gram/slack use
-    # their own defaults here (previously this positional call clobbered
-    # min_gram with `window`, silently disabling echo detection).
+    # Served-frame rescue (Plan.md Chunk G1 step 2) — MUST run before the
+    # echo checks below. An explicit "for X"/"serving X" lead-in, or a
+    # service-continuity phrase ("continues today"), means this occurrence
+    # IS the served population even if it also happens to echo the org's
+    # own name elsewhere in the same text (e.g. "Somali Canadian Cultural
+    # Society ... serving the Somali community").
+    if matches_any(SERVED_FRAME_BEFORE_PATTERNS, before) or matches_any(SERVED_FRAME_CONTINUATION_PATTERNS, text) \
+            or matches_any(INDIGENOUS_CONTEXT_RESCUE_PATTERNS, text):
+        return "served"
+    # Org-name echo (Plan.md Chunk G1 step 1 KEEP): a term that restates a
+    # contiguous run of the org's own name near this exact position is a
+    # self-reference (e.g. "Black Canadian Women in Action (BCW) is
+    # undertaking..."), not a served-population claim. Precise/unconditional
+    # -- requires an actual multi-word positional overlap, so it does not
+    # fire on ordinary prose that merely happens to share one word with the
+    # org's name (e.g. "Jewish Federation of Edmonton ... Jewish culture" is
+    # NOT an echo of anything beyond the single shared word).
     if _echoes_org_name(text, start, end, name_text):
         return "org_name"
-    # A term framed as the org's HISTORICAL/PAST focus, or something the org
-    # has EXPANDED BEYOND, describes what the org used to be, not who is
-    # currently served (e.g. "beyond its original focus on Black communities").
-    if matches_any(EXPANSION_PHRASES, before) or matches_any(HISTORICAL_PHRASES, before):
-        return "historical"
+    # Org-name-word echo, but ONLY when this occurrence is ALSO framed as
+    # the org's HISTORICAL/PAST focus or something it has EXPANDED BEYOND
+    # (Plan.md Chunk G1 step 4 upgrade — e.g. "beyond its original focus on
+    # Black communities" when the org itself is named "Black Canadian Women
+    # in Action"). The historical/expansion framing is required, not
+    # optional: a bare single-word overlap with the org's name (e.g.
+    # "support for Black mothers", "the Ukrainian community", "Jewish
+    # culture") is the overwhelmingly common, legitimate way an
+    # ethnicity-named org describes its actual served population, and must
+    # NOT be demoted on its own -- only historical/expansion phrasing
+    # narrows this to the org's own past/self-identity instead of who it
+    # currently serves.
+    if (matches_any(EXPANSION_PHRASES, before) or matches_any(HISTORICAL_PHRASES, before)) \
+            and _name_word_echo(span, name_text):
+        return "org_name"
+    # Topic / consultation framing (Plan.md Chunk G3): a term immediately
+    # followed by "perspectives" or "knowledge holders" describes a
+    # CURRICULUM TOPIC being taught or a CONSULTED-PARTY mention, not the
+    # served population -- e.g. "...teach eco-action strategies, and
+    # Indigenous perspectives" (course content); "consult wildlife
+    # biologists, conservation experts, and Indigenous knowledge holders"
+    # (advisory role). The served-frame rescue above already runs first, so
+    # any row where this framing coexists with an explicit served mention,
+    # or a residential-school/Truth-and-Reconciliation/ceremony frame
+    # elsewhere in the text, keeps "served" and never reaches this check.
+    if matches_any(ROLE_TOPIC_AFTER_PATTERNS, after):
+        return "topic"
     return "served"
 
 def phrase_has_serving_context(pattern, text, window=100):
@@ -675,6 +750,69 @@ def get_column_texts(row):
         #raw = apply_aliases(raw)
         texts.append(raw)
     return texts
+
+def parse_raw_org_name(raw_name):
+    """
+    Plan.md Chunk G1 step 5 — strip the "Funding Request for ... NNNNN"
+    wrapper and trailing FR-id off the RAW (pre-normalize, pre-identity-
+    rewrite) funding-request account name, leaving just the org name text.
+    Used by the generalizable silent-body name rule so identity-phrase
+    rewrites (e.g. "african canadian" -> "africancanadian") never hide a
+    term that should drive name-only classification.
+
+    Tolerates both the canonical "NAME 12345" form and a display-truncated
+    "NAME ...-12345" form (seen in some exported review sheets).
+    Falls back to the raw text unchanged if it doesn't match either shape.
+    """
+    text = (raw_name or "").strip()
+    if not text:
+        return ""
+    m = re.match(r'^funding request for\s+(.+)$', text, re.IGNORECASE)
+    if m:
+        text = m.group(1).strip()
+    text = re.sub(r'\s*(\.\.\.)?[\s\-]*\d+\s*$', '', text).strip()
+    return text
+
+def body_names_a_population(text):
+    """
+    Lightweight, taxonomy-independent check: does this (already normalized)
+    body text name ANY identifiable served population at all -- ethnic,
+    national, or gender/sexual-identity?
+
+    Used to gate the generalizable silent-body name rule (Plan.md Chunk G1
+    FIX): the name fallback on any ONE axis must fire ONLY when the body is
+    truly administrative -- no served population named on ANY axis. e.g.
+    BCW 51622's body serves "Haitian youth" -- a real (ethnic) served
+    population that simply isn't gendered -- so the GENDER axis must stay
+    General rather than borrowing "Women" from the org's own name; but a
+    genuinely administrative body (bathroom-vanity replacement, ED-salary
+    continuity, a website update) has no population signal on any axis, so
+    the org name IS the best available evidence.
+
+    Deliberately does NOT require taxonomy_entries (not available to the
+    gender/sexual classifiers, which don't load the taxonomy sheet) --
+    limited to the taxonomy-independent ethnic signal sources
+    (COUNTRY_REGION_MAP, PATTERN_RULES, BROAD_IDENTITY_KEYWORDS, BIPOC) plus
+    the gender/sexual term patterns (also plain regex, no taxonomy). This
+    misses a body whose ONLY ethnic signal is a pure taxonomy keyword not
+    covered by those sources (e.g. bare "Jewish"/"Cree") -- an accepted,
+    narrow approximation given the cross-module constraint.
+    """
+    if not text:
+        return False
+    if is_bipoc_real_target(text):
+        return True
+    if matches_any(BROAD_IDENTITY_KEYWORDS, text):
+        return True
+    if find_pattern_match(text) is not None:
+        return True
+    if find_country_match(text) is not None:
+        return True
+    if any(re.search(p, text, re.IGNORECASE) for p, _, _ in GENDER_TERM_PATTERNS):
+        return True
+    if matches_any(SEXUAL_ORIENTATION_PATTERNS, text):
+        return True
+    return False
 
 def get_body_and_name_texts(row):
     """Return (body_text, name_text), each normalized + identity-rewritten

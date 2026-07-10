@@ -2,6 +2,7 @@ import sys
 import re
 import pandas as pd
 import time
+from collections import defaultdict
 
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
@@ -881,9 +882,14 @@ def main():
         if col not in data_df.columns:
             data_df[col] = ""
     # Count how many rows fall into each outcome bucket, for summary stats at the end. Note that these are not mutually exclusive categories (e.g. a row with a pattern match that's also flagged for aspirational language would count in both "pattern" and "flagged"), but they give a general sense of how many hits came from each detection method and how many were flagged for review.
-    stats = {"-Ethnic → 3-level": 0, "-Ethnic → 2-level": 0, "-Ethnic → 1-level": 0, "-Ethnic → Multiple": 0,
+    # defaultdict so the diagnostic counters incremented below
+    # (stats["pattern"], stats["country"], stats["org_lookup"],
+    # stats["semantic_suggested"], stats["flagged"]) auto-initialize — these
+    # keys were never in the seeded dict, which KeyError'd the full main() run
+    # (the unit tests exercise classify_row directly and never hit this path).
+    stats = defaultdict(int, {"-Ethnic → 3-level": 0, "-Ethnic → 2-level": 0, "-Ethnic → 1-level": 0, "-Ethnic → Multiple": 0,
               "-Ethnic → Other": 0, "-Ethnic → General": 0, "-Flagged → Ethnic": 0, "-Pattern → Ethnic": 0,
-              "-Country → Ethnic": 0, "-Organization Name → Ethnic": 0, "-Grassroots Filtered → Ethnic": 0, "-Semantic Suggested → Ethnic": 0}
+              "-Country → Ethnic": 0, "-Organization Name → Ethnic": 0, "-Grassroots Filtered → Ethnic": 0, "-Semantic Suggested → Ethnic": 0})
     
     print(f"\n --- Classification Categories ---\n")
     

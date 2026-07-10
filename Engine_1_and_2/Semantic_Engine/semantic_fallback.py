@@ -49,6 +49,14 @@ existing MiniLM taxonomy-suggestion flow above is untouched, and nothing
 here is wired into classify_pipeline.py/resolver.py yet (that's Phase B).
 """
 
+# Pin Hugging Face to offline BEFORE sentence-transformers is imported in
+# get_model(), so loading the cached MiniLM weights never reaches the network
+# (mirrors ml_arbiter.py). setdefault, not hard-set: offline by default, but a
+# fresh machine that still needs the one-time model download can opt back in
+# with HF_HUB_OFFLINE=0 in the environment.
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
 MODEL_NAME = "all-MiniLM-L6-v2"
 SIMILARITY_THRESHOLD = 0.55
 CACHE_DIR = ".semantic_cache"

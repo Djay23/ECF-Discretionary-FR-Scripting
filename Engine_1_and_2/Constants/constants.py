@@ -125,6 +125,26 @@ BIPOC_KEYWORDS = [
     #r"\bracialized\b", # Change to flag if "racialized" is detected
 ]
 
+# When a BIPOC/POC keyword is IMMEDIATELY followed by a funding/program noun,
+# it is naming the grant/program ("the BIPOC Grant will support...", "a BIPOC
+# Media Lab") rather than describing a served population -- so that occurrence
+# is NOT a real BIPOC target (is_bipoc_real_target skips it, exactly like the
+# example/negation guards). A genuine "BIPOC youth / women / artists /
+# communities / entrepreneurs" mention elsewhere still counts.
+BIPOC_PROGRAM_NAME_AFTER_PATTERNS = [
+    r"^[\s\-]*(grant|fund|funding|program|programme|media\s+lab|lab|initiative|"
+    r"stream|cohort|bursary|scholarship|residenc(?:y|ies)|award|prize|pathway)s?\b",
+]
+
+# Over-broad continent keyword that is used far more often in a non-ethnic
+# geographic sense ("in the North American context/market") than as a served-
+# population descriptor, and never resolves correctly on its own (the real
+# Indigenous branch is keyed on "north american indigenous" and the specific
+# nations/Métis/Inuit entries). build_taxonomy skips emitting it as a matchable
+# keyword. NOTE: does NOT include "asian"/"african" etc. -- those ARE used as
+# real served-group descriptors ("Asian community", "African youth").
+TAXONOMY_KEYWORD_STOPLIST = {"north american"}
+
 # ============================================================
 # CASE 9b — Broad identity labels (not in taxonomy directly)
 # Black/Jewish/Arab removed -- these are real Level 2 entries under

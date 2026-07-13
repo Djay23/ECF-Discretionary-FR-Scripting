@@ -79,6 +79,9 @@ from constants import (
     ROLE_PROVIDER_BEFORE_PATTERNS, ROLE_PROVIDER_AFTER_PATTERNS,
     SERVED_FRAME_BEFORE_PATTERNS, SERVED_FRAME_CONTINUATION_PATTERNS,
     ROLE_TOPIC_AFTER_PATTERNS, INDIGENOUS_CONTEXT_RESCUE_PATTERNS,
+    ROLE_TOPIC_KEEP_AFTER_PATTERNS, ROLE_TOPIC_KEEP_BEFORE_PATTERNS,
+    ASPIRATIONAL_WIDE_WINDOW,
+    ROLE_SETTING_BEFORE_PATTERNS, ROLE_SETTING_AFTER_PATTERNS,
 )
 
 # gender_constants.py is a pure-data module (no imports of its own) so
@@ -291,6 +294,26 @@ def infer_role(text, start, end, name_text="", window=60):
         return "example"
     if matches_any(ASPIRATIONAL_PHRASES, before):
         return "aspirational"
+    # Plan.md Chunk G6 — same aspirational-reach frames, wider window: a row
+    # that restates one aspirational claim across two concatenated body
+    # columns (e.g. "...hoping to double its reach in the Edmonton area. To
+    # expand and hone programming to include more indigenous...") can put
+    # the lead verb ("wants to"/"hoping to") more than `window` chars before
+    # a LATER restatement of the same mention. Only consulted as a fallback
+    # -- the narrow check above still wins when it applies.
+    before_wide = text[max(0, start - ASPIRATIONAL_WIDE_WINDOW):start]
+    if matches_any(ASPIRATIONAL_PHRASES, before_wide):
+        return "aspirational"
+    # Plan.md Chunk G7 — fictional/historical story-setting frame: the term
+    # names the SETTING of a play/myth/themed event, not a real served
+    # population (e.g. Theatre Prospero "based on the tale of an Egyptian
+    # prince"; Arts On The Ave "A Byzantine Winter Festival"). Checked here,
+    # ahead of org_name/provider, since a setting reference isn't an org
+    # name or a provider role either -- it's simply not about a served
+    # population at all. Reuses the weak "topic" role (same demotion
+    # outcome as the G3 curriculum-topic case).
+    if matches_any(ROLE_SETTING_BEFORE_PATTERNS, before) or matches_any(ROLE_SETTING_AFTER_PATTERNS, after):
+        return "topic"
     if matches_any(ROLE_ORG_NAME_BEFORE_PATTERNS, before) or matches_any(ROLE_ORG_NAME_AFTER_PATTERNS, after):
         return "org_name"
     if matches_any(ROLE_PROVIDER_BEFORE_PATTERNS, before) or matches_any(ROLE_PROVIDER_AFTER_PATTERNS, after):
@@ -342,6 +365,32 @@ def infer_role(text, start, end, name_text="", window=60):
     if matches_any(ROLE_TOPIC_AFTER_PATTERNS, after):
         return "topic"
     return "served"
+
+def indigenous_topic_keep_role(text, start, end, window=100):
+    """Plan.md Chunk G6 (hybrid policy) — ONLY consulted by extractors.py for
+    a candidate already known to be North American Indigenous Origins (see
+    extract_taxonomy_candidates/extract_pattern_candidates), and only when
+    infer_role() above already returned "served" (the default). A term
+    naming Indigenous knowledge/art/practice INTEGRATED as actual program
+    content ("Indigenous wisdom", "Indigenous dance"), or an Indigenous
+    community/nation named as an active partner ("in collaboration with
+    Indigenous Nations"), is not a confident "served" claim but isn't
+    clearly NOT one either -- resolver.py counts "topic_keep" as served for
+    the outcome, and adds FLAG_INDIGENOUS_TOPIC_VERIFY only when no OTHER
+    occurrence of the same group was a plain "served" mention.
+
+    Deliberately NOT folded into infer_role() itself: "dance"/"art"/
+    "knowledge" are far too common as the actual (non-Indigenous) org's own
+    identity-adjacent words -- e.g. "Ukrainian Dance Festival" -- to use as
+    a generic weak-role frame across every group; scoping to Indigenous-only
+    candidates at the extractor call site (where level1 is known) avoids
+    that cross-group collision entirely.
+    """
+    before = text[max(0, start - window):start]
+    after  = text[end:end + window]
+    if matches_any(ROLE_TOPIC_KEEP_BEFORE_PATTERNS, before) or matches_any(ROLE_TOPIC_KEEP_AFTER_PATTERNS, after):
+        return "topic_keep"
+    return None
 
 def phrase_has_serving_context(pattern, text, window=100):
     for m in re.finditer(pattern, text, re.IGNORECASE):

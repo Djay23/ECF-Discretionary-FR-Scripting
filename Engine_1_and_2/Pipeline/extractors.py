@@ -7,8 +7,11 @@ from constants import (
     BROAD_IDENTITY_KEYWORDS,
     ORG_NAME_ETHNICITY_MAP,
     OTHER_ETHNIC,
+    INDIGENOUS_L1,
+    NON_ETHNIC_SENSE_BEFORE_PATTERNS,
+    BYZANTINE_FESTIVAL_AFTER_PATTERN,
 )
-from ethnic_taggerv3 import infer_role
+from ethnic_taggerv3 import infer_role, indigenous_topic_keep_role, matches_any
 
 """
 extractors.py
@@ -84,8 +87,18 @@ def extract_taxonomy_candidates(text: str, taxonomy_entries: list, name_text: st
         if not kw:
             continue
         pattern = re.compile(r'\b' + re.escape(kw) + r's?\b', re.IGNORECASE)
+        non_ethnic_before = NON_ETHNIC_SENSE_BEFORE_PATTERNS.get(kw)
         for m in pattern.finditer(text):
+            # Plan.md Chunk G7 — a spurious non-ethnic sense of this exact
+            # keyword ("final polish" on a video edit, not the Polish
+            # people) is skipped entirely at this occurrence: there is no
+            # ethnic claim here at all, so it must not even become a weak
+            # candidate (which would still surface a "verify" note).
+            if non_ethnic_before and matches_any(non_ethnic_before, text[max(0, m.start() - 20):m.start()]):
+                continue
             role = infer_role(text, m.start(), m.end(), name_text)
+            if role == "served" and entry["level1"] == INDIGENOUS_L1:
+                role = indigenous_topic_keep_role(text, m.start(), m.end()) or role
             candidates.append(_candidate(
                 entry["level1"],
                 entry["level2"] or "",
@@ -114,6 +127,8 @@ def extract_pattern_candidates(text: str, name_text: str = "") -> list:
         depth = 3 if l3 else (2 if l2 else 1)
         for m in re.finditer(pattern, text, re.IGNORECASE):
             role = infer_role(text, m.start(), m.end(), name_text)
+            if role == "served" and l1 == INDIGENOUS_L1:
+                role = indigenous_topic_keep_role(text, m.start(), m.end()) or role
             candidates.append(_candidate(
                 l1, l2, l3, depth, "pattern", role,
                 span=m.group(0),
@@ -158,6 +173,19 @@ def extract_compound_candidates(text: str, name_text: str = "") -> list:
         m = re.search(compound_pattern, text, re.IGNORECASE)
         if m:
             role = infer_role(text, m.start(), m.end(), name_text)
+            # Plan.md Chunk G7 — "byzantine" is the one ALWAYS_MULTIPLE_COMPOUNDS
+            # entry naming a historical/defunct civilization with no living
+            # modern population; "Byzantine ... Festival" in this dataset is
+            # reliably a themed/branded event name (Arts On The Ave 54622 "A
+            # Byzantine Winter Festival"), not a served-population claim.
+            # Scoped to this one compound (not a generic frame — see
+            # BYZANTINE_FESTIVAL_AFTER_PATTERN's constants.py docstring) so a
+            # real ethnocultural org's own "[Ethnicity] ... Festival" (e.g.
+            # "Ukrainian Dance Festival") is untouched.
+            if role == "served" and m.group(0).lower() == "byzantine":
+                after = text[m.end():m.end() + 60]
+                if matches_any([BYZANTINE_FESTIVAL_AFTER_PATTERN], after):
+                    role = "topic"
             span = m.group(0)
             context = _local_context(text, m.start(), m.end())
             for l1, l2, l3 in group_tuples:

@@ -2044,5 +2044,297 @@ class TestBipocGrantNameAndNorthAmericanKeyword(unittest.TestCase):
         self.assertIn("filipino", kws)
 
 
+class TestG6IndigenousTopicPartnerDemotion(unittest.TestCase):
+    """Plan.md Chunk G6 (hybrid policy): splits the non-served Indigenous
+    pattern-path mentions G3 lumped into one weak "topic" role into two
+    outcomes. DEMOTE to General: a provider/consultant role noun
+    (consultant/advisor/liaison), or an aspirational "hopes to/wants to
+    reach/include" claim -- neither names a currently-served population.
+    KEEP Indigenous + FLAG_INDIGENOUS_TOPIC_VERIFY: Indigenous knowledge/
+    art/practice integrated as actual program content ("Indigenous
+    wisdom"/"dance"), or an Indigenous community/nation named as an active
+    partner ("in collaboration with"/"seek partnerships ... with") -- ambiguous,
+    but not clearly non-served either, so classification is unaffected and
+    only a review flag is added.
+
+    Verified over all 448 live Audit Detail rows: exactly 54491 (Skills
+    Society) and 50691 (WILDNorth) flip Indigenous->General; 50616 (Canadian
+    Wildlife Federation) and 50671 (Sierra Club) stay Indigenous and gain
+    FLAG_INDIGENOUS_TOPIC_VERIFY; every must-keep row (54535, 51620, 54538,
+    54484, 54529, 50606, 54681, 50621, 50673, 51589, 51581, 52473, 54544,
+    51624, 54694, 51613, 50328, 54686, 49327, 50607, 54685, 51625, 50681,
+    54528) and the already-General 50600/51569 are unchanged; zero other
+    rows changed."""
+
+    def test_row_54491_consultant_to_integrate_demotes_to_general(self):
+        """Real gold row shape (Skills Society 54491): an "Indigenous
+        consultant to integrate Indigenous knowledge and practices" is
+        hired expertise applied to the org's OWN internal model, not a
+        claim about who the org serves. Both Indigenous mentions in this
+        clause demote (the second is the direct object of the same
+        "consultant to integrate" clause). Demotes to General."""
+        e1, e2, e3, flag = classify_row(
+            row(desc=(
+                "Funds will support a Research and Development lead to "
+                "test and refine the model, and an Indigenous consultant "
+                "to integrate Indigenous knowledge and practices into our "
+                "apartment support model for tenants with disabilities."
+            )),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertIn("provider context only", flag)
+
+    def test_row_50691_wants_to_include_more_demotes_to_general(self):
+        """Real gold row shape (WILDNorth 50691): "wants to expand ...
+        include more indigenous and marginalized communities, hoping to
+        double its reach" is an aspirational-reach claim about a FUTURE
+        audience, not the population currently served. Demotes to
+        General."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                summary=(
+                    "The organization wants to expand and hone their "
+                    "programming and include more indigenous and "
+                    "marginalized communities, hoping to double its reach "
+                    "in the Edmonton area."
+                ),
+                purpose=(
+                    "To expand and hone programming to include more "
+                    "indigenous and marginalized communities, doubling the "
+                    "reach in the Edmonton area."
+                ),
+            ),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertIn("aspirational context only", flag)
+
+    def test_row_50616_indigenous_wisdom_as_content_stays_indigenous_and_flags(self):
+        """Real gold row shape (Canadian Wildlife Federation 50616):
+        "integrate science-based knowledge and Indigenous wisdom" and
+        "partnerships with schools, NGOs and Indigenous communities" are
+        both topic-content/partnership framings -- ambiguous, so the
+        classification stays Indigenous but gains
+        FLAG_INDIGENOUS_TOPIC_VERIFY."""
+        e1, e2, e3, flag = classify_row(
+            row(desc=(
+                "CCNE will integrate science-based knowledge and "
+                "Indigenous wisdom to inspire environmental stewardship. "
+                "Through partnerships with schools, NGOs, and Indigenous "
+                "communities, CCNE will foster environmental literacy."
+            )),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+        self.assertIn("Indigenous topic/partnership mention", flag)
+
+    def test_row_50671_partnership_with_indigenous_nations_stays_indigenous_and_flags(self):
+        """Real gold row shape (Sierra Club 50671): "Indigenous Nations
+        engagement/consultations" and "seek partnerships and collaboration
+        with Indigenous Peoples" are both partnership framings -- stays
+        Indigenous, gains FLAG_INDIGENOUS_TOPIC_VERIFY."""
+        e1, e2, e3, flag = classify_row(
+            row(desc=(
+                "Key initiatives include Indigenous Nations engagement/"
+                "consultations: we will seek partnerships and collaboration "
+                "with Indigenous Peoples, which is vital for integrating "
+                "land-based learning."
+            )),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+        self.assertIn("Indigenous topic/partnership mention", flag)
+
+    def test_liaison_provider_role_demotes_alone(self):
+        """New provider-role noun added in G6 (not covered by G3): an
+        Indigenous liaison hired to advise the org, with no other
+        Indigenous signal in the body, demotes to General."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="The project team includes an Indigenous liaison to advise on protocol."),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, GENERAL_POP)
+
+    def test_row_54681_engagement_toward_launching_program_stays_indigenous_no_flag(self):
+        """Real gold row shape (Ben Calf Robe Society 54681): "community
+        engagement toward launching an Indigenous Head Start/early
+        learning program for children aged 3-5" is an explicit
+        served-population program description -- the bare word
+        "engagement" nearby must NOT trigger the G6 partnership flag on
+        an otherwise clearly-served mention (regression guard for a false
+        positive caught during G6 verification)."""
+        e1, e2, e3, flag = classify_row(
+            row(purpose=(
+                "To conduct consulting and community engagement toward "
+                "launching an Indigenous Head Start/early learning program "
+                "for children aged 3-5."
+            )),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+        self.assertNotIn("Indigenous topic/partnership mention", flag)
+
+
+class TestG7FictionalSettingAndSpuriousTokenCollisions(unittest.TestCase):
+    """Plan.md Chunk G7: an ethnic/national term that names the SETTING of
+    a story/myth/themed event (not a real served population), or that
+    collides with an unrelated common word sharing the same spelling
+    ("polish" as in "final polish"), must not classify. The story-setting
+    guard (ROLE_SETTING_BEFORE/AFTER_PATTERNS) is generic across every
+    group EXCEPT the "a [X] festival" frame, which is scoped to the
+    "byzantine" ALWAYS_MULTIPLE_COMPOUNDS entry only (a real ethnocultural
+    org's own "[Ethnicity] ... Festival" -- e.g. "Ukrainian Dance
+    Festival" -- is a genuine served-identity claim, not a themed setting;
+    see extract_compound_candidates in extractors.py).
+
+    Verified over all 448 live Audit Detail rows: exactly 51022/54504
+    (Theatre Prospero), 54622 (Arts On The Ave), 51570 (Garneau), and
+    54505 (Thousand Faces) flip/improve; zero other rows changed (in
+    particular 54137 Ukrainian Cheremosh Dance Ensemble, whose "Ukrainian
+    Dance Festival" mention must NOT be caught by the byzantine-specific
+    festival guard, stays unchanged)."""
+
+    TAXONOMY_POLISH = TAXONOMY + [{
+        "keyword": "polish",
+        "level1": "European Origins",
+        "level2": "Eastern European Origins",
+        "level3": "Polish",
+        "depth": 3,
+    }]
+
+    def test_row_51022_egyptian_story_setting_demotes_to_general(self):
+        """Real gold row shape (Theatre Prospero 51022): "an Egyptian
+        story about a Prince doomed at birth" names the SETTING of a
+        devised play, not a served population. The story/myth noun
+        trails the term here ("Egyptian story about"), exercising the
+        AFTER variant of the setting-frame guard. Demotes to General."""
+        e1, e2, e3, flag = classify_row(
+            row(summary=(
+                "Audience participants 'play' most or all of the parts in "
+                "an Egyptian story about a Prince doomed at birth to die "
+                "by Snake, Dog, or Crocodile."
+            )),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertIn("topic context only", flag)
+
+    def test_row_54504_egyptian_myth_demotes_but_treaty6_children_stays_indigenous(self):
+        """Real gold row shape (Theatre Prospero 54504): TWO Egyptian
+        mentions ("based on the incomplete tale of an Egyptian prince";
+        "based on an Egyptian myth about a Prince") both demote via the
+        BEFORE setting-frame guard ("based on"), but "Treaty 6 children"
+        elsewhere in the same row is a genuine geographic/served reference
+        to real children, not a setting -- must stay Indigenous, not
+        Multiple and not General."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                desc=(
+                    "Two casts of actors will learn the play THE DOOMED "
+                    "PRINCE, based on the incomplete tale of an Egyptian "
+                    "prince doomed to die by snake, dog, or crocodile."
+                ),
+                summary=(
+                    "Hundreds of Greater Edmonton Area and Treaty 6 "
+                    "children will learn and enact a fun play based on an "
+                    "Egyptian myth about a Prince fated to die by Snake, "
+                    "Dog, or Crocodile."
+                ),
+            ),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+
+    def test_byzantine_winter_festival_setting_demotes_to_general(self):
+        """Real gold row shape (Arts On The Ave 54622): "Deep Freeze: A
+        Byzantine Winter Festival" names a themed/branded winter festival,
+        not an actual Byzantine-heritage population. Demotes to General
+        (was previously Multiple via the ALWAYS_MULTIPLE_COMPOUNDS entry)."""
+        e1, e2, e3, flag = classify_row(
+            row(purpose=(
+                "To purchase new winterized trapper tents to use during "
+                "the Deep Freeze: A Byzantine Winter Festival after "
+                "discovering the existing tents have mold damage."
+            )),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, GENERAL_POP)
+
+    def test_byzantine_without_festival_frame_still_produces_multiple(self):
+        """Regression guard: the byzantine-specific festival demotion must
+        NOT affect a bare 'Byzantine cultural heritage community' mention
+        with no festival framing -- still Multiple (unchanged existing
+        behavior, see TestBlueprint2Fixes.test_byzantine_produces_multiple)."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="Programming for the Byzantine cultural heritage community."),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, MULTIPLE_ETHNIC)
+
+    def test_ukrainian_dance_festival_not_caught_by_byzantine_festival_guard(self):
+        """Regression guard (caught during G7 verification): a REAL
+        ethnocultural org's own "[Ethnicity] Dance Festival" (Ukrainian
+        Cheremosh Dance Ensemble Society 54137's "Cheremosh Ukrainian
+        Dance Festival") must NOT be demoted -- the "a [X] festival"
+        setting frame is scoped to the byzantine compound only, not applied
+        generically to every group's own festival name."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                summary="The Cheremosh Ukrainian Dance Festival is hosting its 40th anniversary event.",
+                purpose="To fund new dance medals for the 40th anniversary Cheremosh Ukrainian Dance Festival.",
+            ),
+            TAXONOMY_G2,
+        )
+        self.assertEqual(e1, "European Origins")
+        self.assertEqual(e3, "Ukrainian")
+
+    def test_final_polish_does_not_classify_as_polish(self):
+        """Real gold row shape (Garneau Community League 51570): "final
+        polish for public release" is a post-production editing term, not
+        the Polish people. This occurrence must be skipped entirely (not
+        even a weak candidate) -- General with no ethnic flag at all."""
+        e1, e2, e3, flag = classify_row(
+            row(desc=(
+                "Post-production will involve editing the footage, "
+                "including sound mixing, music, motion graphics, and "
+                "final polish for public release."
+            )),
+            self.TAXONOMY_POLISH,
+        )
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertEqual(flag, "")
+
+    def test_genuine_polish_mention_still_classifies(self):
+        """Regression guard: the 'final polish' stoplist must not swallow
+        a genuine Polish-community mention elsewhere in the same body."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="Supporting Polish newcomer families settling in Edmonton."),
+            self.TAXONOMY_POLISH,
+        )
+        self.assertEqual(e1, "European Origins")
+        self.assertEqual(e3, "Polish")
+
+    def test_row_54505_partner_org_name_council_of_india_societies_stays_general(self):
+        """Real gold row shape (Thousand Faces Festival 54505): "in-kind
+        community support from Council of India Societies" names a THIRD-
+        PARTY partner organization, not the Thousand Faces Festival's own
+        served population. The org-name-after guard now also matches the
+        plural "Societies" (previously only singular "Society"), so this
+        occurrence is tagged org_name (weak) instead of defaulting to
+        served. Demotes to General."""
+        e1, e2, e3, flag = classify_row(
+            row(desc=(
+                "ECF's investment leverages annual support from TD Bank "
+                "and the Canadian Multicultural Education Fund, plus "
+                "substantial in-kind community support from Council of "
+                "India Societies and the Edmonton Newcomer Centre."
+            )),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, GENERAL_POP)
+        self.assertIn("org_name context only", flag)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

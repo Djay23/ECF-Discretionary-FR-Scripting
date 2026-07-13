@@ -1,5 +1,8 @@
 from typing import List, Tuple
-from constants import MULTIPLE_ETHNIC, OTHER_ETHNIC, GENERAL_POP, INDIGENOUS_L1, INDIGENOUS_UMBRELLA_FLAG
+from constants import (
+    MULTIPLE_ETHNIC, OTHER_ETHNIC, GENERAL_POP, INDIGENOUS_L1, INDIGENOUS_UMBRELLA_FLAG,
+    FLAG_INDIGENOUS_TOPIC_VERIFY,
+)
 
 """
 resolver.py
@@ -69,6 +72,18 @@ def source_flag(source: str) -> str:
         "broad_identity": "Broad identity term - review recommended",
     }.get(source, "")
 
+def _role_rank(role: str) -> int:
+    """Higher rank wins when dedup picks a representative occurrence for a
+    group. "served" (a genuine served-population claim) always outranks
+    "topic_keep" (Plan.md Chunk G6 — a topic/partnership mention that keeps
+    the classification but only via a verify flag), which in turn outranks
+    any other weak role (org_name/provider/example/aspirational/topic)."""
+    if role == "served":
+        return 2
+    if role == "topic_keep":
+        return 1
+    return 0
+
 def dedup(states: List[State]) -> List[State]:
     """
     Collapse candidates that resolve to the identical (L1, L2, L3) outcome.
@@ -82,7 +97,8 @@ def dedup(states: List[State]) -> List[State]:
     ... delivered by Black professionals" keeps Black as served via the
     first phrase, despite the second being a weak "provider" mention.
     The first-seen entry is kept as the representative (preserving its
-    source label) unless a later "served" occurrence needs to promote it.
+    source label) unless a later "served" (or, failing that, "topic_keep")
+    occurrence needs to promote it.
     """
     best: dict = {}
     order: List[tuple] = []
@@ -91,7 +107,7 @@ def dedup(states: List[State]) -> List[State]:
         if key not in best:
             best[key] = s
             order.append(key)
-        elif s.get("role", "served") == "served" and best[key].get("role", "served") != "served":
+        elif _role_rank(s.get("role", "served")) > _role_rank(best[key].get("role", "served")):
             best[key] = s
     return [best[k] for k in order]
 
@@ -129,9 +145,15 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
     # served occurrence, so a group surviving in `weak` here was NEVER
     # mentioned as served population -- only as an org name, provider,
     # example, aspiration, or negation.
+    #
+    # "topic_keep" (Plan.md Chunk G6) counts as served for classification
+    # purposes -- a topic/partnership mention keeps the group in the running
+    # -- but is tracked separately so a plain-served group can be told apart
+    # from a topic_keep-only one when deciding whether to add
+    # FLAG_INDIGENOUS_TOPIC_VERIFY below.
     # -----------------------------------------------------------------------
-    served = [s for s in primary if s.get("role", "served") == "served"]
-    weak   = [s for s in primary if s.get("role", "served") != "served"]
+    served = [s for s in primary if s.get("role", "served") in ("served", "topic_keep")]
+    weak   = [s for s in primary if s.get("role", "served") not in ("served", "topic_keep")]
 
     # -----------------------------------------------------------------------
     # Step 1 — BIPOC signal
@@ -226,6 +248,19 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
         # says as much. No primary flag; context flags (if any) still appended.
         return build_output(MULTIPLE_ETHNIC, "", "", "", context_flags)
 
+    # Plan.md Chunk G6 — this row's only surviving Indigenous evidence is a
+    # topic/partnership mention (role "topic_keep"), never a plain "served"
+    # occurrence of the SAME (L1, L2, L3) group. The classification below is
+    # unaffected (topic_keep already counts as served), but a reviewer should
+    # be told the evidence is a topic/partner mention, not a confirmed served
+    # claim. Computed once here since every remaining branch shares one L1
+    # (Step 3 above already returned if there were >= 2).
+    indigenous_topic_keep_only = (
+        next(iter(distinct_l1)) == INDIGENOUS_L1
+        and all(s.get("role", "served") == "topic_keep" for s in primary)
+    )
+    verify_flags = context_flags + [FLAG_INDIGENOUS_TOPIC_VERIFY] if indigenous_topic_keep_only else context_flags
+
     # -----------------------------------------------------------------------
     # Step 4 — Deepest shared level within a single L1
     #
@@ -263,7 +298,7 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
         if umbrella_present and len(distinct_subs) >= 2:
             subs = sorted(distinct_subs)
             flag = INDIGENOUS_UMBRELLA_FLAG + " (" + ", ".join(subs) + ")"
-            return build_output(shared_l1, "", "", flag, context_flags)
+            return build_output(shared_l1, "", "", flag, verify_flags)
 
     pool = specific if specific else primary
 
@@ -273,17 +308,17 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
         return build_output(
             shared_l1, best["level2"], best["level3"],
             source_flag(best["source"]),
-            context_flags,
+            verify_flags,
         )
 
     # Multiple candidates — consensus resolution.
     l3_vals = set(s["level3"] for s in pool)
     if len(l3_vals) == 1 and next(iter(l3_vals)):
         winner = pool[0]
-        return build_output(shared_l1, winner["level2"], winner["level3"], "", context_flags)
+        return build_output(shared_l1, winner["level2"], winner["level3"], "", verify_flags)
 
     l2_vals = set(s["level2"] for s in pool)
     if len(l2_vals) == 1:
-        return build_output(shared_l1, next(iter(l2_vals)), "", "", context_flags)
+        return build_output(shared_l1, next(iter(l2_vals)), "", "", verify_flags)
 
-    return build_output(shared_l1, "", "", "", context_flags)
+    return build_output(shared_l1, "", "", "", verify_flags)

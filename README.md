@@ -387,3 +387,6 @@ Is this something a human reviewer actually needs to look at?
 ### Sprint 3 - Continued auditing
 - Affordable Housing & Early Childhood Development audit completed.
 - How can we generalize our engine for this classification? Gaps present? What keywords to look for. 
+- Current Classification pipeline blueprint into Deepseek for auditing on how semantic matching or case handling can improve. 
+- Implementation with the AH & ECD classifications.
+- Can this be migrated to Sector classification?

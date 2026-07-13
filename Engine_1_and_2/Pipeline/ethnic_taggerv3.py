@@ -65,7 +65,8 @@ except ImportError:
 
 from constants import (
     MULTIPLE_ETHNIC, OTHER_ETHNIC, GENERAL_POP,
-    BIPOC_KEYWORDS, AMBIGUOUS_EQUITY_WORDS, BROAD_IDENTITY_KEYWORDS,
+    BIPOC_KEYWORDS, BIPOC_PROGRAM_NAME_AFTER_PATTERNS, TAXONOMY_KEYWORD_STOPLIST,
+    AMBIGUOUS_EQUITY_WORDS, BROAD_IDENTITY_KEYWORDS,
     ALWAYS_MULTIPLE_COMPOUNDS, ORG_NAME_ETHNICITY_MAP,
     PATTERN_RULES, COUNTRY_REGION_MAP,
     EXPANSION_PHRASES, HISTORICAL_PHRASES, NEGATION_PHRASES,
@@ -440,6 +441,12 @@ def build_taxonomy(tax_df):
         if not level1:
             continue
 
+        # Skip over-broad geographic keywords ("north american") that collide
+        # with non-ethnic prose ("North American context/market") and never
+        # resolve correctly on their own (see TAXONOMY_KEYWORD_STOPLIST).
+        if keyword in TAXONOMY_KEYWORD_STOPLIST:
+            continue
+
         entries.append({
             "keyword": keyword,
             "level1":  level1,
@@ -526,14 +533,21 @@ def is_bipoc_real_target(text):
     """
     found = False
     for kw_pattern in BIPOC_KEYWORDS:
-        m = re.search(kw_pattern, text, re.IGNORECASE)
-        if m:
+        for m in re.finditer(kw_pattern, text, re.IGNORECASE):
             snippet = text[max(0, m.start()-80):m.start()]
             if matches_any(EXAMPLE_PHRASES, snippet):
                 continue
             if matches_any(NEGATION_PHRASES, snippet):
                 continue
+            # "the BIPOC Grant / Media Lab / Program" names the funding stream,
+            # not a served population -- skip this occurrence (a genuine "BIPOC
+            # youth/women/artists" mention elsewhere still counts).
+            after = text[m.end():m.end() + 40]
+            if matches_any(BIPOC_PROGRAM_NAME_AFTER_PATTERNS, after):
+                continue
             found = True
+            break
+        if found:
             break
     return found
 

@@ -1020,7 +1020,7 @@ class TestNameBodySplit(unittest.TestCase):
         """'Black Canadian Women in Action' with a truly neutral body (zero
         Black mentions anywhere, unlike real gold row 54525 which has a
         weak historical/self-reference mention -- see
-        TestGenderSexualClassifier.test_org_name_echoed_in_body_degrades_to_general)
+        TestGenderSexualClassifier.test_org_name_echo_with_expansion_disclaimer_stays_general)
         is a silent body. Plan.md Chunk G1 step 5's generalizable
         silent-body name rule classifies from the name instead of the old
         flat General default -- always flagged."""
@@ -1033,6 +1033,25 @@ class TestNameBodySplit(unittest.TestCase):
         )
         self.assertEqual(e1, "Other Ethnic and Cultural Origins")
         self.assertEqual(e2, "Black, not otherwise specified")
+        self.assertIn("silent body", flag)
+
+    def test_org_echo_ethnic_body_classifies_from_org_name(self):
+        """G5: an org-name echo is the body's ONLY ethnic mention ("The Somali
+        Canadian Society is replacing its sound system") — a weak self-
+        reference, not a served signal. The body is administratively silent,
+        so classify from the org name + flag instead of the old flat General.
+        Mirrors real gold rows Jewish Family Services 50644 -> Jewish and
+        Ukrainian Shumka 54507 -> Ukrainian."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Somali Canadian Society",
+                desc=("The Somali Canadian Society is replacing the sound "
+                      "system in its community hall."),
+            ),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "African Origins")
+        self.assertEqual(e3, "Somali")
         self.assertIn("silent body", flag)
 
     def test_known_org_in_name_still_classifies(self):
@@ -1213,28 +1232,33 @@ class TestGenderSexualClassifier(unittest.TestCase):
         self.assertEqual(label, GENDER_GENERAL_POP)
         self.assertIn("silent body", flag)
 
-    def test_org_name_echoed_in_body_degrades_to_general(self):
+    def test_org_name_echo_with_expansion_disclaimer_stays_general(self):
         """
         Real gold row (Black Canadian Women in Action 54525): the org
-        restates its own name inside the body ('Black Canadian Women in
-        Action (BCW) is undertaking...') — that's an org-name self-reference
-        (Plan.md Fix 1 Phase 2), not a served-population claim → General +
-        transparency note, not Women and/or girls.
+        restates its own name AND explicitly disclaims it as the CURRENT
+        served population ("beyond its original focus on Black communities").
+        The G5 disclaimer guard (IDENTITY_EXPANSION_DISCLAIMER_PATTERNS) keeps
+        this General — the org-name signal is NOT borrowed when the body says
+        the org has moved past that identity.
         """
         label, flag = classify_gender(row(
             name="Black Canadian Women in Action",
             desc=(
                 "Black Canadian Women in Action (BCW) is undertaking a major "
-                "capacity-building initiative to adapt to changing demographics "
-                "and ensure long-term sustainability."
+                "capacity-building initiative as families from increasingly "
+                "diverse backgrounds turn to BCW for support beyond its "
+                "original focus on Black communities."
             ),
         ))
         self.assertEqual(label, GENDER_GENERAL_POP)
-        self.assertIn("org-name self-reference", flag)
 
-    def test_org_name_echoed_full_name_in_body_degrades_to_general(self):
-        """Real gold row (Alberta Immigrant Women & Children Centre 54640):
-        same org-name-echo pattern, full org name restated in the summary."""
+    def test_org_echo_only_body_classifies_from_org_name(self):
+        """G5 org-name ladder: an org-name echo with NO other ethnic or
+        gender/sex signal in the body classifies from the org-name signal +
+        flag (real gold row Alberta Immigrant Women & Children Centre 54640 —
+        an admin/autism body serving 'newcomer families', which is not itself
+        a gender signal, so the org's 'Women' name wins). Stakeholder-
+        confirmed 2026-07-13; gold reconciled to Women and/or girls."""
         label, flag = classify_gender(row(
             name="Alberta Immigrant Women & Children Centre",
             summary=(
@@ -1243,13 +1267,15 @@ class TestGenderSexualClassifier(unittest.TestCase):
                 "helping parents connect with autism services."
             ),
         ))
-        self.assertEqual(label, GENDER_GENERAL_POP)
-        self.assertIn("org-name self-reference", flag)
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+        self.assertIn("organization name", flag)
 
-    def test_org_name_echoed_abbreviation_in_body_degrades_to_general(self):
+    def test_org_echo_both_genders_in_name_stays_general(self):
         """Real gold row (Boys & Girls Clubs Big Brothers Big Sisters 50610):
-        the body uses an abbreviated form of the org's own name ('BGC Big
-        Brothers Big Sisters') — still an org-name echo, not served signal."""
+        the body echoes an abbreviated form of the org's own name. The org-name
+        ladder fires, but the name carries BOTH women (girls/sisters) and men
+        (boys/brothers) terms → General (all-youth org), now with the silent-
+        body name-rule flag rather than the self-reference note."""
         label, flag = classify_gender(row(
             name="Boys & Girls Clubs Big Brothers Big Sisters of Edmonton",
             desc=(
@@ -1259,7 +1285,21 @@ class TestGenderSexualClassifier(unittest.TestCase):
             ),
         ))
         self.assertEqual(label, GENDER_GENERAL_POP)
-        self.assertIn("org-name self-reference", flag)
+
+    def test_org_echo_admin_body_classifies_women_from_name(self):
+        """G5 (real gold row Women Building Futures 54513): a pure-admin body
+        that only echoes the org's own name ("Women Building Futures must
+        replace its servers") is administratively silent — classify Women from
+        the name + flag, not the old General."""
+        label, flag = classify_gender(row(
+            name="Women Building Futures Society",
+            desc=(
+                "Women Building Futures must replace the existing servers to "
+                "ensure program data remains secure."
+            ),
+        ))
+        self.assertEqual(label, GENDER_WOMEN_GIRLS)
+        self.assertIn("organization name", flag)
 
     def test_org_flag_not_fired_for_plain_gender_description(self):
         """A plain description like 'serving women in Edmonton' has no org noun
@@ -1949,6 +1989,59 @@ class TestG3IndigenousPatternPathRoleTiering(unittest.TestCase):
             TAXONOMY,
         )
         self.assertEqual(e1, "North American Indigenous Origins")
+
+
+class TestBipocGrantNameAndNorthAmericanKeyword(unittest.TestCase):
+    """Batch-2 spurious-match fixes: 'BIPOC' as a grant/program name is not a
+    served BIPOC signal; the over-broad 'north american' keyword is dropped."""
+
+    def test_bipoc_grant_name_is_not_a_served_signal(self):
+        from ethnic_taggerv3 import is_bipoc_real_target
+        # Naming the funding stream — not a served population.
+        self.assertFalse(is_bipoc_real_target(
+            "the bipoc grant will support our filipino parenting program"))
+        self.assertFalse(is_bipoc_real_target(
+            "the ecf bipoc grant would allow us to serve newcomer families"))
+        self.assertFalse(is_bipoc_real_target(
+            "we are piloting a bipoc media lab for local creators"))
+
+    def test_genuine_bipoc_population_still_counts(self):
+        from ethnic_taggerv3 import is_bipoc_real_target
+        self.assertTrue(is_bipoc_real_target("a program for bipoc youth in edmonton"))
+        self.assertTrue(is_bipoc_real_target("supporting bipoc women entrepreneurs"))
+        # Grant-name occurrence AND a genuine served mention -> still True.
+        self.assertTrue(is_bipoc_real_target(
+            "the bipoc grant funds workshops led by bipoc artists"))
+
+    def test_bipoc_grant_with_specific_group_classifies_that_group(self):
+        # Real gold row Edmonton Philippine Centre 51591: "The BIPOC Grant"
+        # names the funding; the served population is Filipino families ->
+        # Asian/Filipino, not Multiple.
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Edmonton Philippine International Centre",
+                desc=("The BIPOC Grant will support our Filipino bicultural "
+                      "parenting program, co-created with Filipino parents."),
+            ),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "Asian Origins")
+        self.assertEqual(e3, "Filipino")
+
+    def test_north_american_keyword_is_dropped(self):
+        # Real gold row Black Health Initiative 51615: "North American context"
+        # must not match a taxonomy keyword (it did, forcing Multiple).
+        import pandas as pd
+        from ethnic_taggerv3 import build_taxonomy, TAXONOMY_ALL_TERMS
+        df = pd.DataFrame({TAXONOMY_ALL_TERMS: [
+            "North American Origins",
+            "North American Indigenous Origins",
+            "Asian OriginsEast and Southeast Asian OriginsFilipino",
+        ]})
+        kws = {e["keyword"] for e in build_taxonomy(df)}
+        self.assertNotIn("north american", kws)
+        self.assertIn("north american indigenous", kws)
+        self.assertIn("filipino", kws)
 
 
 if __name__ == "__main__":

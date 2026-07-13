@@ -382,4 +382,8 @@ Is this something a human reviewer actually needs to look at?
 
 ### Current:
 - Indigenous misfire in cases that should be general: 50616, 50671, 51, 78, 96, 196, 344, 347, 387, 418, 428, 427 --> higher risk. 
-- 
+
+# 2026-07-13
+### Sprint 3 - Continued auditing
+- Affordable Housing & Early Childhood Development audit completed.
+- How can we generalize our engine for this classification? Gaps present? What keywords to look for. 

@@ -392,6 +392,6 @@ Is this something a human reviewer actually needs to look at?
 - Can this be migrated to Sector classification?
 
 ### Currently:
-- Manual Classification of Sector levels as they are too ambiguous for deterministic Engine (16/64 columns completed).
+- Manual Classification of Sector levels as they are too ambiguous for deterministic Engine (23/64 columns completed).
 - Ethnic, Gender and Sex ID engine refactoring for knowledge gaps.
 - ECD and AH engine classification to be built (Manual classification completed, train local ML based on present data).

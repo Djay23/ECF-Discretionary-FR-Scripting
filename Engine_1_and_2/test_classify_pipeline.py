@@ -190,8 +190,11 @@ class TestClassifyPipeline(unittest.TestCase):
     # ------------------------------------------------------------------
     def test_bipoc_alone(self):
         """
-        BIPOC with no other ethnic keyword produces MULTIPLE and a
-        'BIPOC signal detected' flag.  No specific group is named.
+        BIPOC with no other ethnic keyword produces MULTIPLE with no primary
+        flag (Plan.md Chunk G10 item 5: the bare "BIPOC signal detected"
+        text was dropped as noise -- BIPOC-alone -> Multiple is unambiguous
+        locked policy, same treatment as the G9 Step-2b removal). No
+        specific group is named.
         """
         e1, e2, e3, flag = classify_row(
             row(desc="Services designed for BIPOC youth in the community."),
@@ -200,7 +203,7 @@ class TestClassifyPipeline(unittest.TestCase):
         self.assertEqual(e1, MULTIPLE_ETHNIC)
         self.assertEqual(e2, "")
         self.assertEqual(e3, "")
-        self.assertIn("BIPOC signal detected", flag)
+        self.assertNotIn("BIPOC signal detected", flag)
 
     # ------------------------------------------------------------------
     # 7. BIPOC alongside a specific taxonomy group
@@ -1158,7 +1161,7 @@ from Gender_SexID import (
     GENDER_WOMEN_GIRLS, GENDER_MEN_BOYS,
     SEXUAL_2SLGBTQIA, SEXUAL_GENERAL_POP,
 )
-from gender_constants import FLAG_ORG_NAME, FLAG_AMBIGUOUS_TERM, SFLAG_GENDER_TERM
+from gender_constants import FLAG_ORG_NAME, SFLAG_GENDER_TERM
 
 
 class TestGenderSexualClassifier(unittest.TestCase):
@@ -1194,6 +1197,16 @@ class TestGenderSexualClassifier(unittest.TestCase):
         label, flag = classify_gender(row(desc="A queer youth program."))
         self.assertEqual(label, GENDER_OTHER)
         self.assertNotEqual(label, GENDER_MULTIPLE)
+
+    def test_two_concrete_keys_produces_multiple_with_no_flag(self):
+        """Plan.md Chunk G10 item 1: 2+ concrete, non-diverse keys (men/boys
+        + women/girls here) → Multiple gender identities with NO primary
+        flag -- the generic "Multiple: <identities>" text was dropped as
+        noise (unlike the lgbtq_umbrella and gender_diverse branches above,
+        which keep their flag)."""
+        label, flag = classify_gender(row(desc="Programming for both men and women in the community."))
+        self.assertEqual(label, GENDER_MULTIPLE)
+        self.assertEqual(flag, "")
 
     # ------------------------------------------------------------------
     # Item 2 — Org / proper-name context: keep classification + add flag
@@ -1312,18 +1325,30 @@ class TestGenderSexualClassifier(unittest.TestCase):
         self.assertNotIn(FLAG_ORG_NAME, flag)
 
     # ------------------------------------------------------------------
-    # Item 3 — Gender-diverse term → Sexual: flag fires even with orientation
+    # Item 3 — Gender-diverse term → Sexual: SFLAG_GENDER_TERM now scoped to
+    # the ambiguous "gender-diverse" umbrella term only (Plan.md Chunk G10
+    # item 2) — trans/non-binary/two-spirit/etc. unambiguously belong under
+    # 2SLGBTQIA+ already, so they no longer carry the flag.
     # ------------------------------------------------------------------
-    def test_trans_youth_produces_sexual_2slgbtqia_with_gender_flag(self):
-        """'trans youth' → Sexual 2SLGBTQIA+ with SFLAG_GENDER_TERM present."""
+    def test_trans_youth_produces_sexual_2slgbtqia_no_gender_flag(self):
+        """'trans youth' → Sexual 2SLGBTQIA+; SFLAG_GENDER_TERM no longer
+        fires for "trans" specifically (only for the "gender-diverse" key)."""
         label, flag = classify_sexual(row(desc="Program serving trans youth."))
         self.assertEqual(label, SEXUAL_2SLGBTQIA)
-        self.assertIn(SFLAG_GENDER_TERM, flag)
+        self.assertNotIn(SFLAG_GENDER_TERM, flag)
 
-    def test_trans_plus_gay_still_flags_gender_term(self):
-        """'trans and gay' → 2SLGBTQIA+; SFLAG_GENDER_TERM fires even though
-        an explicit orientation term (gay) is also present."""
+    def test_trans_plus_gay_no_gender_flag(self):
+        """'trans and gay' → 2SLGBTQIA+; SFLAG_GENDER_TERM absent (neither
+        "trans" nor "gay" is the ambiguous "gender-diverse" umbrella term)."""
         label, flag = classify_sexual(row(desc="Resources for trans and gay individuals."))
+        self.assertEqual(label, SEXUAL_2SLGBTQIA)
+        self.assertNotIn(SFLAG_GENDER_TERM, flag)
+
+    def test_gender_diverse_term_still_flags_gender_term(self):
+        """'gender-diverse' specifically → 2SLGBTQIA+ with SFLAG_GENDER_TERM
+        still present (Plan.md Chunk G10 item 2 kept this one case — the
+        umbrella term itself is genuinely ambiguous)."""
+        label, flag = classify_sexual(row(desc="Program serving gender-diverse youth and gay adults."))
         self.assertEqual(label, SEXUAL_2SLGBTQIA)
         self.assertIn(SFLAG_GENDER_TERM, flag)
 
@@ -1367,31 +1392,30 @@ class TestGenderSexualClassifier(unittest.TestCase):
         self.assertEqual(label, GENDER_MEN_BOYS)
 
     # ------------------------------------------------------------------
-    # Item 4 — Ambiguous coded terms: flag only, no classification change
+    # Item 4 — Ambiguous coded terms: classification unaffected, flag
+    # removed entirely (Plan.md Chunk G10 item 3)
     # ------------------------------------------------------------------
-    def test_femme_alone_classifies_and_flags_ambiguous(self):
+    def test_femme_alone_classifies_no_ambiguous_flag(self):
         """
         'femme-identified' alone → Women and/or girls (Fix 8: "femme" is
-        French for "woman", now a real classifying signal) + still
-        FLAG_AMBIGUOUS_TERM, since it's also English coded-slang-adjacent —
-        both mechanisms fire together so a reviewer double-checks which
-        sense applies.
+        French for "woman", a real classifying signal); FLAG_AMBIGUOUS_TERM
+        no longer fires (removed entirely per G10 item 3).
         """
         label, flag = classify_gender(row(desc="Serving femme-identified individuals."))
         self.assertEqual(label, GENDER_WOMEN_GIRLS)
-        self.assertIn(FLAG_AMBIGUOUS_TERM, flag)
+        self.assertNotIn("Ambiguous coded", flag)
 
     def test_butch_alone_does_not_classify(self):
-        """'butch' alone → General Population + FLAG_AMBIGUOUS_TERM."""
+        """'butch' alone → General Population, no ambiguous-term flag."""
         label, flag = classify_gender(row(desc="Programming for butch community members."))
         self.assertEqual(label, GENDER_GENERAL_POP)
-        self.assertIn(FLAG_AMBIGUOUS_TERM, flag)
+        self.assertNotIn("Ambiguous coded", flag)
 
-    def test_femme_with_clear_signal_keeps_classification_and_flags(self):
-        """'femme women' — clear 'women' signal classifies; FLAG_AMBIGUOUS_TERM still fires."""
+    def test_femme_with_clear_signal_keeps_classification_no_flag(self):
+        """'femme women' — clear 'women' signal classifies; no ambiguous-term flag."""
         label, flag = classify_gender(row(desc="Support for femme women in the community."))
         self.assertEqual(label, GENDER_WOMEN_GIRLS)
-        self.assertIn(FLAG_AMBIGUOUS_TERM, flag)
+        self.assertNotIn("Ambiguous coded", flag)
 
     # ------------------------------------------------------------------
     # Fix 8 — French gender terms

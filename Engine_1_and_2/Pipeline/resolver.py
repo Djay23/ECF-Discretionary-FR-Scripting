@@ -173,7 +173,12 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
             groups = sorted(set(s["level1"] for s in served))
             flag = ("Note (low priority): BIPOC keyword alongside specific group(s) (" + ", ".join(groups) + ") - verify manually")
         else:
-            flag = "BIPOC signal detected"
+            # Plan.md Chunk G10 item 5 — bare "BIPOC signal detected" removed
+            # as a primary flag; BIPOC-alone -> Multiple is unambiguous
+            # locked policy (same "drop the noise" treatment as Step 3's
+            # Fix 4 and the G9 Step-2b removal), and the Ethnic Evidence
+            # column still shows the matched "bipoc [...]" term.
+            flag = ""
         return build_output(MULTIPLE_ETHNIC, "", "", flag, context_flags)
 
     # -----------------------------------------------------------------------

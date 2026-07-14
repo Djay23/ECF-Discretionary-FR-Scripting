@@ -59,12 +59,20 @@ def build_output(l1: str, l2: str, l3: str,
     parts = [f for f in ([primary_flag] + context_flags) if f]
     return (l1, l2, l3, "; ".join(parts))
 
-def source_flag(source: str) -> str:
+def source_flag(source: str, level1: str = "") -> str:
     """
     Map a candidate source label to its human-readable flag string.
     Taxonomy and org_lookup matches produce no primary flag of their own
     (taxonomy is the default path; org is annotated by the caller branch).
+
+    Plan.md Chunk G9 — the "pattern" source covers both the directional-
+    region rules (North African, South Asian, ...) AND the Indigenous terms
+    (indigenous/aboriginal/metis/treaty 6/...) in PATTERN_RULES; a shared
+    "Directional Region, e.g. North African" flag text was wrong for the
+    Indigenous rows, so Indigenous gets its own text keyed on level1.
     """
+    if source == "pattern" and level1 == INDIGENOUS_L1:
+        return "Pattern rule match (Indigenous identity term)"
     return {
         "pattern": "Pattern rule match (Directional Region, e.g. North African)",
         "country": "Country/nationality mapping match",
@@ -229,11 +237,12 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
         )
 
     if is_black and is_african or is_black and is_caribbean: # Handle black & caribbean as well.
-        return build_output(
-            MULTIPLE_ETHNIC, "", "",
-            "Review: multiple distinct groups detected; possible umbrella term (Black) alongside specific group — verify served population",
-            context_flags,
-        )
+        # Plan.md Chunk G9 — "Review: multiple distinct groups detected..." is
+        # the same generic noise Fix 4 already dropped from Step 3 below (the
+        # Multiple classification already says as much); Black vs African is
+        # a locked policy call (Black != African), not something needing a
+        # review flag. No primary flag; context flags (if any) still appended.
+        return build_output(MULTIPLE_ETHNIC, "", "", "", context_flags)
 
     # -----------------------------------------------------------------------
     # Step 3 — Multiple distinct Level 1 groups
@@ -307,7 +316,7 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
         best = pool[0]
         return build_output(
             shared_l1, best["level2"], best["level3"],
-            source_flag(best["source"]),
+            source_flag(best["source"], best["level1"]),
             verify_flags,
         )
 

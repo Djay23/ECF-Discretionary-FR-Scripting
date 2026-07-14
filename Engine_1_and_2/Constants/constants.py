@@ -119,7 +119,9 @@ COUNTRY_REGION_MAP = {
     "ghanaian": ("African Origins", "Central and West African Origins", ""),
     "sierra leonean": ("African Origins", "Central and West African Origins", ""),
     "egyptian": ("African Origins", "North African Origins", ""),
-    "africancanadian": ("African Origins", "", ""),  # injected by IDENTITY_PHRASE_REWRITES mask — see P1-1
+    "africancanadian": ("African Origins", "", ""), 
+    "gazan": ("Asian Origins", "West and Central Asian and Middle Eastern Origins", "Palestinian"),
+    "gaza": ("Asian Origins", "West and Central Asian and Middle Eastern Origins", "Palestinian"),
 }
 
 # =======================

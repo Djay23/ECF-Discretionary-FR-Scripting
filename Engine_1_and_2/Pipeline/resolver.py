@@ -1,5 +1,8 @@
 from typing import List, Tuple
-from constants import MULTIPLE_ETHNIC, OTHER_ETHNIC, GENERAL_POP, INDIGENOUS_L1, INDIGENOUS_UMBRELLA_FLAG
+from constants import (
+    MULTIPLE_ETHNIC, OTHER_ETHNIC, GENERAL_POP, INDIGENOUS_L1, INDIGENOUS_UMBRELLA_FLAG,
+    FLAG_INDIGENOUS_TOPIC_VERIFY,
+)
 
 """
 resolver.py
@@ -56,18 +59,38 @@ def build_output(l1: str, l2: str, l3: str,
     parts = [f for f in ([primary_flag] + context_flags) if f]
     return (l1, l2, l3, "; ".join(parts))
 
-def source_flag(source: str) -> str:
+def source_flag(source: str, level1: str = "") -> str:
     """
     Map a candidate source label to its human-readable flag string.
     Taxonomy and org_lookup matches produce no primary flag of their own
     (taxonomy is the default path; org is annotated by the caller branch).
+
+    Plan.md Chunk G9 — the "pattern" source covers both the directional-
+    region rules (North African, South Asian, ...) AND the Indigenous terms
+    (indigenous/aboriginal/metis/treaty 6/...) in PATTERN_RULES; a shared
+    "Directional Region, e.g. North African" flag text was wrong for the
+    Indigenous rows, so Indigenous gets its own text keyed on level1.
     """
+    if source == "pattern" and level1 == INDIGENOUS_L1:
+        return "Pattern rule match (Indigenous identity term)"
     return {
         "pattern": "Pattern rule match (Directional Region, e.g. North African)",
         "country": "Country/nationality mapping match",
         "compound": "Compound identity term match",
         "broad_identity": "Broad identity term - review recommended",
     }.get(source, "")
+
+def _role_rank(role: str) -> int:
+    """Higher rank wins when dedup picks a representative occurrence for a
+    group. "served" (a genuine served-population claim) always outranks
+    "topic_keep" (Plan.md Chunk G6 — a topic/partnership mention that keeps
+    the classification but only via a verify flag), which in turn outranks
+    any other weak role (org_name/provider/example/aspirational/topic)."""
+    if role == "served":
+        return 2
+    if role == "topic_keep":
+        return 1
+    return 0
 
 def dedup(states: List[State]) -> List[State]:
     """
@@ -82,7 +105,8 @@ def dedup(states: List[State]) -> List[State]:
     ... delivered by Black professionals" keeps Black as served via the
     first phrase, despite the second being a weak "provider" mention.
     The first-seen entry is kept as the representative (preserving its
-    source label) unless a later "served" occurrence needs to promote it.
+    source label) unless a later "served" (or, failing that, "topic_keep")
+    occurrence needs to promote it.
     """
     best: dict = {}
     order: List[tuple] = []
@@ -91,7 +115,7 @@ def dedup(states: List[State]) -> List[State]:
         if key not in best:
             best[key] = s
             order.append(key)
-        elif s.get("role", "served") == "served" and best[key].get("role", "served") != "served":
+        elif _role_rank(s.get("role", "served")) > _role_rank(best[key].get("role", "served")):
             best[key] = s
     return [best[k] for k in order]
 
@@ -129,9 +153,15 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
     # served occurrence, so a group surviving in `weak` here was NEVER
     # mentioned as served population -- only as an org name, provider,
     # example, aspiration, or negation.
+    #
+    # "topic_keep" (Plan.md Chunk G6) counts as served for classification
+    # purposes -- a topic/partnership mention keeps the group in the running
+    # -- but is tracked separately so a plain-served group can be told apart
+    # from a topic_keep-only one when deciding whether to add
+    # FLAG_INDIGENOUS_TOPIC_VERIFY below.
     # -----------------------------------------------------------------------
-    served = [s for s in primary if s.get("role", "served") == "served"]
-    weak   = [s for s in primary if s.get("role", "served") != "served"]
+    served = [s for s in primary if s.get("role", "served") in ("served", "topic_keep")]
+    weak   = [s for s in primary if s.get("role", "served") not in ("served", "topic_keep")]
 
     # -----------------------------------------------------------------------
     # Step 1 — BIPOC signal
@@ -143,7 +173,12 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
             groups = sorted(set(s["level1"] for s in served))
             flag = ("Note (low priority): BIPOC keyword alongside specific group(s) (" + ", ".join(groups) + ") - verify manually")
         else:
-            flag = "BIPOC signal detected"
+            # Plan.md Chunk G10 item 5 — bare "BIPOC signal detected" removed
+            # as a primary flag; BIPOC-alone -> Multiple is unambiguous
+            # locked policy (same "drop the noise" treatment as Step 3's
+            # Fix 4 and the G9 Step-2b removal), and the Ethnic Evidence
+            # column still shows the matched "bipoc [...]" term.
+            flag = ""
         return build_output(MULTIPLE_ETHNIC, "", "", flag, context_flags)
 
     # -----------------------------------------------------------------------
@@ -207,11 +242,12 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
         )
 
     if is_black and is_african or is_black and is_caribbean: # Handle black & caribbean as well.
-        return build_output(
-            MULTIPLE_ETHNIC, "", "",
-            "Review: multiple distinct groups detected; possible umbrella term (Black) alongside specific group — verify served population",
-            context_flags,
-        )
+        # Plan.md Chunk G9 — "Review: multiple distinct groups detected..." is
+        # the same generic noise Fix 4 already dropped from Step 3 below (the
+        # Multiple classification already says as much); Black vs African is
+        # a locked policy call (Black != African), not something needing a
+        # review flag. No primary flag; context flags (if any) still appended.
+        return build_output(MULTIPLE_ETHNIC, "", "", "", context_flags)
 
     # -----------------------------------------------------------------------
     # Step 3 — Multiple distinct Level 1 groups
@@ -225,6 +261,19 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
         # is dropped as pure noise — the Multiple classification itself already
         # says as much. No primary flag; context flags (if any) still appended.
         return build_output(MULTIPLE_ETHNIC, "", "", "", context_flags)
+
+    # Plan.md Chunk G6 — this row's only surviving Indigenous evidence is a
+    # topic/partnership mention (role "topic_keep"), never a plain "served"
+    # occurrence of the SAME (L1, L2, L3) group. The classification below is
+    # unaffected (topic_keep already counts as served), but a reviewer should
+    # be told the evidence is a topic/partner mention, not a confirmed served
+    # claim. Computed once here since every remaining branch shares one L1
+    # (Step 3 above already returned if there were >= 2).
+    indigenous_topic_keep_only = (
+        next(iter(distinct_l1)) == INDIGENOUS_L1
+        and all(s.get("role", "served") == "topic_keep" for s in primary)
+    )
+    verify_flags = context_flags + [FLAG_INDIGENOUS_TOPIC_VERIFY] if indigenous_topic_keep_only else context_flags
 
     # -----------------------------------------------------------------------
     # Step 4 — Deepest shared level within a single L1
@@ -263,7 +312,7 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
         if umbrella_present and len(distinct_subs) >= 2:
             subs = sorted(distinct_subs)
             flag = INDIGENOUS_UMBRELLA_FLAG + " (" + ", ".join(subs) + ")"
-            return build_output(shared_l1, "", "", flag, context_flags)
+            return build_output(shared_l1, "", "", flag, verify_flags)
 
     pool = specific if specific else primary
 
@@ -272,18 +321,18 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
         best = pool[0]
         return build_output(
             shared_l1, best["level2"], best["level3"],
-            source_flag(best["source"]),
-            context_flags,
+            source_flag(best["source"], best["level1"]),
+            verify_flags,
         )
 
     # Multiple candidates — consensus resolution.
     l3_vals = set(s["level3"] for s in pool)
     if len(l3_vals) == 1 and next(iter(l3_vals)):
         winner = pool[0]
-        return build_output(shared_l1, winner["level2"], winner["level3"], "", context_flags)
+        return build_output(shared_l1, winner["level2"], winner["level3"], "", verify_flags)
 
     l2_vals = set(s["level2"] for s in pool)
     if len(l2_vals) == 1:
-        return build_output(shared_l1, next(iter(l2_vals)), "", "", context_flags)
+        return build_output(shared_l1, next(iter(l2_vals)), "", "", verify_flags)
 
-    return build_output(shared_l1, "", "", "", context_flags)
+    return build_output(shared_l1, "", "", "", verify_flags)

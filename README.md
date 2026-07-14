@@ -379,3 +379,32 @@ Is this something a human reviewer actually needs to look at?
 - Continued ML implementation --> Changed Organization map to be 'general' to apply org mapping for previous year data. 
 - Logic fine tuning with deepseek --> Understanding where gaps exist in the way current engine runs for classification, and how it can be fixed/made better.
 - Hand classifying ECF Focus areas until better classification engine brainstormed for Early Childhood Education (ECD) & Affordable Housing (AH)
+
+### Current:
+- Indigenous misfire in cases that should be general: 50616, 50671, 51, 78, 96, 196, 344, 347, 387, 418, 428, 427 --> higher risk. 
+
+# 2026-07-13
+### Sprint 3 - Continued auditing
+- Affordable Housing & Early Childhood Development audit completed.
+- How can we generalize our engine for this classification? Gaps present? What keywords to look for. 
+- Current Classification pipeline blueprint into Deepseek for auditing on how semantic matching or case handling can improve. 
+- Implementation with the AH & ECD classifications.
+- Can this be migrated to Sector classification?
+
+### Currently:
+- Manual Classification of Sector levels as they are too ambiguous for deterministic Engine (23/64 columns completed).
+- Ethnic, Gender and Sex ID engine refactoring for knowledge gaps.
+- ECD and AH engine classification to be built (Manual classification completed, train local ML based on present data).
+
+
+# 2026-07-14
+### Sprint 3- Continued auditing
+- Auditing of pipeline blueprint for gap fixes.
+- Manual Classification of Sector Levels --> Complete
+- Gender/Sex and Ethnic classification/Flagging --> complete.
+- Affordable Housing/ECD --> complete (by hand).
+
+### TO DO:
+- What flags don't we need to reduce Reviewer fatigue.
+- Stregnthening of pipeline through ML hookup?
+- Account name -> Sector -> limited information for classification for organization.

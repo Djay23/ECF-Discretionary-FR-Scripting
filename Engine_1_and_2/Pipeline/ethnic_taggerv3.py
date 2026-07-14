@@ -65,7 +65,8 @@ except ImportError:
 
 from constants import (
     MULTIPLE_ETHNIC, OTHER_ETHNIC, GENERAL_POP,
-    BIPOC_KEYWORDS, AMBIGUOUS_EQUITY_WORDS, BROAD_IDENTITY_KEYWORDS,
+    BIPOC_KEYWORDS, BIPOC_PROGRAM_NAME_AFTER_PATTERNS, TAXONOMY_KEYWORD_STOPLIST,
+    AMBIGUOUS_EQUITY_WORDS, BROAD_IDENTITY_KEYWORDS,
     ALWAYS_MULTIPLE_COMPOUNDS, ORG_NAME_ETHNICITY_MAP,
     PATTERN_RULES, COUNTRY_REGION_MAP,
     EXPANSION_PHRASES, HISTORICAL_PHRASES, NEGATION_PHRASES,
@@ -78,6 +79,9 @@ from constants import (
     ROLE_PROVIDER_BEFORE_PATTERNS, ROLE_PROVIDER_AFTER_PATTERNS,
     SERVED_FRAME_BEFORE_PATTERNS, SERVED_FRAME_CONTINUATION_PATTERNS,
     ROLE_TOPIC_AFTER_PATTERNS, INDIGENOUS_CONTEXT_RESCUE_PATTERNS,
+    ROLE_TOPIC_KEEP_AFTER_PATTERNS, ROLE_TOPIC_KEEP_BEFORE_PATTERNS,
+    ASPIRATIONAL_WIDE_WINDOW,
+    ROLE_SETTING_BEFORE_PATTERNS, ROLE_SETTING_AFTER_PATTERNS,
 )
 
 # gender_constants.py is a pure-data module (no imports of its own) so
@@ -290,6 +294,26 @@ def infer_role(text, start, end, name_text="", window=60):
         return "example"
     if matches_any(ASPIRATIONAL_PHRASES, before):
         return "aspirational"
+    # Plan.md Chunk G6 — same aspirational-reach frames, wider window: a row
+    # that restates one aspirational claim across two concatenated body
+    # columns (e.g. "...hoping to double its reach in the Edmonton area. To
+    # expand and hone programming to include more indigenous...") can put
+    # the lead verb ("wants to"/"hoping to") more than `window` chars before
+    # a LATER restatement of the same mention. Only consulted as a fallback
+    # -- the narrow check above still wins when it applies.
+    before_wide = text[max(0, start - ASPIRATIONAL_WIDE_WINDOW):start]
+    if matches_any(ASPIRATIONAL_PHRASES, before_wide):
+        return "aspirational"
+    # Plan.md Chunk G7 — fictional/historical story-setting frame: the term
+    # names the SETTING of a play/myth/themed event, not a real served
+    # population (e.g. Theatre Prospero "based on the tale of an Egyptian
+    # prince"; Arts On The Ave "A Byzantine Winter Festival"). Checked here,
+    # ahead of org_name/provider, since a setting reference isn't an org
+    # name or a provider role either -- it's simply not about a served
+    # population at all. Reuses the weak "topic" role (same demotion
+    # outcome as the G3 curriculum-topic case).
+    if matches_any(ROLE_SETTING_BEFORE_PATTERNS, before) or matches_any(ROLE_SETTING_AFTER_PATTERNS, after):
+        return "topic"
     if matches_any(ROLE_ORG_NAME_BEFORE_PATTERNS, before) or matches_any(ROLE_ORG_NAME_AFTER_PATTERNS, after):
         return "org_name"
     if matches_any(ROLE_PROVIDER_BEFORE_PATTERNS, before) or matches_any(ROLE_PROVIDER_AFTER_PATTERNS, after):
@@ -341,6 +365,32 @@ def infer_role(text, start, end, name_text="", window=60):
     if matches_any(ROLE_TOPIC_AFTER_PATTERNS, after):
         return "topic"
     return "served"
+
+def indigenous_topic_keep_role(text, start, end, window=100):
+    """Plan.md Chunk G6 (hybrid policy) — ONLY consulted by extractors.py for
+    a candidate already known to be North American Indigenous Origins (see
+    extract_taxonomy_candidates/extract_pattern_candidates), and only when
+    infer_role() above already returned "served" (the default). A term
+    naming Indigenous knowledge/art/practice INTEGRATED as actual program
+    content ("Indigenous wisdom", "Indigenous dance"), or an Indigenous
+    community/nation named as an active partner ("in collaboration with
+    Indigenous Nations"), is not a confident "served" claim but isn't
+    clearly NOT one either -- resolver.py counts "topic_keep" as served for
+    the outcome, and adds FLAG_INDIGENOUS_TOPIC_VERIFY only when no OTHER
+    occurrence of the same group was a plain "served" mention.
+
+    Deliberately NOT folded into infer_role() itself: "dance"/"art"/
+    "knowledge" are far too common as the actual (non-Indigenous) org's own
+    identity-adjacent words -- e.g. "Ukrainian Dance Festival" -- to use as
+    a generic weak-role frame across every group; scoping to Indigenous-only
+    candidates at the extractor call site (where level1 is known) avoids
+    that cross-group collision entirely.
+    """
+    before = text[max(0, start - window):start]
+    after  = text[end:end + window]
+    if matches_any(ROLE_TOPIC_KEEP_BEFORE_PATTERNS, before) or matches_any(ROLE_TOPIC_KEEP_AFTER_PATTERNS, after):
+        return "topic_keep"
+    return None
 
 def phrase_has_serving_context(pattern, text, window=100):
     for m in re.finditer(pattern, text, re.IGNORECASE):
@@ -440,6 +490,12 @@ def build_taxonomy(tax_df):
         if not level1:
             continue
 
+        # Skip over-broad geographic keywords ("north american") that collide
+        # with non-ethnic prose ("North American context/market") and never
+        # resolve correctly on their own (see TAXONOMY_KEYWORD_STOPLIST).
+        if keyword in TAXONOMY_KEYWORD_STOPLIST:
+            continue
+
         entries.append({
             "keyword": keyword,
             "level1":  level1,
@@ -526,14 +582,21 @@ def is_bipoc_real_target(text):
     """
     found = False
     for kw_pattern in BIPOC_KEYWORDS:
-        m = re.search(kw_pattern, text, re.IGNORECASE)
-        if m:
+        for m in re.finditer(kw_pattern, text, re.IGNORECASE):
             snippet = text[max(0, m.start()-80):m.start()]
             if matches_any(EXAMPLE_PHRASES, snippet):
                 continue
             if matches_any(NEGATION_PHRASES, snippet):
                 continue
+            # "the BIPOC Grant / Media Lab / Program" names the funding stream,
+            # not a served population -- skip this occurrence (a genuine "BIPOC
+            # youth/women/artists" mention elsewhere still counts).
+            after = text[m.end():m.end() + 40]
+            if matches_any(BIPOC_PROGRAM_NAME_AFTER_PATTERNS, after):
+                continue
             found = True
+            break
+        if found:
             break
     return found
 
@@ -773,6 +836,30 @@ def parse_raw_org_name(raw_name):
         text = m.group(1).strip()
     text = re.sub(r'\s*(\.\.\.)?[\s\-]*\d+\s*$', '', text).strip()
     return text
+
+def _body_without_org_name(body_norm, raw_name):
+    """Return the (already-normalized) body with the org's OWN name word
+    tokens removed, so a self-reference echo ("Women Building Futures must
+    replace servers", "The Ukrainian Shumka Dancers are undertaking...") is
+    not mistaken for a served population by the cross-axis
+    body_names_a_population() gate.
+
+    Only meaningful in the silent-body name-rule branch, where the body has
+    already been shown to carry no SERVED candidate on the classifying axis --
+    so any body word that coincides with the org name is, by construction, the
+    echo and safe to drop. A body that genuinely serves a population on
+    ANOTHER axis (BCW 51622's "Haitian youth") keeps that term, since it is
+    not part of the org name, so the gate still fires and blocks the borrow.
+    """
+    org = parse_raw_org_name(raw_name)
+    if not org:
+        return body_norm
+    org_norm = apply_identity_phrase_rewrites(normalize_text(org))
+    tokens = {w for w in re.findall(r'[a-z0-9]+', org_norm) if len(w) > 2}
+    if not tokens:
+        return body_norm
+    pattern = r'\b(?:' + '|'.join(re.escape(t) for t in tokens) + r')\b'
+    return re.sub(pattern, ' ', body_norm, flags=re.IGNORECASE)
 
 def body_names_a_population(text):
     """

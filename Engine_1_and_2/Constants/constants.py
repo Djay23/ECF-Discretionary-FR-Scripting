@@ -18,6 +18,16 @@ INDIGENOUS_UMBRELLA_FLAG = (
     "classified at general North American Indigenous level; verify served population"
 )
 
+# Plan.md Chunk G6 — added to a "served"-equivalent classification when the
+# ONLY evidence for it is a topic/partnership mention (role "topic_keep"),
+# not a genuine served-population claim. The classification itself is
+# unaffected -- resolver treats "topic_keep" as served for outcome purposes
+# -- this flag only tells a reviewer to double check.
+FLAG_INDIGENOUS_TOPIC_VERIFY = (
+    "Note (low priority): Indigenous topic/partnership mention - "
+    "not confirmed as served population; verify"
+)
+
 # ==================================================
 # CASE 4 — Structured / directional phrase patterns
 # Applied only if no direct taxonomy match found.
@@ -109,7 +119,9 @@ COUNTRY_REGION_MAP = {
     "ghanaian": ("African Origins", "Central and West African Origins", ""),
     "sierra leonean": ("African Origins", "Central and West African Origins", ""),
     "egyptian": ("African Origins", "North African Origins", ""),
-    "africancanadian": ("African Origins", "", ""),  # injected by IDENTITY_PHRASE_REWRITES mask — see P1-1
+    "africancanadian": ("African Origins", "", ""), 
+    "gazan": ("Asian Origins", "West and Central Asian and Middle Eastern Origins", "Palestinian"),
+    "gaza": ("Asian Origins", "West and Central Asian and Middle Eastern Origins", "Palestinian"),
 }
 
 # =======================
@@ -124,6 +136,26 @@ BIPOC_KEYWORDS = [
     #r"\bblack african\b",
     #r"\bracialized\b", # Change to flag if "racialized" is detected
 ]
+
+# When a BIPOC/POC keyword is IMMEDIATELY followed by a funding/program noun,
+# it is naming the grant/program ("the BIPOC Grant will support...", "a BIPOC
+# Media Lab") rather than describing a served population -- so that occurrence
+# is NOT a real BIPOC target (is_bipoc_real_target skips it, exactly like the
+# example/negation guards). A genuine "BIPOC youth / women / artists /
+# communities / entrepreneurs" mention elsewhere still counts.
+BIPOC_PROGRAM_NAME_AFTER_PATTERNS = [
+    r"^[\s\-]*(grant|fund|funding|program|programme|media\s+lab|lab|initiative|"
+    r"stream|cohort|bursary|scholarship|residenc(?:y|ies)|award|prize|pathway)s?\b",
+]
+
+# Over-broad continent keyword that is used far more often in a non-ethnic
+# geographic sense ("in the North American context/market") than as a served-
+# population descriptor, and never resolves correctly on its own (the real
+# Indigenous branch is keyed on "north american indigenous" and the specific
+# nations/Métis/Inuit entries). build_taxonomy skips emitting it as a matchable
+# keyword. NOTE: does NOT include "asian"/"african" etc. -- those ARE used as
+# real served-group descriptors ("Asian community", "African youth").
+TAXONOMY_KEYWORD_STOPLIST = {"north american"}
 
 # ============================================================
 # CASE 9b — Broad identity labels (not in taxonomy directly)
@@ -252,6 +284,22 @@ EXPANSION_PHRASES = [
     r"inclusive of all",
 ]
 
+# Tight subset of EXPANSION_PHRASES that specifically DISCLAIMS an org's own
+# named identity as its CURRENT served population ("beyond its original focus
+# on Black communities", "no longer limited to X"). Used only in the silent-
+# body name-rule branch (classify_pipeline / Gender_SexID): when an org-name
+# echo is the body's only signal, the org's name is the best evidence AND is
+# classified from -- UNLESS one of these disclaimers says the org has moved
+# past that identity (BCW 54525 -> stays General). Deliberately excludes the
+# broad EXPANSION_PHRASES entries ("expansion", "increasingly diverse",
+# "welcoming all") that legitimately appear in ordinary silent-body grant
+# text and must NOT suppress the name rule.
+IDENTITY_EXPANSION_DISCLAIMER_PATTERNS = [
+    r"beyond (its|their|our|the) (original|previous|former|initial|traditional|historic(al)?)",
+    r"no longer (limited|restricted|focused|exclusively)",
+    r"not (exclusively|solely|limited to|just|restricted to) (?:serving |for |focused on )?(?:the )?[a-z]",
+]
+
 HISTORICAL_PHRASES = [
     r"historic(al(ly)?)?",
     r"former(ly)?",
@@ -292,7 +340,15 @@ ETHNIC_ANNOTATION_NEGATION_PHRASES = [
 ASPIRATIONAL_PHRASES = [
     r"hop(es?|ing) to (serve|reach|support|engage|include|target)",
     r"plan(s|ning) to (serve|reach|support|engage|include|target)",
-    r"aim(s|ing) to (serve|reach|support|engage|include|target)",
+    # Plan.md Chunk G10 item 6 — "support" dropped from this alternation:
+    # "aims to support X" is ordinary present-tense mission language (what
+    # the org does), not a future/not-yet-achieved reach claim like "aims to
+    # expand/reach/include" — treating it as aspirational was over-firing
+    # and demoting genuinely-served groups to General. "will serve" bare
+    # (no intervening adverb) was checked and is NOT matched by any pattern
+    # here (line below requires eventually/soon/begin to/start to) — no
+    # change needed for that half of item 6.
+    r"aim(s|ing) to (serve|reach|engage|include|target|expand to)",
     r"intend(s|ing) to",
     r"will (eventually|soon|begin to|start to) (serve|reach|support)",
     r"goal(s)? (is|are|of|to) (reach(ing)?|serv(ing|e)|includ(ing|e))",
@@ -300,7 +356,23 @@ ASPIRATIONAL_PHRASES = [
     r"seek(s|ing) to (expand|reach|grow|include)",
     r"in the future",
     r"(future|upcoming) (focus|programming|initiative)",
+    # Plan.md Chunk G6 — "wants to expand/reach/include" is the same
+    # aspirational-reach framing as "hopes to"/"aims to", just a different
+    # lead verb (e.g. WILDNorth 50691 "wants to expand ... include more
+    # indigenous and marginalized communities").
+    r"wants? to (serve|reach|support|engage|include|target|expand)",
+    # "hoping to [verb] its/their reach" -- a reach-expansion claim, not a
+    # description of who is currently served.
+    r"hop(es?|ing) to \w+ (its|their|the|this) reach\b",
 ]
+
+# Plan.md Chunk G6 — same aspirational-reach frames as ASPIRATIONAL_PHRASES,
+# but checked against a WIDER before-window (see infer_role) because the
+# lead verb ("wants to"/"hoping to") can sit further back than the standard
+# 60-char window when a row restates the same aspirational goal across two
+# columns (Final_Summary_Description then Purpose) that get concatenated
+# with only a single space between them.
+ASPIRATIONAL_WIDE_WINDOW = 130
 
 EXAMPLE_PHRASES = [
     r"such as",
@@ -368,16 +440,28 @@ ROLE_ORG_NAME_AFTER_PATTERNS = [
     # Anchored to the start of the "after" window with a small filler-word
     # allowance, so this can't bleed forward into an unrelated later mention
     # (e.g. a second, provider-framed occurrence of the same keyword further
-    # down the sentence).
-    r"^\s*(?:\w+\s+){0,3}(?:institute|association|society|centre|center|"
-    r"foundation|council|collaborative|coalition|club|network|group|"
-    r"company|troupe|theatre|theater|ballet)\b",
+    # down the sentence). Plural forms included (Plan.md Chunk G7 —
+    # Thousand Faces 54505 "Council of India Societies", a partner org's
+    # name, not the funded org's served population) since a partner/co-
+    # sponsor org name is just as often referenced in the plural noun form.
+    r"^\s*(?:\w+\s+){0,3}(?:institutes?|associations?|societ(?:y|ies)|centres?|centers?|"
+    r"foundations?|councils?|collaboratives?|coalitions?|clubs?|networks?|groups?|"
+    r"compan(?:y|ies)|troupes?|theatres?|theaters?|ballets?)\b",
 ]
 
 ROLE_PROVIDER_BEFORE_PATTERNS = [
     r"\bled by\s*$",
     r"\bdelivered by\s*$",
     r"\bfacilitated by\s*$",
+    # Plan.md Chunk G6 — a role noun (consultant/advisor/liaison) hired to
+    # bring/integrate/apply the identity term's expertise INTO an org's own
+    # internal work is still a provider/expertise mention, not the served
+    # population, even when the identity term itself sits a few words later
+    # in the same clause (e.g. Skills Society 54491: "an Indigenous
+    # consultant to integrate Indigenous knowledge and practices" -- this
+    # covers the second "Indigenous" occurrence too, since it is the direct
+    # object of the same "consultant to integrate" clause).
+    r"\b(?:consultants?|advisors?|liaisons?)\s+to\s+(?:integrate|apply|bring|incorporate|share)\s*$",
 ]
 
 ROLE_PROVIDER_AFTER_PATTERNS = [
@@ -388,7 +472,7 @@ ROLE_PROVIDER_AFTER_PATTERNS = [
     # too ambiguous to use as a standalone weak-role signal.
     r"^\s*(?:\w+\s+){0,2}(?:nutritionists?|dietitians?|professionals?|"
     r"facilitators?|instructors?|advisors?|consultants?|artists?|"
-    r"teachers?)\b",
+    r"teachers?|liaisons?)\b",
 ]
 
 # ============================================================
@@ -416,6 +500,89 @@ ROLE_PROVIDER_AFTER_PATTERNS = [
 ROLE_TOPIC_AFTER_PATTERNS = [
     r"^\s*(?:\w+\s+){0,2}perspectives?\b",
     r"^\s*(?:\w+\s+){0,3}knowledge\s+holders?\b",
+]
+
+# ============================================================
+# G7 — Fictional/historical STORY-SETTING frame (Plan.md Chunk G7).
+# An identity/national term naming the SETTING of a story, myth, or
+# themed event -- not a real-world served population -- e.g. Theatre
+# Prospero 51022/54504 "based on the tale of an Egyptian prince"; Arts
+# On The Ave 54622 "A Byzantine Winter Festival" (a themed event name,
+# not an actual Byzantine-heritage festival). Generic across every
+# group (unlike the Indigenous-only G6 topic_keep frames) because a
+# fictional/mythic/historical setting is equally spurious for any
+# ethnicity/nationality term. Reuses the weak "topic" role (demotes,
+# same as the G3 curriculum-topic case) -- checked in infer_role
+# alongside ROLE_TOPIC_AFTER_PATTERNS.
+# ============================================================
+ROLE_SETTING_BEFORE_PATTERNS = [
+    r"\bbased on\b",
+    r"\binspired by\b",
+    r"\b(?:the\s+)?(?:tale|story|myth|legend)s?\s+(?:of|about)\b",
+    r"\bset in\b",
+    r"\bdepicting\b",
+]
+
+ROLE_SETTING_AFTER_PATTERNS = [
+    # Term followed BY the story/tale/myth/legend noun, not just preceded
+    # by it (e.g. Theatre Prospero 51022 "an Egyptian STORY about a
+    # Prince..." -- "story about" trails the term here, unlike 54504's
+    # "based on ... tale OF an Egyptian prince", which the BEFORE list
+    # above already covers).
+    r"^\s*(?:\w+\s+){0,1}(?:tale|story|myth|legend)s?\s+(?:of|about)\b",
+]
+
+# Bare "a [X] festival" (Plan.md Chunk G7, Arts On The Ave 54622 "A
+# Byzantine Winter Festival") is too broad to use as a GENERIC setting
+# frame -- a real ethnocultural org's own genuine identity is routinely
+# followed by "Festival" (e.g. "Ukrainian Dance Festival"), which is a
+# served-identity claim, not a themed/fictional setting. Scoped instead to
+# the "byzantine" ALWAYS_MULTIPLE_COMPOUNDS entry specifically (see
+# extract_compound_candidates in extractors.py): the historical Byzantine
+# Empire has no living modern population that ECF funding requests could
+# plausibly be describing, so "Byzantine ... Festival" is reliably a
+# themed/branded event name in this dataset, unlike a live ethnonym.
+BYZANTINE_FESTIVAL_AFTER_PATTERN = r"^\s*(?:\w+\s+){0,2}festival\b"
+
+# ============================================================
+# G7 — Spurious taxonomy-keyword token collisions (Plan.md Chunk G7).
+# A taxonomy keyword that ALSO has an unrelated, common non-ethnic sense
+# ("polish" as in "final polish" on a video edit, not the Polish people)
+# is skipped entirely at THIS occurrence -- not merely weak-tagged, since
+# there is no ethnic identity claim of any kind here to flag for review.
+# Keyed by the bare taxonomy keyword; checked against the ~20-char text
+# immediately before the match (see extract_taxonomy_candidates).
+# ============================================================
+NON_ETHNIC_SENSE_BEFORE_PATTERNS = {
+    "polish": [r"\b(?:final|last|finishing|rough)\s*$"],
+}
+
+# ============================================================
+# G6 — Indigenous topic-content / partnership: KEEP + verify (Plan.md
+# Chunk G6, hybrid policy). Unlike ROLE_TOPIC_AFTER_PATTERNS above (a
+# curriculum topic or consulted-party mention that DEMOTES to General),
+# these frames describe Indigenous knowledge/art/practice INTEGRATED as
+# the actual program content, or an Indigenous community/nation named as
+# an active PARTNER -- neither is a confident "served population" claim,
+# but neither is clearly NOT one either, so the classification stays
+# Indigenous and only a review flag (FLAG_INDIGENOUS_TOPIC_VERIFY) is
+# added. Checked in infer_role AFTER the demote-topic check above, so a
+# narrower demote frame (e.g. "knowledge holders") still wins over the
+# broader "knowledge" here.
+# ============================================================
+ROLE_TOPIC_KEEP_AFTER_PATTERNS = [
+    r"^\s*(?:\w+\s+){0,2}(?:knowledge|wisdom|dance|art|teachings?|ways\s+of\s+knowing)\b",
+    r"^\s*(?:\w+\s+){0,2}(?:nations?\s+)?engagement\b",
+]
+
+ROLE_TOPIC_KEEP_BEFORE_PATTERNS = [
+    r"\bin\s+partnership\s+with\b",
+    r"\bin\s+collaboration\s+with\b",
+    r"\bcollaboration\s+with\b",
+    r"\bpartner(?:ing|ships?)?\s+with\b",
+    r"\bengagement\s+with\b",
+    r"\balongside\b",
+    r"\bwork(?:ing)?\s+with\b",
 ]
 
 # G3 — served-frame rescue extension (used alongside SERVED_FRAME_BEFORE/

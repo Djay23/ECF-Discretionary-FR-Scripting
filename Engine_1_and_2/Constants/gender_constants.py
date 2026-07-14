@@ -269,6 +269,16 @@ SEXUAL_GENDER_DIVERSE_PATTERNS = (
     + [BARE_TRANS_PATTERN]
 )
 
+# Plan.md Chunk G10 item 2 — of the SEXUAL_GENDER_DIVERSE_KEYS umbrella, only
+# the "gender_diverse" key itself (bare "gender-diverse") is ambiguous enough
+# to warrant SFLAG_GENDER_TERM. The other keys (trans/non-binary/two-spirit/
+# agender/gender-fluid/gender-neutral/genderqueer) unambiguously belong under
+# the 2SLGBTQIA+ umbrella, so flagging every occurrence of those was noise —
+# a 2SLGBTQIA+ result from one of them already speaks for itself.
+SEXUAL_GENDER_DIVERSE_KEY_ONLY_PATTERNS = [
+    pat for pat, key, _ in GENDER_TERM_PATTERNS if key == "gender_diverse"
+]
+
 # Explicit orientation terms + acronym family.
 # "queer" is treated as an orientation term here — presence alone → 2SLGBTQIA+,
 # no prefix-context check needed (that check only matters for gender classification).

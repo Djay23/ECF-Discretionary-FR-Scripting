@@ -40,10 +40,10 @@ Tabs produced:
     13. Sexual Class Frequency   - distinct Sexual Id values, most-common first
 
 To Run:
-    python generate_review_report.py
+   $env:PYTHONIOENCODING="utf-8"; $env:HF_HUB_OFFLINE="1"; python Engine_1_and_2/Auditing/generate_review_report.py
 
 Output:
-    Data Sheets/review_report(07-08 new implement).xlsx  (separate workbook — FR testing.xlsx is never modified)
+    Data Sheets/review_report(ML implement).xlsx  (separate workbook — FR testing.xlsx is never modified)
 """
 
 SAMPLE_SIZE = 100
@@ -58,7 +58,7 @@ def main():
 
     taxonomy_filepath = bootstrap.PROJECT_ROOT / "Taxonomy" / "Taxonomy - Definitions.xlsx"
     funding_filepath = bootstrap.PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx"
-    OUTPUT_FILE = bootstrap.PROJECT_ROOT / "Data Sheets" / "review_report(07-08 new implement).xlsx"
+    OUTPUT_FILE = bootstrap.PROJECT_ROOT / "Data Sheets" / "review_report(ML implement).xlsx"
 
     tax_df = pd.read_excel(taxonomy_filepath, sheet_name=et.TAXONOMY_SHEET, dtype=str)
     data_df = pd.read_excel(funding_filepath, sheet_name=et.DATA_SHEET, dtype=str)

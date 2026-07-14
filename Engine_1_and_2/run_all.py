@@ -19,7 +19,7 @@ gender/sex columns blank. Use this script (or run both engines) for a complete
 output.
 
 To Run:
-    python Engine_1_and_2/run_all.py
+    $env:PYTHONIOENCODING="utf-8"; $env:HF_HUB_OFFLINE="1"; python Engine_1_and_2/run_all.py
 """
 
 import sys

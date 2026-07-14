@@ -683,19 +683,22 @@ class TestSprint2Fixes(unittest.TestCase):
         self.assertNotEqual(e1, MULTIPLE_ETHNIC)
 
     # ------------------------------------------------------------------
-    # S7. Somali + Black → Multiple + umbrella sub-flag
+    # S7. Somali + Black → Multiple, no primary flag
     # ------------------------------------------------------------------
-    def test_somali_and_black_produces_multiple_with_umbrella_flag(self):
+    def test_somali_and_black_produces_multiple_no_generic_flag(self):
         """
         "Somali project for Black Muslim communities" — Somali (African Origins)
-        + Black (Other Ethnic) → umbrella sub-flag, not generic "distinct groups".
+        + Black (Other Ethnic) → Multiple, no primary flag (Plan.md Chunk G9:
+        the generic "multiple distinct groups detected" text is dropped as
+        noise here too, same as Step 3's Fix 4 treatment — Black vs African
+        is a locked policy call, not something needing a review flag).
         """
         e1, e2, e3, flag = classify_row(
             row(desc="Somali project aims to strengthen cultural pride for Black Muslim communities."),
             TAXONOMY_S2,
         )
         self.assertEqual(e1, MULTIPLE_ETHNIC)
-        self.assertIn("umbrella term (Black)", flag)
+        self.assertNotIn("umbrella term (Black)", flag)
 
     # ------------------------------------------------------------------
     # S8. Black + Indigenous → BIPOC signal (not "multiple distinct groups")
@@ -2334,6 +2337,103 @@ class TestG7FictionalSettingAndSpuriousTokenCollisions(unittest.TestCase):
         )
         self.assertEqual(e1, GENERAL_POP)
         self.assertIn("org_name context only", flag)
+
+
+class TestG8GazaPalestinianMapping(unittest.TestCase):
+    """Plan.md Chunk G8: "Gazan"/"Gaza" are demonyms for Gaza that aren't a
+    taxonomy keyword on their own (only "Palestinian" is the real L3 term),
+    so a row that only ever says "Gazan" fell through to General with no
+    ethnic signal at all. Added to COUNTRY_REGION_MAP -> Asian Origins /
+    West and Central Asian and Middle Eastern Origins / Palestinian, same
+    L1/L2/L3 as the existing Canada-Palestine row (50613).
+
+    Verified over all 448 live Audit Detail rows: exactly one row changes
+    (54545 Penny Appeal Canada, General -> Palestinian); zero regressions."""
+
+    def test_row_54545_gazan_newcomers_maps_to_palestinian(self):
+        """Real gold row shape (Penny Appeal Canada 54545): "help Gazan
+        newcomers build stability" / "support Gazan newcomers through
+        trauma-informed mental health services" -- a genuine served-
+        population claim, previously unmapped and falling to General."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                desc=(
+                    "Penny Appeal Canada is implementing a focused "
+                    "initiative in Edmonton to help Gazan newcomers build "
+                    "stability, connection, and resilience."
+                ),
+                summary=(
+                    "Penny Appeal Canada is launching a community-based "
+                    "program in Edmonton to support Gazan newcomers "
+                    "through trauma-informed mental health services, peer "
+                    "support, and welcoming hubs."
+                ),
+                purpose=(
+                    "To launch a trauma-informed program supporting Gazan "
+                    "newcomers with mental health services, peer support, "
+                    "and anti-racism workshops."
+                ),
+            ),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "Asian Origins")
+        self.assertEqual(e2, "West and Central Asian and Middle Eastern Origins")
+        self.assertEqual(e3, "Palestinian")
+
+    def test_from_gaza_phrase_also_maps_to_palestinian(self):
+        """"from Gaza" (Case 7 prepositional form) resolves the same as the
+        bare "Gazan" demonym."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="Supporting newcomer families from Gaza settling in Edmonton."),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "Asian Origins")
+        self.assertEqual(e3, "Palestinian")
+
+
+class TestG9FlagTextCleanup(unittest.TestCase):
+    """Plan.md Chunk G9: reporting-quality-only flag text fixes; neither
+    changes any classification outcome.
+
+    1. The "pattern" source flag ("Pattern rule match (Directional Region,
+       e.g. North African)") was stamped on North American Indigenous rows
+       too, since Indigenous terms (indigenous/aboriginal/metis/treaty 6/...)
+       also flow through PATTERN_RULES -- wrong label. Indigenous now gets
+       its own flag text, keyed on level1 in source_flag().
+    2. The Step 2b "Review: multiple distinct groups detected..." flag on
+       the is_black and (is_african|is_caribbean) branch is dropped as pure
+       noise, matching Step 3's existing Fix 4 treatment (rows 120, 164,
+       229, 358 in the live Audit Detail sheet).
+
+    Verified over all 448 live Audit Detail rows: 42 flag-text-only flips
+    (38 Indigenous-pattern relabels + 4 stale-flag removals -- see
+    TestSprint2Fixes.test_somali_and_black_produces_multiple_no_generic_flag
+    above for the Black+African case), plus the one real G8 classification
+    flip; zero classification regressions elsewhere."""
+
+    def test_indigenous_pattern_match_gets_own_flag_text(self):
+        """A bare "aboriginal" pattern match (not a taxonomy fixture
+        keyword, so it resolves via PATTERN_RULES source "pattern") must
+        not carry the African-specific "Directional Region, e.g. North
+        African" label."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="Programming and supports for Aboriginal youth in Edmonton."),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+        self.assertIn("Indigenous identity term", flag)
+        self.assertNotIn("North African", flag)
+
+    def test_directional_region_pattern_flag_unchanged_for_non_indigenous(self):
+        """Regression guard: a genuine directional-region pattern match
+        (e.g. "North African") keeps its existing flag text -- only the
+        Indigenous branch gets the new label."""
+        e1, e2, e3, flag = classify_row(
+            row(desc="Support for North African newcomer families in Edmonton."),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "African Origins")
+        self.assertIn("Directional Region, e.g. North African", flag)
 
 
 if __name__ == "__main__":

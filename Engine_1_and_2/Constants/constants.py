@@ -340,7 +340,15 @@ ETHNIC_ANNOTATION_NEGATION_PHRASES = [
 ASPIRATIONAL_PHRASES = [
     r"hop(es?|ing) to (serve|reach|support|engage|include|target)",
     r"plan(s|ning) to (serve|reach|support|engage|include|target)",
-    r"aim(s|ing) to (serve|reach|support|engage|include|target|expand to)",
+    # Plan.md Chunk G10 item 6 — "support" dropped from this alternation:
+    # "aims to support X" is ordinary present-tense mission language (what
+    # the org does), not a future/not-yet-achieved reach claim like "aims to
+    # expand/reach/include" — treating it as aspirational was over-firing
+    # and demoting genuinely-served groups to General. "will serve" bare
+    # (no intervening adverb) was checked and is NOT matched by any pattern
+    # here (line below requires eventually/soon/begin to/start to) — no
+    # change needed for that half of item 6.
+    r"aim(s|ing) to (serve|reach|engage|include|target|expand to)",
     r"intend(s|ing) to",
     r"will (eventually|soon|begin to|start to) (serve|reach|support)",
     r"goal(s)? (is|are|of|to) (reach(ing)?|serv(ing|e)|includ(ing|e))",

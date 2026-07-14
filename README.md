@@ -400,4 +400,11 @@ Is this something a human reviewer actually needs to look at?
 # 2026-07-14
 ### Sprint 3- Continued auditing
 - Auditing of pipeline blueprint for gap fixes.
-- Manual Classification of Sector Levels --> 36/64
+- Manual Classification of Sector Levels --> Complete
+- Gender/Sex and Ethnic classification/Flagging --> complete.
+- Affordable Housing/ECD --> complete (by hand).
+
+### TO DO:
+- What flags don't we need to reduce Reviewer fatigue.
+- Stregnthening of pipeline through ML hookup?
+- Account name -> Sector -> limited information for classification for organization.

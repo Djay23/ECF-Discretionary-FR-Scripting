@@ -146,7 +146,7 @@ class TestClassifyPipeline(unittest.TestCase):
         self.assertEqual(e1, "Caribbean Origins")
         self.assertEqual(e2, "")
         self.assertEqual(e3, "")
-        self.assertIn("Country/nationality", flag)
+        self.assertIn("supplementary list", flag)
 
     # ------------------------------------------------------------------
     # 4. Pattern rule case
@@ -163,7 +163,7 @@ class TestClassifyPipeline(unittest.TestCase):
         self.assertEqual(e1, "African Origins")
         self.assertEqual(e2, "Southern and East African Origins")
         self.assertEqual(e3, "")
-        self.assertIn("Pattern rule", flag)
+        self.assertIn("Regional phrase matched", flag)
 
     # ------------------------------------------------------------------
     # 5. Compound identity (Afro-Caribbean) → always MULTIPLE
@@ -328,7 +328,7 @@ class TestClassifyPipeline(unittest.TestCase):
         # Somali is still extracted by the dumb sensor — classification proceeds
         self.assertNotEqual(e1, GENERAL_POP)
         self.assertEqual(e1, "African Origins")
-        self.assertIn("Negation detected", flag)
+        self.assertIn("negation word", flag)
 
     # ------------------------------------------------------------------
     # 13. Organization name fallback (last resort)
@@ -348,7 +348,7 @@ class TestClassifyPipeline(unittest.TestCase):
         self.assertEqual(e1, "North American Indigenous Origins")
         self.assertEqual(e2, "")
         self.assertEqual(e3, "")
-        self.assertIn("organization name lookup", flag.lower())
+        self.assertIn("curated lookup list", flag)
 
     # ------------------------------------------------------------------
     # 14. Empty input → General Population with "Empty input" flag
@@ -443,7 +443,7 @@ class TestClassifyPipeline(unittest.TestCase):
             TAXONOMY,
         )
         self.assertEqual(e1, GENERAL_POP)
-        self.assertNotIn("Negation detected", flag)
+        self.assertNotIn("negation word", flag)
 
     def test_excluded_inclusion_language_no_negation_flag(self):
         """'voices often excluded' (inclusion framing), no ethnic term → no negation flag."""
@@ -451,7 +451,7 @@ class TestClassifyPipeline(unittest.TestCase):
             row(desc="Amplifying underrepresented voices often excluded from mainstream conversations."),
             TAXONOMY,
         )
-        self.assertNotIn("Negation detected", flag)
+        self.assertNotIn("negation word", flag)
 
     def test_excluded_near_term_pruned_no_negation_flag(self):
         """Ethnic term present but only benign 'excluded' → pruned, no negation flag."""
@@ -460,7 +460,7 @@ class TestClassifyPipeline(unittest.TestCase):
             TAXONOMY,
         )
         self.assertEqual(e1, "African Origins")
-        self.assertNotIn("Negation detected", flag)
+        self.assertNotIn("negation word", flag)
 
     def test_intentional_negation_still_flags(self):
         """
@@ -473,7 +473,7 @@ class TestClassifyPipeline(unittest.TestCase):
             TAXONOMY,
         )
         self.assertEqual(e1, MULTIPLE_ETHNIC)
-        self.assertIn("Negation detected", flag)
+        self.assertIn("negation word", flag)
 
     # ------------------------------------------------------------------
     # Case 13 org-name flag: pruned to explicit "cultural" forms (Part 3)
@@ -733,7 +733,7 @@ class TestSprint2Fixes(unittest.TestCase):
         )
         self.assertEqual(e1, "African Origins")
         self.assertEqual(e2, "Southern and East African Origins")
-        self.assertIn("Country/nationality", flag)
+        self.assertIn("supplementary list", flag)
 
     # ------------------------------------------------------------------
     # S10. "French Canadian Association" → ethnic kept (not language flag)
@@ -1451,7 +1451,7 @@ class TestGenderSexualClassifier(unittest.TestCase):
         """'not serving women' — negation detected; classification may still proceed
         (negation is annotation-only) but FLAG_NEGATION must appear."""
         label, flag = classify_gender(row(desc="This program is not serving women exclusively."))
-        self.assertIn("Negation detected", flag)
+        self.assertIn("negation word", flag)
 
     def test_empty_row_returns_general_pop(self):
         """All columns empty → General Population, no crash."""
@@ -2445,19 +2445,78 @@ class TestG9FlagTextCleanup(unittest.TestCase):
             TAXONOMY,
         )
         self.assertEqual(e1, "North American Indigenous Origins")
-        self.assertIn("Indigenous identity term", flag)
-        self.assertNotIn("North African", flag)
+        self.assertIn("General Indigenous term matched", flag)
+        self.assertNotIn("Regional phrase matched", flag)
 
     def test_directional_region_pattern_flag_unchanged_for_non_indigenous(self):
         """Regression guard: a genuine directional-region pattern match
-        (e.g. "North African") keeps its existing flag text -- only the
-        Indigenous branch gets the new label."""
+        (e.g. "North African") keeps its own distinct flag text -- only the
+        Indigenous branch gets the "General Indigenous term matched" label."""
         e1, e2, e3, flag = classify_row(
             row(desc="Support for North African newcomer families in Edmonton."),
             TAXONOMY,
         )
         self.assertEqual(e1, "African Origins")
-        self.assertIn("Directional Region, e.g. North African", flag)
+        self.assertIn("Regional phrase matched", flag)
+
+
+class TestG11AllyshipDemotion(unittest.TestCase):
+    """Plan.md Task 4 (G11): a general-community request that merely frames
+    itself as an "ally to indigenous people" / expresses support for
+    "reconciliation" was classified North American Indigenous Origins with
+    full confidence and NO review flag -- an allyship/reconciliation
+    statement names the org's own relationship to the group, not a served
+    population claim.
+
+    Stakeholder-decided fix (2026-07-15): KEEP Indigenous (do not demote to
+    General), but ADD a review flag. The allyship frame demotes only the
+    specific "ally to X" occurrence from role "served" to weak "topic"; a
+    separate genuine topic/partnership occurrence elsewhere in the same row
+    (e.g. "indigenous knowledge" integrated as program content) still
+    resolves as "topic_keep", so the row stays Indigenous overall but now
+    carries FLAG_INDIGENOUS_TOPIC_VERIFY instead of silent confidence."""
+
+    def test_nature_trail_ally_framing_stays_indigenous_but_gets_verify_flag(self):
+        """Representative row: a parkland/rewilding trail project whose only
+        Indigenous mentions are "indigenous knowledge" (topic content) and
+        "an ally to indigenous people ... contribute to reconciliation"
+        (allyship framing) -- no actual Indigenous served population named
+        anywhere in the text."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                desc=(
+                    "Interpretive signage will teach visitors about the "
+                    "parkland ecoregion, indigenous knowledge, and native "
+                    "plant species along the trail."
+                ),
+                summary=(
+                    "This project offers an opportunity to be an ally to "
+                    "indigenous people and contribute to reconciliation and "
+                    "climate change solutions through community rewilding."
+                ),
+                purpose="To restore native habitat and build public trail infrastructure.",
+                name="River Valley Rewilding Initiative",
+            ),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+        self.assertIn("Indigenous topic/partnership mention", flag)
+
+    def test_genuinely_served_indigenous_row_not_affected_by_allyship_frame(self):
+        """Regression guard: an "ally to indigenous people" mention must NOT
+        demote a row that ALSO contains a genuine served-population claim
+        elsewhere (e.g. "programming for Indigenous youth") -- the served
+        occurrence still wins, no verify flag needed."""
+        e1, e2, e3, flag = classify_row(
+            row(desc=(
+                "Our organization strives to be an ally to indigenous "
+                "people. We deliver after-school programming for Indigenous "
+                "youth in the community."
+            )),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+        self.assertNotIn("Indigenous topic/partnership mention", flag)
 
 
 if __name__ == "__main__":

@@ -476,6 +476,32 @@ ROLE_PROVIDER_AFTER_PATTERNS = [
 ]
 
 # ============================================================
+# G11 — Allyship / reconciliation-ally frame demotion (Plan.md Task 4).
+#
+# An "ally to indigenous people"-style frame names the ORG/SPEAKER's
+# relationship to a group, not the group as a served population
+# ("...an opportunity to be an ally to indigenous people and contribute to
+# reconciliation and climate change solutions" -- a general-community
+# nature-trail request with no Indigenous served population). Reuses the
+# weak "topic" role (same demotion outcome as the G3 curriculum-topic case
+# and the G7 setting frame) -- checked in infer_role AFTER the served-frame/
+# INDIGENOUS_CONTEXT_RESCUE_PATTERNS rescue, so a genuinely served row
+# (residential-school/ceremony context, or an explicit "for X"/"serving X"
+# lead-in) still wins and is never reached by this check.
+#
+# Deliberately group-agnostic (like ROLE_SETTING_*/ROLE_TOPIC_*) rather than
+# Indigenous-scoped: an "ally to X" / "allyship with X" frame is equally a
+# non-served signal for any group X, not an Indigenous-specific pattern.
+# ============================================================
+ROLE_ALLYSHIP_BEFORE_PATTERNS = [
+    r"\ban ally to\b",
+    r"\ballies of\b",
+    r"\ballyship (with|for|to)\b",
+    r"\bin support of reconciliation\b",
+    r"\b(contribute|committed?) to reconciliation\b",
+]
+
+# ============================================================
 # G3 — Indigenous pattern-path role-tiering (Plan.md Chunk G3).
 #
 # Indigenous PATTERN candidates ("indigenous"/"aboriginal"/"metis"/etc,

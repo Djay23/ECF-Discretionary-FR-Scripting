@@ -65,19 +65,23 @@ def source_flag(source: str, level1: str = "") -> str:
     Taxonomy and org_lookup matches produce no primary flag of their own
     (taxonomy is the default path; org is annotated by the caller branch).
 
-    Plan.md Chunk G9 — the "pattern" source covers both the directional-
+    the "pattern" source covers both the directional-
     region rules (North African, South Asian, ...) AND the Indigenous terms
     (indigenous/aboriginal/metis/treaty 6/...) in PATTERN_RULES; a shared
     "Directional Region, e.g. North African" flag text was wrong for the
     Indigenous rows, so Indigenous gets its own text keyed on level1.
     """
     if source == "pattern" and level1 == INDIGENOUS_L1:
-        return "Pattern rule match (Indigenous identity term)"
+        return ("General Indigenous term matched (e.g. \"Indigenous\"/\"Aboriginal\"/"
+                "\"First Nations\") - no specific nation or community named in the text")
     return {
-        "pattern": "Pattern rule match (Directional Region, e.g. North African)",
-        "country": "Country/nationality mapping match",
-        "compound": "Compound identity term match",
-        "broad_identity": "Broad identity term - review recommended",
+        "pattern": ("Regional phrase matched (e.g. \"North African\", \"South Asian\") "
+                    "- resolves to a sub-region, not a specific country or group"),
+        "country": ("Country/nationality recognized via a supplementary list, not the "
+                    "taxonomy sheet - confirm the assigned region is correct"),
+        "compound": "Matched a known dual-identity phrase (e.g. \"Afro-Caribbean\") as a single component",
+        "broad_identity": ("Broad, non-specific identity term matched (e.g. \"multiracial\", "
+                           "\"mixed heritage\") - no specific ethnic group named in the text"),
     }.get(source, "")
 
 def _role_rank(role: str) -> int:
@@ -194,13 +198,17 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
             if len(org_l1) >= 2:
                 return build_output(
                     MULTIPLE_ETHNIC, "", "",
-                    "Matched via known organization name lookup (multiple groups)",
+                    "Classified from the organization's name via a curated lookup list "
+                    "(multiple groups) - the request text itself contains no ethnic signal; "
+                    "confirm this still reflects who is served",
                     context_flags,
                 )
             best = org[0]
             return build_output(
                 best["level1"], best["level2"], best["level3"],
-                "Matched via known organization name lookup",
+                "Classified from the organization's name via a curated lookup list - "
+                "the request text itself contains no ethnic signal; confirm this still "
+                "reflects who is served",
                 context_flags,
             )
         if weak:

@@ -160,7 +160,8 @@ UMBRELLA_ACRONYM_PATTERN = r"\b(2s)?lgbt(?:q(?:ia?|2s)?)?\+?(?!\w)"
 # ---------------------------------------------------------------------------
 FLAG_ASPIRATIONAL     = "Aspirational/future language - group may not be current served population"
 FLAG_TWO_SPIRIT_INDIG = "Two-Spirit present - also an Indigenous signal - cross-check ethnic classification"
-FLAG_NEGATION         = "Negation detected - verify exclusion vs inclusion intent"
+FLAG_NEGATION         = ("Matched term appears near a negation word (e.g. \"not\", \"excluding\") "
+                          "- confirm the population is served, not excluded")
 FLAG_UMBRELLA_ACRONYM = "Gender identity inferred from 2SLGBTQIA+ umbrella acronym - umbrella also spans cisgender orientations; verify served population"
 FLAG_ORG_NAME         = "Gender/sexual term appears inside an organization or proper name - verify served population vs organization name"
 FLAG_AMBIGUOUS_TERM   = "Ambiguous coded gender/orientation term (femme/masc/butch/...) - verify served population on both gender and sexual-identity axes"
@@ -294,6 +295,7 @@ SEXUAL_ORIENTATION_PATTERNS = [
 ]
 
 # Sexual identity flag strings
-SFLAG_NEGATION = "Negation detected - verify exclusion vs inclusion intent"
+SFLAG_NEGATION = ("Matched term appears near a negation word (e.g. \"not\", \"excluding\") "
+                   "- confirm the population is served, not excluded")
 SFLAG_GENDER_TERM = "2SLGBTQIA+ inferred from a gender-identity term (trans/non-binary/two-spirit/...) not an explicit orientation - verify sexual-identity intent"
 SFLAG_ASPIRATIONAL = "Aspirational/future language - group may not be current served population"

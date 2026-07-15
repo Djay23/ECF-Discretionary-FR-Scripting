@@ -246,7 +246,11 @@ def extra_annotation_notes(combined, states, bipoc_present, resolved_label=None)
     is_general = resolved_label is not None and resolved_label == GENERAL_POP
 
     if primary_states and not is_general and re.search(r"\b(especially|particularly)\b", combined, re.IGNORECASE):
-        notes.append("Emphasis phrase ('especially'/'particularly') detected — verify specificity of population served")
+        notes.append(
+            "\"Especially\"/\"particularly\" appears near the matched group - it may be "
+            "one example within a broader population; confirm the classification isn't "
+            "narrower (or broader) than intended"
+        )
 
     if not is_general and re.search(r"\bhindu\b", combined, re.IGNORECASE):
         notes.append("'Hindu' detected — may imply South Asian/Indian origin; verify as religion vs. ethnicity")
@@ -256,7 +260,10 @@ def extra_annotation_notes(combined, states, bipoc_present, resolved_label=None)
     # Uses is_non_prefixed (the per-keyword path) rather than NEGATION_PHRASES (whole-text scan),
     # so "non-profit" cannot trigger it — only an actually matched ethnic term can.
     if primary_states and has_non_prefixed_negation(primary_states, combined):
-        notes.append("Negation detected - verify exclusion vs inclusion intent")
+        notes.append(
+            "Matched term appears near a negation word (e.g. \"not\", \"excluding\") - "
+            "confirm the population is served, not excluded"
+        )
 
     return notes
 

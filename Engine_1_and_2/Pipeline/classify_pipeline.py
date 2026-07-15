@@ -462,3 +462,44 @@ def classify_row(row, taxonomy_entries):
         flag = f"{flag}; {note_text}" if flag else note_text
 
     return (e1, e2, e3, flag)
+
+
+# ---------------------------------------------------------------------------
+# ADDITIVE LAYER 3 — Multi-identity marker collector (string-safe).
+#
+# Purely additive and read-only: does NOT touch classify_row, the resolver,
+# or any existing label/flag. It re-runs the SAME body extraction classify_row
+# performs and returns the distinct SERVED ethnic-group tags, so a row the
+# resolver collapses to the single string "Multiple Ethnic and Cultural
+# Origins" can still expose WHICH specific groups were matched. The caller
+# (generate_review_report.py) comma-joins these into the new, non-breaking
+# `multi_identity_markers` column for intersectional visibility. Existing
+# outputs and downstream consumers are unaffected.
+# ---------------------------------------------------------------------------
+
+def identity_markers(row, taxonomy_entries):
+    """Distinct served ethnic-group tags detected in the BODY (deepest label
+    per group), mirroring classify_row's served-candidate set. Never
+    classifies; feeds the additive `multi_identity_markers` column only."""
+    body_text, name_text = get_body_and_name_texts(row)
+    if not body_text.strip():
+        return []
+    candidates = (
+        extract_taxonomy_candidates(body_text, taxonomy_entries, name_text)
+        + extract_compound_candidates(body_text, name_text)
+        + extract_pattern_candidates(body_text, name_text)
+        + extract_country_candidates(body_text, name_text)
+        + extract_broad_identity_candidates(body_text, name_text)
+    )
+    # Same "served role corroborates, weak roles do not" gate classify_row uses.
+    served = [c for c in candidates if c.get("role", "served") == "served"]
+    markers = []
+    seen = set()
+    for c in served:
+        label = c["level3"] or c["level2"] or c["level1"]
+        if label and label not in seen:
+            seen.add(label)
+            markers.append(label)
+    if is_bipoc_real_target(body_text) and "BIPOC" not in seen:
+        markers.append("BIPOC")
+    return markers

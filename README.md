@@ -412,4 +412,9 @@ Is this something a human reviewer actually needs to look at?
 
 # 2026-07-15
 ### Impact Assessment
-- 
+- How many of each Ethnic Group were served.
+- Number of Served population for each subgroup in Gender and Sex.
+- For each specific sector, what ethnic groups were served, and how many of those were Approved vs. Declined.
+- How many flags generated.
+- Of the generated flags, what ethnic/Gender and Sex did they fall under --> Which are necessary?
+- Should BIPOC mention without any ethnic signal just be grouped as general? Or should BIPOC mention without ethnic signal be treated as Multiple Ethnic Origins. --> And if we choose to group BIPOC mention without ethnic body signal, do we look at Org. Name

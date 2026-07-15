@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Engine 1 and 2
 import bootstrap 
 
 import ethnic_taggerv3 as et
-from classify_pipeline import classify_row as pipeline_classify_row
+from classify_pipeline import classify_row as pipeline_classify_row, identity_markers
 import Gender_SexID as gs
 import audit_evidence as ae
 from pathlib import Path
@@ -54,6 +54,48 @@ GENDER_SAMPLE_COLS = ["Funding Request Name", "Final_Project_Description",
 SEXUAL_SAMPLE_COLS = ["Funding Request Name", "Final_Project_Description",
                       "Final_Summary_Description", "Purpose", "Sexual Id", "Sexual Flag"]
 
+
+# ---------------------------------------------------------------------------
+# ADDITIVE LAYER 4 — Deterministic validation moat (no numeric scores).
+#
+# Purely additive triage: it reads the labels/flags/evidence the engine ALREADY
+# produced for a row and sorts it into one of three review tiers. It fabricates
+# no confidence score and changes no classification — it only decides whether a
+# row needs a human look, using real code signals:
+#
+#   * System Blindspot : every axis resolved to General AND no evidence term was
+#                        matched anywhere -> unrecognized terminology, worth a look.
+#   * Targeted Audit   : a "Multiple" multi-group fallback fired, OR a name-vs-body
+#                        field conflict was flagged by the engine.
+#   * Auto-Pass        : a clean, unconflicted single-identity (or clearly-signalled)
+#                        row -- no review needed.
+# ---------------------------------------------------------------------------
+def audit_tier(e1, g_label, s_label, flag, g_flag, s_flag, eth_ev, gen_ev, sex_ev):
+    is_multiple = (e1 == et.MULTIPLE_ETHNIC) or (g_label == gs.GENDER_MULTIPLE)
+    all_general = (
+        e1 == et.GENERAL_POP
+        and g_label == gs.GENDER_GENERAL_POP
+        and s_label == gs.SEXUAL_GENERAL_POP
+    )
+    no_evidence = not (eth_ev.strip() or gen_ev.strip() or sex_ev.strip())
+    all_flags = " ".join(f for f in (flag, g_flag, s_flag) if f).lower()
+    # A direct syntax conflict between distinct free-text fields: the engine
+    # flagged that the signal lives only in the org/name (body did not
+    # corroborate) or that distinct groups co-occur across the text.
+    field_conflict = any(marker in all_flags for marker in (
+        "signal appears only in the organization",
+        "classified from organization name",
+        "org-name self-reference",
+        "co-present",
+        "distinct groups",
+    ))
+    if all_general and no_evidence:
+        return "System Blindspot"
+    if is_multiple or field_conflict:
+        return "Targeted Audit"
+    return "Auto-Pass"
+
+
 def main():
 
     taxonomy_filepath = bootstrap.PROJECT_ROOT / "Taxonomy" / "Taxonomy - Definitions.xlsx"
@@ -81,6 +123,24 @@ def main():
             g_flag = "; ".join(p for p in [g_flag, CROSS_DOMAIN_NOTE] if p)
             s_flag = "; ".join(p for p in [s_flag, CROSS_DOMAIN_NOTE] if p)
 
+        eth_ev = ae.ethnic_evidence(row, taxonomy_entries)
+        gen_ev = ae.gender_evidence(row)
+        sex_ev = ae.sexual_evidence(row)
+
+        # --- Additive Layer 3: intersectional marker string (string-safe) ---
+        # All distinct matched identity tags across axes, comma-joined. Existing
+        # label columns are untouched; this is extra visibility only.
+        markers = identity_markers(row, taxonomy_entries)
+        if g_label != gs.GENDER_GENERAL_POP:
+            markers.append(g_label)
+        if s_label != gs.SEXUAL_GENERAL_POP:
+            markers.append(s_label)
+        multi_identity_markers = ", ".join(markers)
+
+        # --- Additive Layer 4: deterministic triage tier ---
+        tier = audit_tier(e1, g_label, s_label, flag, g_flag, s_flag,
+                          eth_ev, gen_ev, sex_ev)
+
         rows.append({
             "Funding Request Name": row.get("Funding Request Name", f"row {idx}"),
             "SF_18_ID_Funding_Request__c": row.get("SF_18_ID_Funding_Request__c", ""),
@@ -95,9 +155,11 @@ def main():
             "Gender Flag": g_flag,
             "Sexual Id": s_label,
             "Sexual Flag": s_flag,
-            "Ethnic Evidence": ae.ethnic_evidence(row, taxonomy_entries),
-            "Gender Evidence": ae.gender_evidence(row),
-            "Sexual Evidence": ae.sexual_evidence(row),
+            "multi_identity_markers": multi_identity_markers,
+            "audit_tier": tier,
+            "Ethnic Evidence": eth_ev,
+            "Gender Evidence": gen_ev,
+            "Sexual Evidence": sex_ev,
         })
 
     results_df = pd.DataFrame(rows)
@@ -181,14 +243,26 @@ def main():
         "Final_Project_Description", "Final_Summary_Description", "Purpose",
         "Ethnic 1", "Ethnic 2", "Ethnic 3",
         "Gender Id", "Sexual Id",
+        "multi_identity_markers", "audit_tier",
         "Classification Flag", "Gender Flag", "Sexual Flag",
         "Ethnic Evidence", "Gender Evidence", "Sexual Evidence",
     ]
     audit_detail_df = results_df[AUDIT_DETAIL_COLS]
 
+    # --- Additive Layer 4: Manual Audit Queue — every non-Auto-Pass row ---
+    # Deterministic triage output. Auto-Pass rows are omitted; Targeted Audit
+    # and System Blindspot rows are surfaced together for human review, tier
+    # column first so a reviewer can sort/triage.
+    manual_audit_df = results_df[results_df["audit_tier"] != "Auto-Pass"][AUDIT_DETAIL_COLS]
+    tier_counts = results_df["audit_tier"].value_counts().to_dict()
+    print(f"Audit tiers: {tier_counts}")
+    print(f"Manual audit queue (Targeted Audit + System Blindspot): {len(manual_audit_df)} rows")
+
     with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
         # Primary audit surface
         audit_detail_df.to_excel(writer, sheet_name="Audit Detail", index=False)
+        # Deterministic validation moat (additive Layer 4)
+        manual_audit_df.to_excel(writer, sheet_name="Manual Audit Queue", index=False)
         # Ethnic tabs
         general_sample.to_excel(writer, sheet_name="General Pop Sample", index=False)
         ambiguous_df.to_excel(writer, sheet_name="Ambiguous Equity Rows", index=False)

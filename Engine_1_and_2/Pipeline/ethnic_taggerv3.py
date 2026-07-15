@@ -82,6 +82,7 @@ from constants import (
     ROLE_TOPIC_KEEP_AFTER_PATTERNS, ROLE_TOPIC_KEEP_BEFORE_PATTERNS,
     ASPIRATIONAL_WIDE_WINDOW,
     ROLE_SETTING_BEFORE_PATTERNS, ROLE_SETTING_AFTER_PATTERNS,
+    ROLE_ALLYSHIP_BEFORE_PATTERNS,
 )
 
 # gender_constants.py is a pure-data module (no imports of its own) so
@@ -327,6 +328,15 @@ def infer_role(text, start, end, name_text="", window=60):
     if matches_any(SERVED_FRAME_BEFORE_PATTERNS, before) or matches_any(SERVED_FRAME_CONTINUATION_PATTERNS, text) \
             or matches_any(INDIGENOUS_CONTEXT_RESCUE_PATTERNS, text):
         return "served"
+    # Allyship / reconciliation-ally frame (Plan.md Task 4 / G11): "an ally
+    # to indigenous people", "allies of X", "in support of reconciliation"
+    # names the org/speaker's relationship to the group, not the group as a
+    # served population. Checked AFTER the served-frame rescue above, so a
+    # genuinely served row (residential-school/ceremony context, or an
+    # explicit "for X"/"serving X" lead-in) still wins and never reaches
+    # this check. Group-agnostic, same as the setting/topic frames.
+    if matches_any(ROLE_ALLYSHIP_BEFORE_PATTERNS, before):
+        return "topic"
     # Org-name echo (Plan.md Chunk G1 step 1 KEEP): a term that restates a
     # contiguous run of the org's own name near this exact position is a
     # self-reference (e.g. "Black Canadian Women in Action (BCW) is
@@ -677,7 +687,10 @@ def build_context_notes(signals, ethnic_term_present=False):
     notes = []
     # Anchor: only surface negation when an ethnic term was actually detected.
     if signals["negation"] and ethnic_term_present:
-        notes.append("Negation detected - verify exclusion vs inclusion intent")
+        notes.append(
+            "Matched term appears near a negation word (e.g. \"not\", \"excluding\") "
+            "- confirm the population is served, not excluded"
+        )
     return notes
 
 def build_debug_context_notes(signals):
@@ -693,7 +706,10 @@ def build_debug_context_notes(signals):
     if signals["aspirational"]:
         notes.append("Aspirational/future-oriented language detected - may not reflect current service population")
     if signals["negation"]:
-        notes.append("Negation detected - verify exclusion vs inclusion intent")
+        notes.append(
+            "Matched term appears near a negation word (e.g. \"not\", \"excluding\") "
+            "- confirm the population is served, not excluded"
+        )
     if signals["example"]:
         notes.append("Example-based phrasing detected - referenced group may not be primary target")
     return notes

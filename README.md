@@ -406,5 +406,10 @@ Is this something a human reviewer actually needs to look at?
 
 ### TO DO:
 - What flags don't we need to reduce Reviewer fatigue.
-- Stregnthening of pipeline through ML hookup?
+- Strengthening of pipeline through ML hookup?
 - Account name -> Sector -> limited information for classification for organization.
+
+
+# 2026-07-15
+### Impact Assessment
+- 

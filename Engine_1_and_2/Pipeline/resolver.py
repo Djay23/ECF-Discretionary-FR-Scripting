@@ -152,13 +152,13 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
     org = [s for s in states if s["source"] == "org_lookup"]
 
     # -----------------------------------------------------------------------
-    # Evidence-role split (Plan.md Fix 1 Phase 2): classify from "served"
+    # Evidence-role split: classify from "served"
     # candidates only. dedup() already rescued any group with at least one
     # served occurrence, so a group surviving in `weak` here was NEVER
     # mentioned as served population -- only as an org name, provider,
     # example, aspiration, or negation.
     #
-    # "topic_keep" (Plan.md Chunk G6) counts as served for classification
+    # "topic_keep" counts as served for classification
     # purposes -- a topic/partnership mention keeps the group in the running
     # -- but is tracked separately so a plain-served group can be told apart
     # from a topic_keep-only one when deciding whether to add
@@ -177,11 +177,8 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
             groups = sorted(set(s["level1"] for s in served))
             flag = ("Note (low priority): BIPOC keyword alongside specific group(s) (" + ", ".join(groups) + ") - verify manually")
         else:
-            # Plan.md Chunk G10 item 5 — bare "BIPOC signal detected" removed
+            #bare "BIPOC signal detected" removed
             # as a primary flag; BIPOC-alone -> Multiple is unambiguous
-            # locked policy (same "drop the noise" treatment as Step 3's
-            # Fix 4 and the G9 Step-2b removal), and the Ethnic Evidence
-            # column still shows the matched "bipoc [...]" term.
             flag = ""
         return build_output(MULTIPLE_ETHNIC, "", "", flag, context_flags)
 
@@ -228,7 +225,7 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
     primary = served
 
     # -----------------------------------------------------------------------
-    # Step 2b — Black + Indigenous / Black + African co-occurrence checks
+    # Step 2 — Black + Indigenous / Black + African co-occurrence checks
     #
     # Black is L2 under "Other Ethnic and Cultural Origins", not its own L1.
     # These checks must run BEFORE Step 3 so they emit the correct flag text
@@ -250,11 +247,6 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
         )
 
     if is_black and is_african or is_black and is_caribbean: # Handle black & caribbean as well.
-        # Plan.md Chunk G9 — "Review: multiple distinct groups detected..." is
-        # the same generic noise Fix 4 already dropped from Step 3 below (the
-        # Multiple classification already says as much); Black vs African is
-        # a locked policy call (Black != African), not something needing a
-        # review flag. No primary flag; context flags (if any) still appended.
         return build_output(MULTIPLE_ETHNIC, "", "", "", context_flags)
 
     # -----------------------------------------------------------------------
@@ -270,13 +262,6 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
         # says as much. No primary flag; context flags (if any) still appended.
         return build_output(MULTIPLE_ETHNIC, "", "", "", context_flags)
 
-    # Plan.md Chunk G6 — this row's only surviving Indigenous evidence is a
-    # topic/partnership mention (role "topic_keep"), never a plain "served"
-    # occurrence of the SAME (L1, L2, L3) group. The classification below is
-    # unaffected (topic_keep already counts as served), but a reviewer should
-    # be told the evidence is a topic/partner mention, not a confirmed served
-    # claim. Computed once here since every remaining branch shares one L1
-    # (Step 3 above already returned if there were >= 2).
     indigenous_topic_keep_only = (
         next(iter(distinct_l1)) == INDIGENOUS_L1
         and all(s.get("role", "served") == "topic_keep" for s in primary)

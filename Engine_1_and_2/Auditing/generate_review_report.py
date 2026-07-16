@@ -186,14 +186,18 @@ def main():
         sex_ev = ae.sexual_evidence(row)
 
         # --- Additive Layer 3: intersectional marker string (string-safe) ---
-        # All distinct matched identity tags across axes, comma-joined. Existing
-        # label columns are untouched; this is extra visibility only.
+        # All distinct matched identity tags across axes. Existing label columns
+        # are untouched; this is extra visibility only.
         markers = identity_markers(row, taxonomy_entries)
         if g_label != gs.GENDER_GENERAL_POP:
             markers.append(g_label)
         if s_label != gs.SEXUAL_GENERAL_POP:
             markers.append(s_label)
-        multi_identity_markers = ", ".join(markers)
+        # Pipe-delimited + sorted: taxonomy labels contain literal commas
+        # (e.g. "Black, not otherwise specified"), so a comma delimiter is
+        # unsafe for any downstream split(). sorted() gives a stable string
+        # so exact-match/diff comparisons downstream are order-independent.
+        multi_identity_markers = " | ".join(sorted(markers))
 
         # --- Additive Layer 4: deterministic triage tier ---
         tier = audit_tier(e1, g_label, s_label, flag, g_flag, s_flag,

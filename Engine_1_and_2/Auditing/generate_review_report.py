@@ -1,5 +1,6 @@
 import sys
 import random
+from collections import Counter
 import pandas as pd
 from pathlib import Path
 
@@ -38,6 +39,10 @@ Tabs produced:
     11. Sexual Gen Pop Sample    - random sample of Sexual General Population rows (recall check)
     12. Sexual Flag Frequency    - distinct sexual flags, most-common first
     13. Sexual Class Frequency   - distinct Sexual Id values, most-common first
+  Flags-by-group (3) — which classification group each flag fell under:
+    14. Ethnic Flags by Group    - (Ethnic 1 group x flag) counts, most-common first
+    15. Gender Flags by Group    - (Gender Id x flag) counts, most-common first
+    16. Sexual Flags by Group    - (Sexual Id x flag) counts, most-common first
 
 To Run:
    $env:PYTHONIOENCODING="utf-8"; $env:HF_HUB_OFFLINE="1"; python Engine_1_and_2/Auditing/generate_review_report.py
@@ -96,14 +101,67 @@ def audit_tier(e1, g_label, s_label, flag, g_flag, s_flag, eth_ev, gen_ev, sex_e
     return "Auto-Pass"
 
 
+def split_flags_joinaware(cell):
+    """Split a flag cell into distinct flags. The engine joins flags with '; '
+    but some individual flags contain an internal '; ' (e.g. "...broader
+    population; confirm the classification isn't narrower..."). Every catalogued
+    flag starts uppercase or with 'Note (low priority):', while those internal
+    continuations start lowercase — so re-attach any lowercase-leading segment to
+    the flag it belongs to (mirrors the stakeholder dashboard's split_flags)."""
+    parts = []
+    for p in str(cell).split(";"):
+        p = p.strip()
+        if not p:
+            continue
+        if parts and p[:1].islower():
+            parts[-1] = parts[-1] + "; " + p
+        else:
+            parts.append(p)
+    return parts
+
+
+def flags_by_group(df, group_col, flag_col):
+    """Long-format tally answering "which group did each flag fall under":
+    (group, flag) -> count, most-common first. One flagged row contributes one
+    count per distinct flag it carries. Rows with no flag are ignored."""
+    counter = Counter()
+    for _, r in df.iterrows():
+        grp = str(r[group_col]).strip() or "(blank)"
+        for f in split_flags_joinaware(r[flag_col]):
+            counter[(grp, f)] += 1
+    return pd.DataFrame(
+        [(g, f, n) for (g, f), n in counter.most_common()],
+        columns=[group_col, flag_col, "Count"],
+    )
+
+
+def _read_excel_safe(path, **kwargs):
+    """pd.read_excel that survives an Excel/OneDrive exclusive open-handle lock:
+    on PermissionError, read a temp copy (a plain copy uses a share mode Excel
+    allows) so an open workbook doesn't block the run."""
+    try:
+        return pd.read_excel(path, **kwargs)
+    except PermissionError:
+        import shutil, tempfile
+        tmp = Path(tempfile.gettempdir()) / f"_locked_{Path(path).name}"
+        shutil.copy2(path, tmp)
+        try:
+            return pd.read_excel(tmp, **kwargs)
+        finally:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+
 def main():
 
     taxonomy_filepath = bootstrap.PROJECT_ROOT / "Taxonomy" / "Taxonomy - Definitions.xlsx"
     funding_filepath = bootstrap.PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx"
     OUTPUT_FILE = bootstrap.PROJECT_ROOT / "Data Sheets" / "review_report(ML implement).xlsx"
 
-    tax_df = pd.read_excel(taxonomy_filepath, sheet_name=et.TAXONOMY_SHEET, dtype=str)
-    data_df = pd.read_excel(funding_filepath, sheet_name=et.DATA_SHEET, dtype=str)
+    tax_df = _read_excel_safe(taxonomy_filepath, sheet_name=et.TAXONOMY_SHEET, dtype=str)
+    data_df = _read_excel_safe(funding_filepath, sheet_name=et.DATA_SHEET, dtype=str)
 
     taxonomy_entries = et.build_taxonomy(tax_df)
 
@@ -234,6 +292,13 @@ def main():
     )
     sexual_class_counts.columns = ["Sexual Id", "Count"]
 
+    # --- Flags-by-group (Q5): which classification group each flag fell under ---
+    ethnic_flags_by_group = flags_by_group(results_df, "Ethnic 1",  "Classification Flag")
+    gender_flags_by_group = flags_by_group(results_df, "Gender Id", "Gender Flag")
+    sexual_flags_by_group = flags_by_group(results_df, "Sexual Id", "Sexual Flag")
+    print(f"Flags-by-group rows: ethnic={len(ethnic_flags_by_group)}, "
+          f"gender={len(gender_flags_by_group)}, sexual={len(sexual_flags_by_group)}")
+
     # --- Audit Detail tab — every row, all labels/flags/evidence ---
     # SF_18_ID_Funding_Request__c is included so future hand-audits can join
     # back to audit_gold.xlsx by stable ID instead of Funding Request Name.
@@ -279,6 +344,10 @@ def main():
         sexual_gen_pop_sample.to_excel(writer, sheet_name="Sexual Gen Pop Sample", index=False)
         sexual_flag_counts.to_excel(writer, sheet_name="Sexual Flag Frequency", index=False)
         sexual_class_counts.to_excel(writer, sheet_name="Sexual Class Frequency", index=False)
+        # Flags-by-group tabs (which group each flag fell under)
+        ethnic_flags_by_group.to_excel(writer, sheet_name="Ethnic Flags by Group", index=False)
+        gender_flags_by_group.to_excel(writer, sheet_name="Gender Flags by Group", index=False)
+        sexual_flags_by_group.to_excel(writer, sheet_name="Sexual Flags by Group", index=False)
 
     print(f"\nWritten to: {OUTPUT_FILE}")
     print("This file is a separate review workbook -- your original funding\nrequests file was not opened for writing and was not modified.")

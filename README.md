@@ -418,3 +418,6 @@ Is this something a human reviewer actually needs to look at?
 - How many flags generated.
 - Of the generated flags, what ethnic/Gender and Sex did they fall under --> Which are necessary?
 - Should BIPOC mention without any ethnic signal just be grouped as general? Or should BIPOC mention without ethnic signal be treated as Multiple Ethnic Origins. --> And if we choose to group BIPOC mention without ethnic body signal, do we look at Org. Name
+
+
+

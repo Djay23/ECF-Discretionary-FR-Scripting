@@ -30,9 +30,12 @@ Flag OK? accepts: Yes/Y/True/1 (flag is appropriate) or No/N/False/0 (not).
 
 import sys
 import re
+import shutil
+import tempfile
 import unicodedata
 import argparse
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -124,11 +127,29 @@ COL_SEX_EV  = "Sexual Evidence"
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _read_excel_safe(path, **kwargs):
+    """pd.read_excel that survives an Excel/OneDrive exclusive open-handle lock:
+    on PermissionError, read a temp copy (a plain copy uses a share mode Excel
+    allows) so an open workbook doesn't block the run."""
+    try:
+        return pd.read_excel(path, **kwargs)
+    except PermissionError:
+        tmp = Path(tempfile.gettempdir()) / f"_locked_{Path(path).name}"
+        shutil.copy2(path, tmp)
+        try:
+            return pd.read_excel(tmp, **kwargs)
+        finally:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+
 def load_inputs():
     taxonomy_fp = bootstrap.PROJECT_ROOT / "Taxonomy" / "Taxonomy - Definitions.xlsx"
     funding_fp  = bootstrap.PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx"
-    tax_df  = pd.read_excel(taxonomy_fp, sheet_name=et.TAXONOMY_SHEET, dtype=str)
-    data_df = pd.read_excel(funding_fp,  sheet_name=et.DATA_SHEET,     dtype=str)
+    tax_df  = _read_excel_safe(taxonomy_fp, sheet_name=et.TAXONOMY_SHEET, dtype=str)
+    data_df = _read_excel_safe(funding_fp,  sheet_name=et.DATA_SHEET,     dtype=str)
     return tax_df, data_df
 
 
@@ -271,6 +292,80 @@ def cmd_init():
     print("\nFill in 'Correct *' and 'Flag OK?' columns for audited rows,")
     print(f"save the completed file as Taxonomy/{AUDITED_GOLD_FILE},")
     print("then run:  python audit_score.py")
+
+
+# ---------------------------------------------------------------------------
+# --refresh-engine mode
+# ---------------------------------------------------------------------------
+
+# The eight engine-output columns the dashboard reads (MODE="gold").
+_ENGINE_COLS = [
+    ENG_ETHNIC1, ENG_ETHNIC2, ENG_ETHNIC3,
+    ENG_GENDER, ENG_SEXUAL,
+    ENG_ETHNIC_FLAG, ENG_GENDER_FLAG, ENG_SEXUAL_FLAG,
+]
+
+
+def cmd_refresh_engine():
+    """Re-run the CURRENT engine and overwrite only the '(engine)' columns in
+    audit_gold_audited.xlsx, leaving every human-audited column
+    ('Correct *', 'Flag OK?', 'Notes') untouched.
+
+    Needed because the stakeholder dashboard runs in MODE="gold" and reads those
+    stored engine columns; after an engine refactor they go stale until refreshed
+    here. Joins on STABLE_ID_COL so rows stay aligned regardless of order.
+    """
+    gold_path = bootstrap.PROJECT_ROOT / "Taxonomy" / AUDITED_GOLD_FILE
+    if not gold_path.exists():
+        print(f"ERROR: {gold_path} not found.")
+        print("Run 'python audit_score.py --init' and complete the audit first.")
+        sys.exit(1)
+
+    # Back up the hand-audited file before touching it (timestamped, never clobbers).
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = gold_path.with_name(f"audit_gold_audited.bak_{stamp}.xlsx")
+    shutil.copy2(gold_path, backup_path)
+    print(f"Backed up hand-audited gold -> {backup_path.name}")
+
+    gold_df = pd.read_excel(gold_path, dtype=str).fillna("")
+    print(f"Loaded {len(gold_df)} gold rows.")
+
+    print("Re-running current engine on live data...")
+    tax_df, data_df = load_inputs()
+    taxonomy_entries = et.build_taxonomy(tax_df)
+    engine_df, skipped = _run_classifiers(data_df, taxonomy_entries)
+    if skipped:
+        print(f"  Skipped {skipped} rows missing '{STABLE_ID_COL}'.")
+
+    # stable_id -> current engine value, per engine column.
+    engine_df[STABLE_ID_COL] = engine_df[STABLE_ID_COL].astype(str).str.strip()
+    lookup = {
+        col: dict(zip(engine_df[STABLE_ID_COL], engine_df[col].fillna("")))
+        for col in _ENGINE_COLS
+    }
+    id_set = set(engine_df[STABLE_ID_COL])
+
+    for col in _ENGINE_COLS:          # ensure the target columns exist
+        if col not in gold_df.columns:
+            gold_df[col] = ""
+
+    matched = unmatched = 0
+    for i, sid in gold_df[STABLE_ID_COL].astype(str).str.strip().items():
+        if sid in id_set:
+            matched += 1
+            for col in _ENGINE_COLS:
+                gold_df.at[i, col] = lookup[col].get(sid, "")
+        else:
+            unmatched += 1
+
+    print(f"Refreshed engine columns on {matched}/{len(gold_df)} rows.")
+    if unmatched:
+        print(f"  {unmatched} gold rows had no live match (left unchanged).")
+
+    gold_df.to_excel(gold_path, index=False)
+    print(f"Wrote refreshed engine columns -> {gold_path.name}")
+    print("Human 'Correct *' / 'Flag OK?' / 'Notes' columns untouched.")
+    print("\nNext: python Engine_1_and_2/Auditing/generate_stakeholder_dashboard.py")
 
 
 # ---------------------------------------------------------------------------
@@ -472,9 +567,16 @@ def main():
         "--init", action="store_true",
         help="Generate the audit_gold.xlsx template (does not score)",
     )
+    parser.add_argument(
+        "--refresh-engine", action="store_true",
+        help="Rewrite the '(engine)' columns in audit_gold_audited.xlsx from the "
+             "current engine (preserves human-audited columns); does not score",
+    )
     args = parser.parse_args()
     if args.init:
         cmd_init()
+    elif args.refresh_engine:
+        cmd_refresh_engine()
     else:
         cmd_score()
 

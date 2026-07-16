@@ -221,11 +221,24 @@ def distribution(df, col, total):
 
 
 def split_flags(cell):
-    """A flag cell -> list of individual flag strings (split on ';')."""
+    """A flag cell -> list of individual flag strings.
+
+    The engine joins distinct flags with '; ' (resolver.build_output), but some
+    individual flags contain an internal '; ' (e.g. "...broader population;
+    confirm the classification isn't narrower..."). A naive split on ';' shreds
+    those into fragments ("verify", "confirm ...") that then count as separate
+    high-priority items and render as junk rows. Every catalogued flag starts
+    with an uppercase letter or the 'Note (low priority):' prefix, while these
+    internal continuations start lowercase — so re-attach any lowercase-leading
+    segment to the flag it belongs to."""
     parts = []
     for p in str(cell).split(";"):
         p = p.strip()
-        if p:
+        if not p:
+            continue
+        if parts and p[:1].islower():
+            parts[-1] = parts[-1] + "; " + p
+        else:
             parts.append(p)
     return parts
 

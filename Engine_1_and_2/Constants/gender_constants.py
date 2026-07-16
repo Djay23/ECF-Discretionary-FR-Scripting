@@ -97,7 +97,7 @@ GENDER_TERM_PATTERNS = [
     (r"\bwidows?\b", "women_girls", None),
     (r"\bladies\b", "women_girls", None),
     (r"\blady\b", "women_girls", None),
-    # French (Fix 8): "femme(s)" = French for woman/women. Ambiguous with the
+    # French: "femme(s)" = French for woman/women. Ambiguous with the
     # English coded-slang sense (see AMBIGUOUS_CODED_TERMS below) — both
     # mechanisms fire together: this classifies, FLAG_AMBIGUOUS_TERM still
     # flags it so a reviewer double-checks which sense applies.
@@ -120,7 +120,7 @@ GENDER_TERM_PATTERNS = [
     (r"\buncles?\b", "men_boys", None),
     (r"\bwidowers?\b", "men_boys", None),
     (r"\bgentlem[ae]n\b", "men_boys", None),
-    # French (Fix 8): "homme(s)" = French for man/men.
+    # French: "homme(s)" = French for man/men.
     (r"\bhommes?\b", "men_boys", None),
     # two_spirit
     (r"\btwo[\-\s]spirited?\b", "two_spirit", None),
@@ -138,7 +138,7 @@ GENDER_TERM_PATTERNS = [
     (r"\benby\b", "non_binary", None),
     # transgender (full word — bare "trans" handled separately)
     (r"\btransgender\b", "transgender", None),
-    # gender-diverse — a distinct umbrella concept (Plan.md Fix 2a): always
+    # gender-diverse — a distinct umbrella concept: always
     # routes to Multiple gender identities (see resolve_gender) and, via
     # SEXUAL_GENDER_DIVERSE_KEYS below, to 2SLGBTQIA+ on the sexual axis.
     (r"\bgender[\-\s]?diverse\b", "gender_diverse", None),
@@ -167,7 +167,6 @@ FLAG_ORG_NAME         = "Gender/sexual term appears inside an organization or pr
 FLAG_AMBIGUOUS_TERM   = "Ambiguous coded gender/orientation term (femme/masc/butch/...) - verify served population on both gender and sexual-identity axes"
 
 # ---------------------------------------------------------------------------
-# G2 — Incidental family-context guard (Plan.md Chunk G2, row 54093).
 #
 # Bare relational-male nouns (fathers/brothers/sons/dads) are ambiguous:
 # they can name the actual served population ("a fathers group for new
@@ -206,7 +205,7 @@ FAMILY_LEFT_BEHIND_AFTER_PATTERNS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Generalizable silent-body name rule (Plan.md Chunk G1 step 5) — when the
+# Generalizable silent-body name rule — when the
 # body carries NO gender/sexual-identity signal at all (not even a weak
 # org-name-echo mention), classify from women/men/2SLGBTQIA+ terms found in
 # the RAW funding-request account name instead of defaulting flat to
@@ -223,9 +222,6 @@ SEXUAL_SILENT_NAME_PATTERN       = r"\b(pride|queer|trans\w*|2slgbtq\w*|lgbt\w*|
 # ---------------------------------------------------------------------------
 AMBIGUOUS_CODED_TERMS = [
     r"\bfemme\b",
-    r"\bmasc\b",
-    r"\bbutch\b",
-    r"\bstud\b",
 ]
 
 # ---------------------------------------------------------------------------

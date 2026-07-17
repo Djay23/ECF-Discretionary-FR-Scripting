@@ -374,7 +374,7 @@ def heat_label(label):
     return HEAT_SHORT.get(str(label).strip(), pretty(label))
 
 
-# Short, human labels for the (long) engine flag strings, matched by substring.
+# Short labels for the (long) engine flag strings, matched by substring.
 FLAG_SHORT = [
     ("general indigenous term matched", "General Indigenous term, no specific nation named"),
     ("regional phrase matched", "Regional phrase, not a specific country (e.g. North African)"),

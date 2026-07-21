@@ -59,21 +59,15 @@ ROLE_HYPOTHESES = {
     "topic": "This text names a subject or perspective being taught or discussed, not a population being served.",
     "aspirational": "This describes a future goal or planned expansion, not the population currently served.",
     "allyship": "This describes the organization's support for, partnership with, or solidarity with a group, not the group as the population served.",
-    # Cultural-origin / attribution. Distinct from "topic": the group is named
-    # as the SOURCE a practice, method, story, or teaching was drawn from --
-    # "the story circle, adapted from First Nation Indigenous community
-    # peacemaking practices", "a talking circle grounded in Cree tradition",
-    # "integrating Indigenous wisdom". The regex side only covers a narrow
-    # fixed list (ROLE_SETTING_BEFORE_PATTERNS: "based on"/"inspired by"/
-    # "set in"/"depicting"), so near-synonyms like "adapted from", "drawn
-    # from", "rooted in", "grounded in", "informed by" fall through to the
-    # "served" default and produce a false positive. This is the single
-    # largest false-positive family in the AUDITED_FR_GOLD.xlsx audit.
-    "cultural_origin": (
-        "This names the cultural tradition, practice, or knowledge system that "
-        "something was adapted, derived, or drawn from, not the population being served."
-    ),
 }
+
+# NOT ADDED: a "cultural_origin" hypothesis for the "adapted from First Nation
+# practices" / "grounded in Cree tradition" family. It was tried and measured
+# on 2026-07-21 and is deliberately left out: this NLI model's verdicts swung
+# from 6/8 to 3/8 on a hand-built probe set after a single unrelated hypothesis
+# was removed, i.e. the ranking is driven by prompt wording rather than by the
+# distinction being asked about. Adding hypotheses tuned on a handful of
+# examples fits noise. See knn_gold.py for the parallel negative result.
 
 _encoder = None
 _nli = None

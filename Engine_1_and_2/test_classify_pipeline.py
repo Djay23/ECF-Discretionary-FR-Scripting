@@ -975,13 +975,32 @@ class TestBlueprint2Fixes(unittest.TestCase):
     # ------------------------------------------------------------------
     # B7. Eritrean Cultural Association → review flag (Case 13)
     # ------------------------------------------------------------------
-    def test_eritrean_cultural_association_flagged(self):
+    def test_eritrean_cultural_association_now_classifies(self):
         """
-        'eritrean' is not in taxonomy or COUNTRY_REGION_MAP, and 'eritrean'
-        is not in NON_ETHNIC_LEADING_WORDS — Case 13 should flag it for review.
+        'eritrean' was added to COUNTRY_REGION_MAP on evidence (5 served-population
+        uses in AUDITED_FR_GOLD.xlsx), so this no longer falls through to the
+        Case 13 "potential ethnocultural org name" safety net -- it resolves to
+        the real region and is still flagged for verification, which is strictly
+        more useful to a reviewer than the generic prompt this test used to assert.
         """
         e1, e2, e3, flag = classify_row(
             row(name="Eritrean Cultural Association"),
+            TAXONOMY_B2,
+        )
+        self.assertEqual(e1, "African Origins")
+        self.assertEqual(e2, "Southern and East African Origins")
+        self.assertTrue(flag, "a name-only classification must still be flagged")
+
+    def test_unknown_ethnonym_still_hits_case13_safety_net(self):
+        """
+        Replaces the coverage the test above used to provide. Case 13 exists to
+        catch ethnonyms NOT in the taxonomy or COUNTRY_REGION_MAP; 'Eritrean' can
+        no longer test that because it is now known. 'Chechen' is verified absent
+        from both, so the safety net must still fire for it -- this is what
+        protects the next unseen 2023/24 nationality.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(name="Chechen Cultural Association"),
             TAXONOMY_B2,
         )
         self.assertIn("Potential ethnocultural organization name", flag)

@@ -37,15 +37,28 @@ NLI_DIR = MODELS_DIR / "cross-encoder__nli-deberta-v3-small"
 
 CACHE_DIR = SEMANTIC_ENGINE_DIR.parent.parent / ".ml_cache"
 
-# Role hypotheses scored by nli_role() — same five roles as the Phase 2
-# regex-based role frames in extractors.py/ethnic_taggerv3.infer_role, so
-# this can back up or replace them (Phase B) without changing the contract.
+# Role hypotheses scored by nli_role() — the five Phase 2 regex-based role
+# frames in extractors.py/ethnic_taggerv3.infer_role, plus "topic",
+# "aspirational", and "allyship" (added to catch weak-role families the regex
+# frames only recognize via a narrow anchored phrase list — see
+# ROLE_TOPIC_AFTER_PATTERNS / ASPIRATIONAL_PHRASES / ROLE_ALLYSHIP_BEFORE_PATTERNS
+# in constants.py). "allyship" gets its own hypothesis even though the regex
+# frame collapses it into the "topic" role string (infer_role, "Reuses the
+# weak 'topic' role") — the arbiter never sets `role` at all, so it only
+# needs a hypothesis that discriminates well semantically, and "topic"'s
+# wording ("a subject being taught") is a poor match for solidarity/
+# partnership language. Adding a hypothesis here never changes
+# classify_pipeline output on its own — see apply_ml_role_arbiter, which only
+# ever attaches an annotation, never a role or label change.
 ROLE_HYPOTHESES = {
     "served": "This text describes who the program serves.",
     "org_name": "This is the name of an organization or partner.",
     "provider": "This describes a service provider or professional role, not who is served.",
     "example": "This is an example or illustrative mention, not a description of who is served.",
     "negated": "This population is explicitly excluded or not served.",
+    "topic": "This text names a subject or perspective being taught or discussed, not a population being served.",
+    "aspirational": "This describes a future goal or planned expansion, not the population currently served.",
+    "allyship": "This describes the organization's support for, partnership with, or solidarity with a group, not the group as the population served.",
 }
 
 _encoder = None

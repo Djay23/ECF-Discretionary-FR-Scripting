@@ -145,11 +145,9 @@ def _read_excel_safe(path, **kwargs):
                 pass
 
 
-def load_inputs():
-    taxonomy_fp = bootstrap.PROJECT_ROOT / "Taxonomy" / "Taxonomy - Definitions.xlsx"
-    funding_fp  = bootstrap.PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx"
-    tax_df  = _read_excel_safe(taxonomy_fp, sheet_name=et.TAXONOMY_SHEET, dtype=str)
-    data_df = _read_excel_safe(funding_fp,  sheet_name=et.DATA_SHEET,     dtype=str)
+def load_inputs(ds):
+    tax_df  = _read_excel_safe(ds.taxonomy_file, sheet_name=et.TAXONOMY_SHEET, dtype=str)
+    data_df = _read_excel_safe(ds.raw_file,      sheet_name=et.DATA_SHEET,     dtype=str)
     return tax_df, data_df
 
 
@@ -257,8 +255,11 @@ def _flag_calibration(engine_flagged_list, ok_list):
 # ---------------------------------------------------------------------------
 
 def cmd_init():
+    ds = bootstrap.dataset()
+    print(f"[dataset] active: {ds.name}  ->  reads {ds.raw_file.name}, writes {ds.output_file.name}")
+
     print("Loading taxonomy and funding requests...")
-    tax_df, data_df = load_inputs()
+    tax_df, data_df = load_inputs(ds)
     taxonomy_entries = et.build_taxonomy(tax_df)
 
     print("Running classifiers...")
@@ -315,7 +316,13 @@ def cmd_refresh_engine():
     stored engine columns; after an engine refactor they go stale until refreshed
     here. Joins on STABLE_ID_COL so rows stay aligned regardless of order.
     """
-    gold_path = bootstrap.PROJECT_ROOT / "Taxonomy" / AUDITED_GOLD_FILE
+    ds = bootstrap.dataset()
+    print(f"[dataset] active: {ds.name}  ->  reads {ds.raw_file.name}, writes {ds.output_file.name}")
+    if ds.gold_file is None:
+        print(f"Dataset '{ds.name}' has no gold file; refresh-engine is not available for this dataset.")
+        sys.exit(1)
+
+    gold_path = ds.gold_file
     if not gold_path.exists():
         print(f"ERROR: {gold_path} not found.")
         print("Run 'python audit_score.py --init' and complete the audit first.")
@@ -323,7 +330,7 @@ def cmd_refresh_engine():
 
     # Back up the hand-audited file before touching it (timestamped, never clobbers).
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = gold_path.with_name(f"audit_gold_audited.bak_{stamp}.xlsx")
+    backup_path = gold_path.with_name(f"{gold_path.stem}.bak_{stamp}{gold_path.suffix}")
     shutil.copy2(gold_path, backup_path)
     print(f"Backed up hand-audited gold -> {backup_path.name}")
 
@@ -331,7 +338,7 @@ def cmd_refresh_engine():
     print(f"Loaded {len(gold_df)} gold rows.")
 
     print("Re-running current engine on live data...")
-    tax_df, data_df = load_inputs()
+    tax_df, data_df = load_inputs(ds)
     taxonomy_entries = et.build_taxonomy(tax_df)
     engine_df, skipped = _run_classifiers(data_df, taxonomy_entries)
     if skipped:
@@ -373,7 +380,13 @@ def cmd_refresh_engine():
 # ---------------------------------------------------------------------------
 
 def cmd_score():
-    gold_path = bootstrap.PROJECT_ROOT / "Taxonomy" / AUDITED_GOLD_FILE
+    ds = bootstrap.dataset()
+    print(f"[dataset] active: {ds.name}  ->  reads {ds.raw_file.name}, writes {ds.output_file.name}")
+    if ds.gold_file is None:
+        print(f"Dataset '{ds.name}' has no gold file; scoring is not available for this dataset.")
+        sys.exit(1)
+
+    gold_path = ds.gold_file
     if not gold_path.exists():
         print(f"ERROR: {gold_path} not found.")
         print("Run 'python audit_score.py --init' to create the template first.")
@@ -383,7 +396,7 @@ def cmd_score():
     gold_df = pd.read_excel(gold_path, dtype=str)
 
     print("Re-running classifiers on live data...")
-    tax_df, data_df = load_inputs()
+    tax_df, data_df = load_inputs(ds)
     taxonomy_entries = et.build_taxonomy(tax_df)
     engine_df, skipped = _run_classifiers(data_df, taxonomy_entries)
     if skipped:
@@ -543,7 +556,8 @@ def cmd_score():
     # ------------------------------------------------------------------
     # Write scorecard
     # ------------------------------------------------------------------
-    out_path = bootstrap.PROJECT_ROOT / "Data Sheets" / SCORECARD_FILE
+    scorecard_name = SCORECARD_FILE if ds.name == "2025" else f"audit_scorecard_{ds.name}.xlsx"
+    out_path = bootstrap.PROJECT_ROOT / "Data Sheets" / scorecard_name
     with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
         summary_df.to_excel(writer, sheet_name="Summary",               index=False)
         eth_dis.to_excel(   writer, sheet_name="Ethnic Disagreements",  index=False)

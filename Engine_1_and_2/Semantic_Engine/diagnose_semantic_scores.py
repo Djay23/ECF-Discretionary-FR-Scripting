@@ -39,9 +39,12 @@ TOP_N = 20  # how many of the highest-scoring rows to print in full for manual r
 
 def main():
     start_time = time.time()
-    
-    taxonomy_filepath = bootstrap.PROJECT_ROOT / "Taxonomy" / "Taxonomy - Definitions.xlsx"
-    funding_filepath = bootstrap.PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx"
+
+    ds = bootstrap.dataset()
+    print(f"[dataset] active: {ds.name}  ->  reads {ds.raw_file.name}, writes {ds.output_file.name}")
+
+    taxonomy_filepath = ds.taxonomy_file
+    funding_filepath = ds.raw_file
 
     tax_df = pd.read_excel(taxonomy_filepath, sheet_name=et.TAXONOMY_SHEET, dtype=str)
     data_df = pd.read_excel(funding_filepath, sheet_name=et.DATA_SHEET, dtype=str)

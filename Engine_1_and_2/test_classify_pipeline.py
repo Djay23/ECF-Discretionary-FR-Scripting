@@ -5,7 +5,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bootstrap  
 
-from classify_pipeline import classify_row
+from classify_pipeline import classify_row, STAKEHOLDER_REVIEWED_COL
 from ethnic_taggerv3 import MULTIPLE_ETHNIC, OTHER_ETHNIC, GENERAL_POP
 
 """
@@ -1548,30 +1548,106 @@ class TestMLRoleArbiter(unittest.TestCase):
         result = self.classify_pipeline.apply_ml_role_arbiter(candidates)
         self.assertEqual(result, candidates)
 
-    def test_flag_on_overrides_served_when_margin_cleared(self):
-        """A weak-role NLI verdict that beats 'served' by >= the configured
-        margin demotes the candidate and records why in ml_role_note."""
+    def test_flag_on_never_changes_role_at_high_margin(self):
+        """Even at high confidence, the arbiter is advisory-only: role and
+        classification are never mutated -- only ml_role_note is attached,
+        worded as a high-confidence verify note."""
         import unittest.mock as mock
         self.classify_pipeline.USE_ML_ROLE_ARBITER = True
         fake_scores = {"served": 0.0, "org_name": 2.0, "provider": -5.0,
-                        "example": -5.0, "negated": -5.0, "best_role": "org_name"}
+                        "example": -5.0, "negated": -5.0, "topic": -5.0,
+                        "aspirational": -5.0, "best_role": "org_name"}
         with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
             result = self.classify_pipeline.apply_ml_role_arbiter([self._candidate()])
-        self.assertEqual(result[0]["role"], "org_name")
+        self.assertEqual(result[0]["role"], "served")
         self.assertIn("Somali", result[0]["ml_role_note"])
-        self.assertIn("served -> org_name", result[0]["ml_role_note"])
+        self.assertIn("high confidence", result[0]["ml_role_note"])
+        self.assertNotIn("Note (low priority)", result[0]["ml_role_note"])
+
+    def test_flag_on_low_priority_note_in_ambiguity_moat(self):
+        """A margin inside the 0.5-1.5 ambiguity moat attaches a low-priority
+        verify note -- still never changes role."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 0.0, "org_name": 1.0, "provider": -5.0,
+                        "example": -5.0, "negated": -5.0, "topic": -5.0,
+                        "aspirational": -5.0, "best_role": "org_name"}
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            result = self.classify_pipeline.apply_ml_role_arbiter([self._candidate()])
+        self.assertEqual(result[0]["role"], "served")
+        self.assertIn("Note (low priority)", result[0]["ml_role_note"])
 
     def test_flag_on_keeps_served_when_margin_not_cleared(self):
-        """A weak-role verdict that doesn't clear ML_ROLE_OVERRIDE_MARGIN
-        leaves the regex-assigned role untouched (conservative default)."""
+        """A weak-role verdict that doesn't clear ML_ROLE_NOTE_MARGIN
+        leaves the candidate untouched entirely -- no note attached."""
         import unittest.mock as mock
         self.classify_pipeline.USE_ML_ROLE_ARBITER = True
         fake_scores = {"served": 1.0, "org_name": 1.2, "provider": -5.0,
-                        "example": -5.0, "negated": -5.0, "best_role": "org_name"}
+                        "example": -5.0, "negated": -5.0, "topic": -5.0,
+                        "aspirational": -5.0, "best_role": "org_name"}
         with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
             result = self.classify_pipeline.apply_ml_role_arbiter([self._candidate()])
         self.assertEqual(result[0]["role"], "served")
         self.assertNotIn("ml_role_note", result[0])
+
+    def test_flag_on_topic_hypothesis_produces_note_not_change(self):
+        """The new 'topic' hypothesis behaves like any other weak role:
+        advisory note only, never a role change."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 0.0, "org_name": -5.0, "provider": -5.0,
+                        "example": -5.0, "negated": -5.0, "topic": 2.0,
+                        "aspirational": -5.0, "best_role": "topic"}
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            result = self.classify_pipeline.apply_ml_role_arbiter([self._candidate()])
+        self.assertEqual(result[0]["role"], "served")
+        self.assertIn("topic", result[0]["ml_role_note"])
+
+    def test_flag_on_aspirational_hypothesis_produces_note_not_change(self):
+        """The new 'aspirational' hypothesis behaves like any other weak
+        role: advisory note only, never a role change."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 0.0, "org_name": -5.0, "provider": -5.0,
+                        "example": -5.0, "negated": -5.0, "topic": -5.0,
+                        "aspirational": 2.0, "best_role": "aspirational"}
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            result = self.classify_pipeline.apply_ml_role_arbiter([self._candidate()])
+        self.assertEqual(result[0]["role"], "served")
+        self.assertIn("aspirational", result[0]["ml_role_note"])
+
+    def test_flag_on_allyship_hypothesis_produces_note_not_change(self):
+        """The new 'allyship' hypothesis (partnership/solidarity framing,
+        e.g. 'an ally to Indigenous people') behaves like any other weak
+        role: advisory note only, never a role change -- even though the
+        regex frame that covers the same case collapses it into 'topic'."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 0.0, "org_name": -5.0, "provider": -5.0,
+                        "example": -5.0, "negated": -5.0, "topic": -5.0,
+                        "aspirational": -5.0, "allyship": 2.0, "best_role": "allyship"}
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            result = self.classify_pipeline.apply_ml_role_arbiter([self._candidate()])
+        self.assertEqual(result[0]["role"], "served")
+        self.assertIn("allyship", result[0]["ml_role_note"])
+
+    def test_flag_on_negated_hypothesis_now_produces_note(self):
+        """Regression test: 'negated' used to be silently discarded
+        alongside 'served' (a no-op with zero output regardless of
+        confidence). Under the flag-only redesign there's no reason to keep
+        suppressing it -- a confident negated verdict must now produce a
+        note, worded via the 'may be explicitly excluded' clause rather
+        than the generic 'reads as <role>' phrasing."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 0.0, "org_name": -5.0, "provider": -5.0,
+                        "example": -5.0, "negated": 2.0, "topic": -5.0,
+                        "aspirational": -5.0, "allyship": -5.0, "best_role": "negated"}
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            result = self.classify_pipeline.apply_ml_role_arbiter([self._candidate()])
+        self.assertEqual(result[0]["role"], "served")
+        self.assertIn("ml_role_note", result[0])
+        self.assertIn("explicitly excluded", result[0]["ml_role_note"])
 
     def test_flag_on_never_promotes_weak_to_served(self):
         """A candidate the regex already tagged weak (e.g. 'example') is
@@ -1601,6 +1677,53 @@ class TestMLRoleArbiter(unittest.TestCase):
             "test process must run with USE_ML_ROLE_ARBITER unset for this "
             "assertion to be meaningful",
         )
+
+    def test_stakeholder_reviewed_row_skips_arbiter_entirely(self):
+        """classify_row() must never invoke the ML arbiter on a row already
+        marked stakeholder-reviewed (FR testing.xlsx column AN non-blank) --
+        no ml_role_note should reach the flag output regardless of margin."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 0.0, "org_name": 5.0, "provider": -5.0,
+                        "example": -5.0, "negated": -5.0, "topic": -5.0,
+                        "aspirational": -5.0, "best_role": "org_name"}
+        reviewed_row = row(desc="A program serving the Somali community.")
+        reviewed_row[STAKEHOLDER_REVIEWED_COL] = "Wrong Ethnic"
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            e1, e2, e3, flag = classify_row(reviewed_row, TAXONOMY)
+        self.assertNotIn("ML role arbiter", flag)
+
+    def test_unreviewed_row_still_reaches_arbiter(self):
+        """Sanity check for the above: the same row WITHOUT a stakeholder
+        review mark does reach the arbiter (control case)."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 0.0, "org_name": 5.0, "provider": -5.0,
+                        "example": -5.0, "negated": -5.0, "topic": -5.0,
+                        "aspirational": -5.0, "best_role": "org_name"}
+        plain_row = row(desc="A program serving the Somali community.")
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            e1, e2, e3, flag = classify_row(plain_row, TAXONOMY)
+        self.assertIn("ML role arbiter", flag)
+
+    def test_nan_stakeholder_column_still_reaches_arbiter(self):
+        """Regression test: a pandas row's BLANK AN cell is a float NaN, not
+        "" -- `row.get(col, "") or ""` is wrong (its default only applies
+        when the key is absent, never when the value is NaN, and NaN is
+        truthy in Python), so every real pandas-sourced row was silently
+        treated as reviewed and the arbiter never ran on live data. A plain
+        dict test with a missing/empty-string key can't catch this -- it
+        must use an actual float NaN, as pd.read_excel produces."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 0.0, "org_name": 5.0, "provider": -5.0,
+                        "example": -5.0, "negated": -5.0, "topic": -5.0,
+                        "aspirational": -5.0, "best_role": "org_name"}
+        nan_row = row(desc="A program serving the Somali community.")
+        nan_row[STAKEHOLDER_REVIEWED_COL] = float("nan")
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            e1, e2, e3, flag = classify_row(nan_row, TAXONOMY)
+        self.assertIn("ML role arbiter", flag)
 
 
 

@@ -155,10 +155,14 @@ def _read_excel_safe(path, **kwargs):
 
 
 def main():
+    ds = bootstrap.dataset()
+    print(f"[dataset] active: {ds.name}  ->  reads {ds.raw_file.name}, writes {ds.output_file.name}")
 
-    taxonomy_filepath = bootstrap.PROJECT_ROOT / "Taxonomy" / "Taxonomy - Definitions.xlsx"
-    funding_filepath = bootstrap.PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx"
-    OUTPUT_FILE = bootstrap.PROJECT_ROOT / "Data Sheets" / "review_report(ML implement).xlsx"
+    taxonomy_filepath = ds.taxonomy_file
+    funding_filepath = ds.raw_file
+    report_name = ("review_report(ML implement).xlsx" if ds.name == "2025"
+                    else f"review_report(ML implement)_{ds.name}.xlsx")
+    OUTPUT_FILE = bootstrap.PROJECT_ROOT / "Data Sheets" / report_name
 
     tax_df = _read_excel_safe(taxonomy_filepath, sheet_name=et.TAXONOMY_SHEET, dtype=str)
     data_df = _read_excel_safe(funding_filepath, sheet_name=et.DATA_SHEET, dtype=str)

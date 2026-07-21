@@ -12,6 +12,7 @@ from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Engine 1 and 2
 import bootstrap
+import ethnic_taggerv3 as et
 
 """
 build_flag_review_column.py
@@ -38,7 +39,6 @@ Run:
     python Engine_1_and_2/Auditing/build_flag_review_column.py
 """
 
-DATA_SHEET = "Discretionary Funding Requests"
 ETHNIC_FLAG_COL = "Classification Flag"
 GENDER_FLAG_COL = "Gender Classification Flag"
 SEXUAL_FLAG_COL = "Sexual Classification Flag"
@@ -246,7 +246,7 @@ def drift_report(src_data_path):
         os.close(fd)
         shutil.copy2(src_data_path, dtmp)
         try:
-            data_df = pd.read_excel(dtmp, sheet_name=DATA_SHEET, dtype=str)
+            data_df = pd.read_excel(dtmp, sheet_name=et.DATA_SHEET, dtype=str)
         finally:
             try:
                 os.remove(dtmp)
@@ -294,15 +294,18 @@ def main():
                          "real workbook is left untouched and no backup is made.")
     args = ap.parse_args()
 
-    src = bootstrap.PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx"
+    ds = bootstrap.dataset()
+    print(f"[dataset] active: {ds.name}  ->  reads {ds.raw_file.name}, writes {ds.output_file.name}")
+
+    src = ds.output_file
     if not src.exists():
         raise SystemExit(f"ERROR: workbook not found at {src}")
 
     wb, tmp = _load_via_copy(src)
     try:
-        if DATA_SHEET not in wb.sheetnames:
-            raise SystemExit(f"ERROR: sheet '{DATA_SHEET}' not found. Sheets: {wb.sheetnames}")
-        ws = wb[DATA_SHEET]
+        if ds.data_sheet not in wb.sheetnames:
+            raise SystemExit(f"ERROR: sheet '{ds.data_sheet}' not found. Sheets: {wb.sheetnames}")
+        ws = wb[ds.data_sheet]
         headers = find_headers(ws)
         eth_c, gen_c, sex_c = (headers[ETHNIC_FLAG_COL], headers[GENDER_FLAG_COL],
                                headers[SEXUAL_FLAG_COL])
@@ -326,7 +329,7 @@ def main():
             review_cells[r] = build_review_cell(flags, uncatalogued, disp_counter)
 
         total_instances = sum(disp_counter.values()) + sum(uncatalogued.values())
-        print(f"Sheet '{DATA_SHEET}': {ws.max_row - 1} data rows, {flagged_rows} with >=1 flag.")
+        print(f"Sheet '{ds.data_sheet}': {ws.max_row - 1} data rows, {flagged_rows} with >=1 flag.")
         print(f"Flag columns: {ETHNIC_FLAG_COL}={get_column_letter(eth_c)}, "
               f"{GENDER_FLAG_COL}={get_column_letter(gen_c)}, "
               f"{SEXUAL_FLAG_COL}={get_column_letter(sex_c)}")

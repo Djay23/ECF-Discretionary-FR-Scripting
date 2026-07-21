@@ -94,8 +94,10 @@ from gender_constants import GENDER_TERM_PATTERNS, SEXUAL_ORIENTATION_PATTERNS
 # CONFIGURATION 
 # =============
 
-TAXONOMY_SHEET = "Ethnic and Cultural Origins"
-DATA_SHEET = "Discretionary Funding Requests"
+from dataset_config import active_config
+_name, _cfg = active_config()
+TAXONOMY_SHEET = _cfg["taxonomy_sheet"]
+DATA_SHEET = _cfg["data_sheet"]
 
 TAXONOMY_ENTRY1 = "Ethnic and Cultural Origins Level 1"
 TAXONOMY_ENTRY2 = "Ethnic and Cultural Origins Level 2"
@@ -941,21 +943,22 @@ def main():
 
     start_time = time.time()
 
-    taxonomy_filepath = bootstrap.PROJECT_ROOT / "Taxonomy" / "Taxonomy - Definitions.xlsx"
-    funding_filepath = bootstrap.PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx"
- 
+    ds = bootstrap.dataset()
+    print(f"[dataset] active: {ds.name}  ->  reads {ds.raw_file.name}, writes {ds.output_file.name}")
+
+    taxonomy_filepath = ds.taxonomy_file
+    funding_filepath = ds.raw_file
+
     print(f"Loading taxonomy from: {taxonomy_filepath}")
     try:
         tax_df = pd.read_excel(taxonomy_filepath, sheet_name=TAXONOMY_SHEET, dtype=str)
     except Exception as e:
         print(f"Error loading taxonomy sheet '{TAXONOMY_SHEET}' from '{taxonomy_filepath}': {e}")
         sys.exit(1)
- 
+
     print(f"Loading funding requests from: {funding_filepath}")
     if not funding_filepath.exists():
         print(f"Error: data workbook not found at '{funding_filepath}'.")
-        print(f"Place the file at: {bootstrap.PROJECT_ROOT / 'Data Sheets' / 'FR testing.xlsx'} "
-              f"(sheet '{DATA_SHEET}').")
         sys.exit(1)
     try:
         data_df = pd.read_excel(funding_filepath, sheet_name=DATA_SHEET, dtype=str)
@@ -1042,26 +1045,26 @@ def main():
     wb = load_workbook(funding_filepath)
     ws = wb[DATA_SHEET]
     headers = {cell.value: cell.column for cell in ws[1]}
- 
+
     for col_name in [OUTPUT_ETHNIC1, OUTPUT_ETHNIC2, OUTPUT_ETHNIC3, OUTPUT_FLAG, OUTPUT_SEMANTIC]:
         if col_name not in headers:
             new_col = ws.max_column + 1
             ws.cell(row=1, column=new_col, value=col_name)
             headers[col_name] = new_col
- 
+
     for i, (idx, row) in enumerate(data_df.iterrows(), start=2):
         ws.cell(row=i, column=headers[OUTPUT_ETHNIC1], value=data_df.at[idx, OUTPUT_ETHNIC1])
         ws.cell(row=i, column=headers[OUTPUT_ETHNIC2], value=data_df.at[idx, OUTPUT_ETHNIC2])
         ws.cell(row=i, column=headers[OUTPUT_ETHNIC3], value=data_df.at[idx, OUTPUT_ETHNIC3])
         ws.cell(row=i, column=headers[OUTPUT_FLAG],    value=data_df.at[idx, OUTPUT_FLAG])
         ws.cell(row=i, column=headers[OUTPUT_SEMANTIC], value=data_df.at[idx, OUTPUT_SEMANTIC]) # Writes "" for every row that didn't receive a suggestion (General pop.)
-    wb.save(funding_filepath)
-    
+    wb.save(ds.output_file)
+
     print("\nResults:")
     for k, v in stats.items():
         print(f"  {k}: {v}")
 
-    print(f"\nOutput written to: {funding_filepath}")
+    print(f"\nOutput written to: {ds.output_file}")
     elapsed = time.time() - start_time
     print(f"Ethnic classification completed in {elapsed:.1f} seconds.")
  

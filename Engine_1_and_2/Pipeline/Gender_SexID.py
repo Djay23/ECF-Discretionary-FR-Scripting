@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Engine 1 and 2
 import bootstrap
 
 from ethnic_taggerv3 import (
+    DATA_SHEET,
     normalize_text,
     get_body_and_name_texts,
     matches_any,
@@ -88,8 +89,6 @@ Pipeline — Sexual:
 To Run:
     python Gender_SexID.py
 """
-
-DATA_SHEET = "Discretionary Funding Requests"
 
 # ===========================================================================
 # ORG-NAME CONTEXT DETECTOR
@@ -536,13 +535,16 @@ def classify_sexual(row):
 def main():
     start_time = time.time()
 
-    funding_filepath = bootstrap.PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx"
+    ds = bootstrap.dataset()
+    print(f"[dataset] active: {ds.name}  ->  reads {ds.raw_file.name}, writes {ds.output_file.name}")
+
+    # Reads output_file, not raw_file: this stage appends to what
+    # ethnic_taggerv3.main() (stage 1) already wrote, so it must run after it.
+    funding_filepath = ds.output_file
 
     print(f"Loading funding requests from: {funding_filepath}")
     if not funding_filepath.exists():
         print(f"Error: data workbook not found at '{funding_filepath}'.")
-        print(f"Place the file at: {bootstrap.PROJECT_ROOT / 'Data Sheets' / 'FR testing.xlsx'} "
-              f"(sheet '{DATA_SHEET}').")
         sys.exit(1)
     try:
         data_df = pd.read_excel(funding_filepath, sheet_name=DATA_SHEET, dtype=str)

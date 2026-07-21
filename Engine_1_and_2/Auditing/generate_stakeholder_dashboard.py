@@ -56,7 +56,6 @@ from gender_constants import GENDER_GENERAL_POP, SEXUAL_GENERAL_POP
 # ---------------------------------------------------------------------------
 MODE = "gold"                      # "gold" | "live"
 TOP_FLAGS = 12                     # rows in the top-flags table
-OUTPUT_FILE = bootstrap.PROJECT_ROOT / "Data Sheets" / "stakeholder_dashboard.html"
 
 GENERAL_VARIANTS = {ETHNIC_GENERAL_POP, GENDER_GENERAL_POP, SEXUAL_GENERAL_POP}
 LOW_PRIORITY_PREFIX = "note (low priority)"
@@ -137,17 +136,22 @@ def _find_col(df, *needles):
     return None
 
 
-def load_records():
+def load_records(ds):
     """Return (records_df with canonical columns, meta dict)."""
     if MODE == "gold":
-        return _load_gold()
+        return _load_gold(ds)
     if MODE == "live":
-        return _load_live()
+        return _load_live(ds)
     raise ValueError(f"Unknown MODE {MODE!r}")
 
 
-def _load_gold():
-    fp = bootstrap.PROJECT_ROOT / "Taxonomy" / "audit_gold_audited.xlsx"
+def _load_gold(ds):
+    if ds.gold_file is None:
+        raise SystemExit(
+            f"Dataset '{ds.name}' has no gold file; MODE=\"gold\" is not available "
+            f"for this dataset. Use MODE=\"live\" instead."
+        )
+    fp = ds.gold_file
     df = pd.read_excel(fp, dtype=str).fillna("")
     out = pd.DataFrame({
         COL["name"]:          df.get("Funding Request Name", ""),
@@ -163,19 +167,19 @@ def _load_gold():
         COL["correct_gender"]: df.get("Correct Gender Id", ""),
         COL["correct_sexual"]: df.get("Correct Sexual Id", ""),
     })
-    meta = dict(source="Audited gold set (audit_gold_audited.xlsx)", mode="gold")
+    meta = dict(source=f"Audited gold set ({fp.name})", mode="gold")
     return out.fillna(""), meta
 
 
-def _load_live():
-    """Classify Data Sheets/FR testing.xlsx live, reusing the engine pipeline.
-    Also picks up Sector / AH / ECD columns when present."""
+def _load_live(ds):
+    """Classify the active dataset's raw workbook live, reusing the engine
+    pipeline. Also picks up Sector / AH / ECD columns when present."""
     import ethnic_taggerv3 as et
     from classify_pipeline import classify_row as pipeline_classify_row
     import Gender_SexID as gs
 
-    tax_fp = bootstrap.PROJECT_ROOT / "Taxonomy" / "Taxonomy - Definitions.xlsx"
-    data_fp = bootstrap.PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx"
+    tax_fp = ds.taxonomy_file
+    data_fp = ds.raw_file
     tax_df = pd.read_excel(tax_fp, sheet_name=et.TAXONOMY_SHEET, dtype=str)
     data_df = pd.read_excel(data_fp, sheet_name=et.DATA_SHEET, dtype=str).fillna("")
     taxonomy_entries = et.build_taxonomy(tax_df)
@@ -200,7 +204,7 @@ def _load_live():
             COL["ah"]: row.get(ah_col, "") if ah_col else "",
             COL["ecd"]: row.get(ecd_col, "") if ecd_col else "",
         })
-    meta = dict(source="Live engine output (FR testing.xlsx)", mode="live")
+    meta = dict(source=f"Live engine output ({data_fp.name})", mode="live")
     return pd.DataFrame(rows).fillna(""), meta
 
 
@@ -745,7 +749,14 @@ def build_html(df, meta):
 
 # ---------------------------------------------------------------------------
 def main():
-    df, meta = load_records()
+    ds = bootstrap.dataset()
+    print(f"[dataset] active: {ds.name}  ->  reads {ds.raw_file.name}, writes {ds.output_file.name}")
+
+    report_name = ("stakeholder_dashboard.html" if ds.name == "2025"
+                    else f"stakeholder_dashboard_{ds.name}.html")
+    output_file = bootstrap.PROJECT_ROOT / "Data Sheets" / report_name
+
+    df, meta = load_records(ds)
     total = len(df)
     print(f"Mode: {meta['mode']}  ·  Source: {meta['source']}")
     print(f"Records: {total}")
@@ -762,9 +773,9 @@ def main():
             print(f"  {title}: {len(rows)} distinct; top = {top[0]} ({top[2]:.1f}%)")
 
     out_html = build_html(df, meta)
-    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT_FILE.write_text(out_html, encoding="utf-8")
-    print(f"\nWritten to: {OUTPUT_FILE}")
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text(out_html, encoding="utf-8")
+    print(f"\nWritten to: {output_file}")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 import os
 import re
 
+import pandas as pd
+
 from ethnic_taggerv3 import (
     get_body_and_name_texts,
     extract_context_signals,
@@ -58,30 +60,51 @@ live in resolver.py. This function is pure orchestration.
 
 USE_ML_ROLE_ARBITER = os.environ.get("USE_ML_ROLE_ARBITER") == "1"
 
-# Only override a regex "served" call when the NLI arbiter's next-best
-# weak role beats "served" by this margin (raw entailment logits, not
-# probabilities — a margin, not an absolute confidence, is what's
-# comparable across premises). Conservative by construction: silence
-# (no override) is the safe failure mode on these sensitive axes.
+# Two-tier "ambiguity moat" over the NLI arbiter's margin (raw entailment
+# logits, not probabilities — a margin, not an absolute confidence, is
+# what's comparable across premises):
+#   margin <  ML_ROLE_NOTE_MARGIN                -> silent, no-op
+#   ML_ROLE_NOTE_MARGIN <= margin < ML_ROLE_OVERRIDE_MARGIN -> low-priority note
+#   margin >= ML_ROLE_OVERRIDE_MARGIN             -> high-confidence note
+# The arbiter NEVER changes `role` or the classification at any tier — see
+# docstring below. These two constants are provisional; calibrate against
+# the live 448-row margin distribution before trusting them (see
+# Engine_1_and_2/Auditing/calibrate_ml_role_margins.py).
+ML_ROLE_NOTE_MARGIN = 0.5
 ML_ROLE_OVERRIDE_MARGIN = 1.5
+
+# Column FR testing.xlsx uses to mark a row as already stakeholder-reviewed
+# (non-blank = a human already corrected/confirmed this row's classification).
+# classify_row() skips the ML role arbiter entirely for such rows so it can
+# never attach a second-guessing note to a human-confirmed decision,
+# regardless of margin. See memory: gold-standard-location.
+STAKEHOLDER_REVIEWED_COL = "Classification Accuracy (Corrected in Different Areas)"
 
 
 def apply_ml_role_arbiter(candidates):
     """
     Phase B: for each candidate the regex role frames (infer_role) tagged
     "served", ask the vendored NLI cross-encoder for a second opinion on
-    that exact span/context. If the arbiter is confidently more specific
-    (e.g. "org_name"/"provider"/"example") than "served", demote the
-    candidate's role and record why — this is the learned generalization
-    of Phase 2 tiering the plan calls for (Alberta Ballet's "Black
-    classical ballet company", Digestive Health's "Indigenous
-    Nutritionist", incidental body mentions the regex frames don't cover).
+    that exact span/context. This is a learned generalization over the
+    regex phrase lists (ROLE_TOPIC_AFTER_PATTERNS, ASPIRATIONAL_PHRASES,
+    etc.), which only catch wording someone anticipated — a paraphrase
+    (e.g. "Indigenous ways of knowing" vs. the enumerated "Indigenous
+    perspectives") silently defaults to "served" today.
+
+    ADVISORY ONLY: this function never mutates `role` or any classification
+    output. Its only effect is attaching `ml_role_note` (a verify-only
+    annotation, same status as any other context flag) when the arbiter
+    disagrees with "served" by enough margin — nothing here can change
+    Ethnic 1/2/3, the resolver branch taken, or any other candidate field
+    that feeds the classification decision. This mirrors the resolver's
+    own invariant that context flags never influence which branch fires
+    (see resolver.py module docstring).
 
     Never promotes a regex weak role to "served" — the regex frames are
     already tuned/regression-tested for the strong case; the arbiter's
-    job here is only to catch regex false positives, not add new signal.
-    Candidates without a captured span/context (e.g. org_lookup) pass
-    through untouched.
+    job here is only to flag likely regex false negatives, not add new
+    classification signal. Candidates without a captured span/context
+    (e.g. org_lookup) pass through untouched.
     """
     if not USE_ML_ROLE_ARBITER:
         return candidates
@@ -94,18 +117,30 @@ def apply_ml_role_arbiter(candidates):
             continue
         scores = nli_role(c["span"], c["context"])
         best = scores["best_role"]
-        if best in ("served", "negated"):
+        if best == "served":
             refined.append(c)
             continue
-        if scores[best] - scores["served"] < ML_ROLE_OVERRIDE_MARGIN:
+        margin = scores[best] - scores["served"]
+        if margin < ML_ROLE_NOTE_MARGIN:
             refined.append(c)
             continue
         c = dict(c)
-        c["role"] = best
-        c["ml_role_note"] = (
-            f'ML role arbiter: "{c["span"]}" reclassified served -> {best} '
-            f'(served={scores["served"]:.2f}, {best}={scores[best]:.2f})'
-        )
+        detail = f'(served={scores["served"]:.2f}, {best}={scores[best]:.2f})'
+        # "negated" reads awkwardly as "reads as negated, not served" -- give
+        # it its own clause instead of reusing the generic "reads as <role>"
+        # phrasing the other weak roles share.
+        if best == "negated":
+            verdict = f'"{c["span"]}" may be explicitly excluded, not served'
+        else:
+            verdict = f'"{c["span"]}" reads as {best}, not served'
+        if margin < ML_ROLE_OVERRIDE_MARGIN:
+            c["ml_role_note"] = (
+                f'Note (low priority): ML role arbiter suggests {verdict} {detail} - verify'
+            )
+        else:
+            c["ml_role_note"] = (
+                f'ML role arbiter: {verdict} (high confidence) {detail} - verify'
+            )
         refined.append(c)
     return refined
 
@@ -339,7 +374,16 @@ def classify_row(row, taxonomy_entries):
     # echoes the org's own name (e.g. "Black Canadian Women in Action is
     # undertaking...") is tagged role="org_name" (weak) instead of "served".
     body_candidates = _extract(body_text, name_text)
-    body_candidates = apply_ml_role_arbiter(body_candidates)  # Phase B, off by default
+    # NaN-safe blank check: a pandas row's blank AN cell is a float NaN
+    # (truthy in Python), not "" -- `row.get(col, "") or ""` was WRONG here
+    # (its default only applies when the key is absent, never when the
+    # value is NaN), so every real pandas row was treated as reviewed and
+    # the arbiter never actually ran against live data. pd.isna() mirrors
+    # the same guard normalize_text()/audit_evidence.py already use.
+    an_val = row.get(STAKEHOLDER_REVIEWED_COL, "")
+    stakeholder_reviewed = not pd.isna(an_val) and bool(str(an_val).strip())
+    if not stakeholder_reviewed:
+        body_candidates = apply_ml_role_arbiter(body_candidates)  # Phase B, off by default
     bipoc_present    = is_bipoc_real_target(body_text)   # BIPOC must be in the body
     name_org         = extract_org_candidates(name_text)  # curated known-org from the name
     name_signal      = bool(_extract(name_text)) or is_bipoc_real_target(name_text)
@@ -356,23 +400,11 @@ def classify_row(row, taxonomy_entries):
         if name_org:  # known org (e.g. Niginan) classifies -- tiny curated map first
             candidates = name_org
         else:
-            # Generalizable silent-body name rule (Plan.md Chunk G1 step 5 +
-            # org-name-ladder step 3): a body with no served signal -- whether
+            # Generalizable silent-body name rule: a body with no served signal -- whether
             # truly empty OR carrying only a weak org-name echo of the org's
             # own identity -- classifies from the raw account-name identity
             # terms instead of defaulting flat to General.
-            #
-            # Guard 1 (identity disclaimer): if the body explicitly says the
-            # org has moved BEYOND its named identity ("beyond its original
-            # focus on Black communities" -> BCW 54525), do NOT borrow that
-            # identity -- stay General.
-            #
-            # Guard 2 (cross-axis): only apply the name rule when the body is
-            # truly ADMINISTRATIVE -- no served population named on ANY axis.
-            # The check runs on the org-name-STRIPPED body so the echo itself
-            # (e.g. "Women" in "Women Building Futures ... servers") is not
-            # miscounted as a served population, while a real other-axis
-            # population (BCW 51622's "Haitian youth") still blocks the borrow.
+
             disclaimed = matches_any(IDENTITY_EXPANSION_DISCLAIMER_PATTERNS, body_text)
             name_rule = None
             if not disclaimed and not body_names_a_population(
@@ -435,7 +467,9 @@ def classify_row(row, taxonomy_entries):
     # Cultural-association, emphasis, Hindu, and negation checks. Emphasis/
     # Hindu are gated to non-General rows (Fix 6) — see extra_annotation_notes.
     # ------------------------------------------------------------------
-    ml_notes = [f"Note (low priority): {c['ml_role_note']}" for c in states if c.get("ml_role_note")]
+    # ml_role_note already carries its own priority-appropriate prefix
+    # (see apply_ml_role_arbiter's two-tier note text) — do not re-wrap it.
+    ml_notes = [c["ml_role_note"] for c in states if c.get("ml_role_note")]
     notes = pre_notes + ml_notes + extra_annotation_notes(combined, states, bipoc_present, resolved_label=e1)
 
     # ------------------------------------------------------------------

@@ -25,6 +25,10 @@ ENV/
 Engine_1_and_2/Semantic_Engine/models/
 .ml_cache/
 
+# --- Regression baseline (local run artifact) ---
+Engine_1_and_2/Auditing/regression_baseline.json
+Engine_1_and_2/Auditing/regression_audited_rows.py
+
 # --- IDEs & Code Editors ---
 .vscode/
 .idea/

@@ -59,6 +59,20 @@ ROLE_HYPOTHESES = {
     "topic": "This text names a subject or perspective being taught or discussed, not a population being served.",
     "aspirational": "This describes a future goal or planned expansion, not the population currently served.",
     "allyship": "This describes the organization's support for, partnership with, or solidarity with a group, not the group as the population served.",
+    # Cultural-origin / attribution. Distinct from "topic": the group is named
+    # as the SOURCE a practice, method, story, or teaching was drawn from --
+    # "the story circle, adapted from First Nation Indigenous community
+    # peacemaking practices", "a talking circle grounded in Cree tradition",
+    # "integrating Indigenous wisdom". The regex side only covers a narrow
+    # fixed list (ROLE_SETTING_BEFORE_PATTERNS: "based on"/"inspired by"/
+    # "set in"/"depicting"), so near-synonyms like "adapted from", "drawn
+    # from", "rooted in", "grounded in", "informed by" fall through to the
+    # "served" default and produce a false positive. This is the single
+    # largest false-positive family in the AUDITED_FR_GOLD.xlsx audit.
+    "cultural_origin": (
+        "This names the cultural tradition, practice, or knowledge system that "
+        "something was adapted, derived, or drawn from, not the population being served."
+    ),
 }
 
 _encoder = None

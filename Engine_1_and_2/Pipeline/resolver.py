@@ -169,18 +169,48 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
 
     # -----------------------------------------------------------------------
     # Step 1 — BIPOC signal
-    # BIPOC is checked before the "no candidates" gate because it produces
-    # MULTIPLE_ETHNIC regardless of whether other ethnic signals are present.
+    #
+    # BIPOC is checked before the "no candidates" gate because when it is the
+    # ONLY signal present it still has to produce MULTIPLE_ETHNIC.
+    #
+    # Behaviour measured against the 158 hand-audited rows in
+    # AUDITED_FR_GOLD.xlsx (see Auditing/regression_audited_rows.py):
+    #
+    #   BIPOC + NO other served group    (18 rows) -> Multiple, 18/18 correct.
+    #       "BIPOC" spells out Black + Indigenous + People of Colour, so when
+    #       it stands alone Multiple is definitionally right. Left unflagged:
+    #       there is nothing for a reviewer to adjudicate.
+    #
+    #   BIPOC + exactly ONE served group  (8 rows) -> forcing Multiple was
+    #       WRONG on 5 of 8 (Mile Zero "Asian diaspora", Parachutes
+    #       "particularly Indigenous", SkirtsAfire "Caribbean", Good Women
+    #       "Black dance collective", Horn/KULAN "African"). In each, the
+    #       named group IS the served population and BIPOC is umbrella
+    #       framing around it -- so classify AS that group. Still wrong on 3
+    #       (CNIB, John Humphrey, Federation of Black Canadians: broad-mandate
+    #       orgs where BIPOC is a genuine umbrella), which is why the verify
+    #       note is KEPT -- those rows stay in the review queue exactly as
+    #       they are today, so this costs no additional reviewer time.
+    #
+    #   BIPOC + TWO OR MORE served groups -> Multiple via Step 3's ordinary
+    #       distinct-L1 rule; BIPOC contributes nothing and isn't consulted.
     # -----------------------------------------------------------------------
     if bipoc_present:
-        if served:
-            groups = sorted(set(s["level1"] for s in served))
-            flag = ("Note (low priority): BIPOC keyword alongside specific group(s) (" + ", ".join(groups) + ") - verify manually")
-        else:
+        bipoc_groups = sorted(set(s["level1"] for s in served))
+        if len(bipoc_groups) != 1:
             #bare "BIPOC signal detected" removed
             # as a primary flag; BIPOC-alone -> Multiple is unambiguous
-            flag = ""
-        return build_output(MULTIPLE_ETHNIC, "", "", flag, context_flags)
+            flag = ("Note (low priority): BIPOC keyword alongside specific group(s) ("
+                    + ", ".join(bipoc_groups) + ") - verify manually") if served else ""
+            return build_output(MULTIPLE_ETHNIC, "", "", flag, context_flags)
+        # Exactly one served group: fall through to the ordinary single-L1
+        # resolution below so the L2/L3 depth is chosen the same way as for
+        # any other single-group row. The note rides along in context_flags,
+        # which build_output appends to whichever branch ends up firing.
+        context_flags = context_flags + [
+            "Note (low priority): BIPOC keyword alongside specific group(s) ("
+            + ", ".join(bipoc_groups) + ") - classified as that group; verify manually"
+        ]
 
     # -----------------------------------------------------------------------
     # Step 2 — No served candidates

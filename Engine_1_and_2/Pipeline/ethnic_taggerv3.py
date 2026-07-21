@@ -272,6 +272,51 @@ def _name_word_echo(span, name_text):
         for c in candidates
     )
 
+# Copula immediately preceding the match: "<Org> ... is the only <Indigenous>
+# Artist-Run Centre". Anchored to the END of the before-window so only a
+# copula DIRECTLY in front of the term counts -- "IWDIMAA program from
+# Cameroonian Association" has no copula and must not qualify.
+_SELF_ID_COPULA = re.compile(
+    r"\b(?:is|are|was|were)\s+(?:the\s+|a\s+|an\s+)?"
+    r"(?:only\s+|first\s+|sole\s+|leading\s+|largest\s+)?$"
+)
+
+# Generic words in a funding-request name that identify no particular org.
+_SELF_ID_NAME_STOPWORDS = {
+    "funding", "request", "for", "the", "of", "and", "society", "association",
+    "centre", "center", "foundation", "collective", "inc", "ltd", "edmonton",
+    "alberta", "canada", "canadian", "community", "services", "service",
+}
+
+
+def _org_self_identifies(text, start, name_text, window=140):
+    """True when the REQUESTING organization is describing ITSELF immediately
+    before this match -- "Ociciwan Contemporary Art Collective is the only
+    Indigenous Artist-Run Centre based in Edmonton".
+
+    This is the counterpart to _name_word_echo for orgs whose name does NOT
+    contain the identity word. An org named in an Indigenous language
+    (Ociciwan, Niginan, amiskwaciy, Kihciy Askiy) can never match a name-string
+    test, so its self-description would otherwise be demoted by the generic
+    "<Ethnicity> Centre/Association" org-name pattern -- which exists to catch
+    THIRD-PARTY orgs ("in partnership with the Council of India"), not the
+    applicant describing itself. Without this, the name-string approach
+    systematically misses exactly the orgs most likely to be Indigenous-serving.
+
+    Requires BOTH a copula directly in front of the term AND a distinctive word
+    from the requesting org's own name earlier in the same window, so a
+    third-party org's self-description elsewhere in the text cannot trigger it.
+    """
+    if not name_text:
+        return False
+    before = text[max(0, start - window):start]
+    if not _SELF_ID_COPULA.search(before):
+        return False
+    tokens = [t for t in re.findall(r"[a-z]+", name_text.lower())
+              if len(t) > 3 and t not in _SELF_ID_NAME_STOPWORDS]
+    return any(t in before for t in tokens)
+
+
 def infer_role(text, start, end, name_text="", window=60):
     """Classify the evidence role of a match at text[start:end]:
     'served' (strong, default) or one of the weak roles
@@ -317,6 +362,15 @@ def infer_role(text, start, end, name_text="", window=60):
     # outcome as the G3 curriculum-topic case).
     if matches_any(ROLE_SETTING_BEFORE_PATTERNS, before) or matches_any(ROLE_SETTING_AFTER_PATTERNS, after):
         return "topic"
+    # Self-identification beats the org-name patterns below (Ociciwan): those
+    # patterns exist to demote THIRD-PARTY org names, but they also fire on the
+    # applicant describing itself ("... is the only Indigenous Artist-Run
+    # Centre"), where the identity IS the served population. Checked first so
+    # the applicant's own claim wins; a genuine third party ("in partnership
+    # with the Council of India") has no copula + own-name pair and still
+    # demotes normally.
+    if _org_self_identifies(text, start, name_text):
+        return "served"
     if matches_any(ROLE_ORG_NAME_BEFORE_PATTERNS, before) or matches_any(ROLE_ORG_NAME_AFTER_PATTERNS, after):
         return "org_name"
     if matches_any(ROLE_PROVIDER_BEFORE_PATTERNS, before) or matches_any(ROLE_PROVIDER_AFTER_PATTERNS, after):
@@ -339,31 +393,30 @@ def infer_role(text, start, end, name_text="", window=60):
     # this check. Group-agnostic, same as the setting/topic frames.
     if matches_any(ROLE_ALLYSHIP_BEFORE_PATTERNS, before):
         return "topic"
-    # Org-name echo (Plan.md Chunk G1 step 1 KEEP): a term that restates a
-    # contiguous run of the org's own name near this exact position is a
-    # self-reference (e.g. "Black Canadian Women in Action (BCW) is
-    # undertaking..."), not a served-population claim. Precise/unconditional
-    # -- requires an actual multi-word positional overlap, so it does not
-    # fire on ordinary prose that merely happens to share one word with the
-    # org's name (e.g. "Jewish Federation of Edmonton ... Jewish culture" is
-    # NOT an echo of anything beyond the single shared word).
+    # Org-name echo == SELF-IDENTIFICATION, not a non-claim.
+    #
+    # These two checks previously returned "org_name" (weak), on the theory
+    # that an org restating its own name ("Black Canadian Women in Action
+    # (BCW) is undertaking...") is a self-reference rather than a
+    # served-population claim. The hand-audit in AUDITED_FR_GOLD.xlsx
+    # contradicts that: an ethnicity-named org naming its own ethnicity IS
+    # evidence of who it serves. Black Canadian Women in Action was demoted to
+    # General on both counts -- the name echo AND the expansion phrasing
+    # "beyond its original focus on Black communities" -- yet gold is Black.
+    #
+    # Measured over all 448 rows: treating these as served fixes that row and
+    # regresses NOTHING. The demotion turned out to be near-inert, because
+    # dedup() already rescues any group with one served mention elsewhere, so
+    # it only ever changed the outcome when the echo was the ONLY mention --
+    # exactly the self-identification case it was getting wrong.
+    #
+    # Third-party org names are still demoted, by the ROLE_ORG_NAME_*
+    # patterns above; that path is untouched.
     if _echoes_org_name(text, start, end, name_text):
-        return "org_name"
-    # Org-name-word echo, but ONLY when this occurrence is ALSO framed as
-    # the org's HISTORICAL/PAST focus or something it has EXPANDED BEYOND
-    # (Plan.md Chunk G1 step 4 upgrade — e.g. "beyond its original focus on
-    # Black communities" when the org itself is named "Black Canadian Women
-    # in Action"). The historical/expansion framing is required, not
-    # optional: a bare single-word overlap with the org's name (e.g.
-    # "support for Black mothers", "the Ukrainian community", "Jewish
-    # culture") is the overwhelmingly common, legitimate way an
-    # ethnicity-named org describes its actual served population, and must
-    # NOT be demoted on its own -- only historical/expansion phrasing
-    # narrows this to the org's own past/self-identity instead of who it
-    # currently serves.
+        return "served"
     if (matches_any(EXPANSION_PHRASES, before) or matches_any(HISTORICAL_PHRASES, before)) \
             and _name_word_echo(span, name_text):
-        return "org_name"
+        return "served"
     # Topic / consultation framing (Plan.md Chunk G3): a term immediately
     # followed by "perspectives" or "knowledge holders" describes a
     # CURRICULUM TOPIC being taught or a CONSULTED-PARTY mention, not the

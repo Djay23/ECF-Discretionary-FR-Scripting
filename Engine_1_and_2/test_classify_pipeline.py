@@ -208,20 +208,43 @@ class TestClassifyPipeline(unittest.TestCase):
     # ------------------------------------------------------------------
     # 7. BIPOC alongside a specific taxonomy group
     # ------------------------------------------------------------------
-    def test_bipoc_plus_specific_group_flagged_for_review(self):
+    def test_bipoc_plus_one_specific_group_classifies_as_that_group(self):
         """
-        BIPOC + a named group is ambiguous: the resolver flags it for
-        manual review and names the co-present group in the flag text.
+        BIPOC + exactly ONE named group classifies AS that group, and is still
+        flagged for manual review.
+
+        This reverses the previous expectation (Multiple). The hand-audit in
+        AUDITED_FR_GOLD.xlsx marked the forced-Multiple outcome WRONG on 5 of
+        the 8 rows with this shape (Mile Zero "Asian diaspora", Parachutes
+        "particularly Indigenous", SkirtsAfire "Caribbean", Good Women "Black
+        dance collective", Horn/KULAN "African") -- in each the named group is
+        the served population and BIPOC is umbrella framing around it. The
+        verify note is retained so the 3 rows where gold does say Multiple
+        (broad-mandate orgs) stay in the review queue.
         """
         e1, e2, e3, flag = classify_row(
             row(desc="BIPOC-focused services with a particular emphasis on Somali youth."),
             TAXONOMY,
         )
+        self.assertEqual(e1, "African Origins")
+        self.assertIn("BIPOC keyword alongside", flag)
+        self.assertIn("African Origins", flag)
+
+    def test_bipoc_alone_still_resolves_to_multiple(self):
+        """
+        BIPOC with NO other served group keeps resolving to Multiple, unflagged
+        -- 18/18 correct in the audit, and definitionally right ("BIPOC" spells
+        out Black + Indigenous + People of Colour). Guards the half of the rule
+        that must NOT change.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="A capacity-building program serving BIPOC entrepreneurs across the city."),
+            TAXONOMY,
+        )
         self.assertEqual(e1, MULTIPLE_ETHNIC)
         self.assertEqual(e2, "")
         self.assertEqual(e3, "")
-        self.assertIn("BIPOC keyword alongside", flag)
-        self.assertIn("African Origins", flag)
+        self.assertNotIn("BIPOC keyword alongside", flag)
 
     # ------------------------------------------------------------------
     # 8. Ambiguous equity word WITHOUT a paired ethnic signal
@@ -1791,17 +1814,22 @@ class TestG1SilentBodyNameRule(unittest.TestCase):
 
 
 class TestG1EchoDemotionAndServedRescue(unittest.TestCase):
-    """Ethnic axis — org-name echo demotion (steps 1/4) vs served-frame
-    rescue (step 2). Regression guards for the real gold row 54525 shape
-    (org self-intro + historical framing -> General) and the over-broad
-    name-word-echo bug this work order caught and fixed (a body mention
-    that merely shares a word with the org's name, but is a genuine served
-    claim in ordinary prose, must NOT be demoted)."""
+    """Ethnic axis — org-name echo as SELF-IDENTIFICATION vs served-frame
+    rescue (step 2), plus the over-broad name-word-echo bug this work order
+    caught and fixed (a body mention that merely shares a word with the org's
+    name, but is a genuine served claim in ordinary prose, must NOT be
+    demoted)."""
 
-    def test_org_self_intro_plus_historical_focus_demotes_to_general(self):
-        """Real gold row 54525 shape: the org restates its own name AND
-        separately describes Black as its HISTORICAL focus ('beyond its
-        original focus on') with no served frame anywhere -> General."""
+    def test_org_self_intro_plus_historical_focus_is_self_identification(self):
+        """Real gold row 54525 shape (Black Canadian Women in Action): the org
+        restates its own name AND describes Black as its HISTORICAL focus
+        ('beyond its original focus on').
+
+        This previously asserted General. The hand-audit in AUDITED_FR_GOLD.xlsx
+        marked that WRONG -- gold is Black. An ethnicity-named org naming its
+        own ethnicity is evidence of who it serves, not a non-claim, so the
+        echo now reads as self-identification. Re-measured over all 448 rows:
+        this fixes 54525 and regresses nothing."""
         e1, e2, e3, flag = classify_row(
             row(
                 name="Black Advocates in Action",
@@ -1814,8 +1842,43 @@ class TestG1EchoDemotionAndServedRescue(unittest.TestCase):
             ),
             TAXONOMY_S2,
         )
+        self.assertEqual(e1, "Other Ethnic and Cultural Origins")
+
+    def test_indigenous_language_named_org_self_identifies(self):
+        """An org whose NAME carries no identity word (Indigenous-language
+        names like Ociciwan/Niginan/amiskwaciy) can never match a name-string
+        echo test, so its self-description used to be demoted by the generic
+        '<Ethnicity> Centre' org-name pattern -> General. Gold says Indigenous.
+        The copula self-identification frame catches it."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Ociciwan Contemporary Art Collective Society",
+                desc=(
+                    "Ociciwan Contemporary Art Collective is the only "
+                    "Indigenous Artist-Run Centre based in Edmonton. The "
+                    "collective is seeking funding to support staff capacity."
+                ),
+            ),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+
+    def test_third_party_org_name_still_demoted(self):
+        """Guard the other side: a THIRD-PARTY org named in the body (no
+        copula + applicant-name pair) must still demote, so the self-ID rule
+        can't be used to classify from a partner's ethnicity."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Westbrook Arts Society",
+                desc=(
+                    "Westbrook Arts Society will run a season of concerts in "
+                    "partnership with the Edmonton Chinese Philharmonic Choir "
+                    "Association for seniors across the city."
+                ),
+            ),
+            TAXONOMY,
+        )
         self.assertEqual(e1, GENERAL_POP)
-        self.assertIn("not classified as served population", flag)
 
     def test_served_claim_sharing_a_word_with_org_name_is_not_demoted(self):
         """Regression guard: ordinary prose describing the served population

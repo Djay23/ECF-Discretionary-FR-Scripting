@@ -521,7 +521,7 @@ KEYWORD_ALIASES = {
     "somalian": "somali",
     "ethopian": "ethiopian",
     "ethipian": "ethiopian",
-    "rwandese": "rwandan",
+    "rwandese": "   ndan",
     "congolaise": "congolese",
     "congolais": "congolese",
     "mozambiquean": "mozambican",

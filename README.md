@@ -340,7 +340,7 @@ Is this something a human reviewer actually needs to look at?
 ## TO NOTE: Gender & Sex Identity Classification:
 - Flag HERizon mentions - should default to Multiple identities for gender and General for sex, unless something under the umbrella of 2SLGBTQIA+
 - Aspirational language should not be flagged for gender & sex.
-- 
+-
 
 # 2026-07-06
 ## Sprint 3 - Auditing - Classification of Sexual & Gender Identity
@@ -433,8 +433,11 @@ Is this something a human reviewer actually needs to look at?
 - Were was classification wrong/could possibly be wrong
 - What area that weren't flagged were missed
 - Would rather overflag indigenous mention as sometimes are erraneous 
+- Check Gender classifications for accuracy (multiple where it was boys/girls)
     ### Current Changes from 2027-07-20 Engine:
     - BIPOC: Formerly always classified as multiple; Now classifies as verified group and flagged (if only one group exists)
     - Org Names with Ethnic Signal: Formerly demoted to General; Now treated as served group and flagged
     - Indigenous Language org names: Previously not observed and classified as General; Now finds indigenous language
     - Nationalities: Formerly Eritrean/Congolese/Oromian unrecognized; Now recognized & Chinatown Centre mapped to Chinese Ethnic group.
+    - Flagged classification rows of
+

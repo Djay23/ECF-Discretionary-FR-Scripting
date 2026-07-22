@@ -272,6 +272,26 @@ def _name_word_echo(span, name_text):
         for c in candidates
     )
 
+# Role returned when a term counts as SERVED only because the organization
+# named ITSELF -- an org-name echo or a copula self-description. It behaves
+# exactly like "served" for every classification decision (see is_served_role
+# and extractors._candidate, which normalizes it back to "served" and records
+# the provenance on the candidate as self_id=True), but it is weaker EVIDENCE:
+# the text never actually states who is served, we inferred it from the org's
+# identity. classify_row uses that provenance to keep such a row flagged, which
+# is what the silent-body name rule used to guarantee before self-identification
+# became a served signal.
+SELF_ID_ROLE = "served_self_id"
+
+
+def is_served_role(role):
+    """True for both plain "served" and the self-identification variant.
+    Callers deciding "does this occurrence corroborate a served population?"
+    must use this rather than == "served", or a self-identified org silently
+    stops corroborating."""
+    return role in ("served", SELF_ID_ROLE)
+
+
 # Copula immediately preceding the match: "<Org> ... is the only <Indigenous>
 # Artist-Run Centre". Anchored to the END of the before-window so only a
 # copula DIRECTLY in front of the term counts -- "IWDIMAA program from
@@ -370,7 +390,7 @@ def infer_role(text, start, end, name_text="", window=60):
     # with the Council of India") has no copula + own-name pair and still
     # demotes normally.
     if _org_self_identifies(text, start, name_text):
-        return "served"
+        return SELF_ID_ROLE
     if matches_any(ROLE_ORG_NAME_BEFORE_PATTERNS, before) or matches_any(ROLE_ORG_NAME_AFTER_PATTERNS, after):
         return "org_name"
     if matches_any(ROLE_PROVIDER_BEFORE_PATTERNS, before) or matches_any(ROLE_PROVIDER_AFTER_PATTERNS, after):
@@ -413,10 +433,10 @@ def infer_role(text, start, end, name_text="", window=60):
     # Third-party org names are still demoted, by the ROLE_ORG_NAME_*
     # patterns above; that path is untouched.
     if _echoes_org_name(text, start, end, name_text):
-        return "served"
+        return SELF_ID_ROLE
     if (matches_any(EXPANSION_PHRASES, before) or matches_any(HISTORICAL_PHRASES, before)) \
             and _name_word_echo(span, name_text):
-        return "served"
+        return SELF_ID_ROLE
     # Topic / consultation framing (Plan.md Chunk G3): a term immediately
     # followed by "perspectives" or "knowledge holders" describes a
     # CURRICULUM TOPIC being taught or a CONSULTED-PARTY mention, not the

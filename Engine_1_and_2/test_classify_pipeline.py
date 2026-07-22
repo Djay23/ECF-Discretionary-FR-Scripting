@@ -1882,6 +1882,44 @@ class TestG1EchoDemotionAndServedRescue(unittest.TestCase):
         )
         self.assertEqual(e1, "North American Indigenous Origins")
 
+    def test_self_identification_only_is_flagged(self):
+        """A row that classifies ONLY because the org named itself must stay
+        flagged. Before this guard, making self-identification a served signal
+        routed these rows around classify_from_raw_name -- which had always
+        attached SILENT_NAME_FLAG -- so five rows kept a correct label and
+        silently lost their review flag. A confident classification a reviewer
+        cannot see is worse than a flagged uncertain one."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Black Advocates in Action",
+                desc=(
+                    "Black Advocates in Action (BAA) is undertaking a "
+                    "rebranding initiative to strengthen its operations."
+                ),
+            ),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "Other Ethnic and Cultural Origins")
+        self.assertIn("self-description", flag)
+
+    def test_explicit_served_statement_is_not_self_id_flagged(self):
+        """The flag above must NOT fire when the text actually STATES who is
+        served -- otherwise it degrades into blanket noise on every
+        ethnicity-named org. One ordinary served mention is enough to clear it,
+        because the claim is then stated rather than inferred."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Black Advocates in Action",
+                desc=(
+                    "Black Advocates in Action (BAA) delivers after-school "
+                    "tutoring for Black youth across the city."
+                ),
+            ),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "Other Ethnic and Cultural Origins")
+        self.assertNotIn("self-description", flag)
+
     def test_third_party_org_name_still_demoted(self):
         """Guard the other side: a THIRD-PARTY org named in the body (no
         copula + applicant-name pair) must still demote, so the self-ID rule

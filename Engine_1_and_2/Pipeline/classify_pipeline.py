@@ -181,6 +181,25 @@ def filter_french_language_accommodation(candidates, combined):
 
 SILENT_NAME_FLAG = "Classified from organization name (silent body) - verify served population"
 
+# Emitted when a row's ONLY served evidence is the organization naming itself
+# (an org-name echo, or a copula self-description like "X is the only Indigenous
+# Artist-Run Centre") -- see ethnic_taggerv3.SELF_ID_ROLE.
+#
+# Why this exists: self-identification used to be DEMOTED, which left the body
+# with no served signal, which routed the row through classify_from_raw_name --
+# and that rule always attached SILENT_NAME_FLAG. Once self-identification
+# became a served signal, those rows started classifying through the ordinary
+# taxonomy branch instead, where source_flag() returns "" -- so they silently
+# lost their flag (observed on Black Canadian Women in Action, Jewish Family
+# Services, Ukrainian Shumka Dancers). The label was right and the flag was
+# gone, which is the worst combination: a confident classification with nothing
+# telling a reviewer it was INFERRED from the org's name rather than stated.
+# This restores the "any name-derived classification is flagged" guarantee.
+SELF_ID_FLAG = (
+    "Classified from the organization's own self-description - the text never states "
+    "who is served; verify served population"
+)
+
 def classify_from_raw_name(raw_name, taxonomy_entries):
     """
     Plan.md Chunk G1 step 5. Only called when the body carries no signal at
@@ -395,6 +414,13 @@ def classify_row(row, taxonomy_entries):
     # is administratively silent, exactly like a body with no mention at all.
     served_body = [c for c in body_candidates if c.get("role", "served") == "served"]
 
+    # True when EVERY served mention is the org naming itself -- i.e. the row
+    # classifies only because we inferred the served population from the
+    # organization's identity, never because the text said so. A single
+    # ordinary served mention ("programming for Black youth") anywhere in the
+    # body clears this, because then the claim is stated rather than inferred.
+    self_id_only = bool(served_body) and all(c.get("self_id") for c in served_body)
+
     # Name-only / silent-body guard: no served signal in the body.
     if not served_body and not bipoc_present:
         if name_org:  # known org (e.g. Niginan) classifies -- tiny curated map first
@@ -471,6 +497,12 @@ def classify_row(row, taxonomy_entries):
     # (see apply_ml_role_arbiter's two-tier note text) — do not re-wrap it.
     ml_notes = [c["ml_role_note"] for c in states if c.get("ml_role_note")]
     notes = pre_notes + ml_notes + extra_annotation_notes(combined, states, bipoc_present, resolved_label=e1)
+
+    # Self-identification provenance (see SELF_ID_FLAG). Gated to non-General
+    # results: on a General row there is no inferred group for a reviewer to
+    # check, so the note would be pure noise.
+    if self_id_only and e1 != GENERAL_POP:
+        notes.append(SELF_ID_FLAG)
 
     # ------------------------------------------------------------------
     # Step 7b — Case 13: potential ethnocultural org name in title

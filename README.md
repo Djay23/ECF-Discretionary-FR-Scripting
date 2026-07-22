@@ -423,8 +423,18 @@ Is this something a human reviewer actually needs to look at?
 - Flag auditing and highlight necessary vs. Not important
 - Improving on flags highlighting the cause for flagging
 
-# 2027-7-21
+# 2027-07-21
 - Final Audit on 2025 FR completed
 - Apply findings to strengthen Engine
 - Move classification to 2023/24
 
+# 2027-07-22
+- 2023/24 FR Auditing Flags
+- Were was classification wrong/could possibly be wrong
+- What area that weren't flagged were missed
+- Would rather overflag indigenous mention as sometimes are erraneous 
+    ### Current Changes from 2027-07-20 Engine:
+    - BIPOC: Formerly always classified as multiple; Now classifies as verified group and flagged (if only one group exists)
+    - Org Names with Ethnic Signal: Formerly demoted to General; Now treated as served group and flagged
+    - Indigenous Language org names: Previously not observed and classified as General; Now finds indigenous language
+    - Nationalities: Formerly Eritrean/Congolese/Oromian unrecognized; Now recognized & Chinatown Centre mapped to Chinese Ethnic group.

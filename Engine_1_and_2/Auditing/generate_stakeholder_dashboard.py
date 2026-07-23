@@ -60,6 +60,62 @@ TOP_FLAGS = 12                     # rows in the top-flags table
 GENERAL_VARIANTS = {ETHNIC_GENERAL_POP, GENDER_GENERAL_POP, SEXUAL_GENERAL_POP}
 LOW_PRIORITY_PREFIX = "note (low priority)"
 
+# --- AUDITED_FR_GOLD.xlsx column names -------------------------------------
+GOLD_ETHNIC1     = "Ethnic 1 - FR6"
+GOLD_ETHNIC2     = "Ethnic 2 - FR7"
+GOLD_ETHNIC3     = "Ethnic 3 - FR8"
+GOLD_GENDER      = "Gender Id - FR9"
+GOLD_SEXUAL      = "Sexual Id - FR10"
+GOLD_ETHNIC_FLAG = "Classification Flag"
+GOLD_GENDER_FLAG = "Gender Classification Flag"
+GOLD_SEXUAL_FLAG = "Sexual Classification Flag"
+GOLD_VERDICT     = "Classification Accuracy (Corrected in Different Areas)"
+GOLD_SECTOR      = "Sector 1 - FR"   # primary sector; a request may name up to 4
+GOLD_AH          = "AH - FR"         # Affordable Housing focus area (True/False)
+GOLD_ECD         = "ECD - FR"        # Early Childhood Development focus area (True/False)
+
+# Values that count as "yes" in the boolean AH/ECD focus-area columns.
+TRUE_VALUES = {"true", "yes", "y", "1", "x"}
+
+# Stand-in for "the human replaced this value". The workbook was corrected in
+# place, so the pre-correction engine output is not stored anywhere except as
+# prose inside the verdict ("... Formerly Indigenous"). accuracy() only needs a
+# value that compares unequal, never the real former label.
+CORRECTED_SENTINEL = "— corrected by reviewer —"
+
+
+def parse_audit_verdict(text):
+    """Parse one 'Classification Accuracy' cell into per-axis correctness.
+
+    Returns None for an unaudited (blank) row, else a dict of
+    {axis: True if the human marked that axis WRONG}.
+
+    The column is free text written by a human, so this keys off which axis
+    names appear inside a "Wrong ..." clause rather than assuming a fixed
+    layout. Real forms present in the 2025 sheet:
+        "Correct Ethnic, Gender and Sex, Focus"
+        "Wrong Ethnic - Formerly Indigenous"
+        "Wrong Ethnic - Formerly Multiple; Wrong Gender - Formerly General"
+        "Wrong Ethnic and Gender - Formerly Other for ETHNIC, ..."   <- one clause, two axes
+        "Wrong Gender - Formerly Women/girls"                        <- ethnic was fine
+    Note the 4th form: a single "Wrong" clause naming two axes, which is why
+    each axis is searched for independently instead of splitting on ';'.
+    """
+    s = str(text or "").strip()
+    if not s:
+        return None
+    low = s.lower()
+    if not low.startswith("wrong"):
+        return {"ethnic": False, "gender": False, "sexual": False}
+    # Scope each axis test to text following a "wrong" token so that a trailing
+    # explanatory clause cannot mark an axis the reviewer did not fault.
+    tail = low[low.find("wrong"):]
+    return {
+        "ethnic": bool(re.search(r"wrong[^.;]*ethnic", tail)),
+        "gender": bool(re.search(r"wrong[^.;]*gender", tail)),
+        "sexual": bool(re.search(r"wrong[^.;]*sex\b|wrong[^.;]*sexual", tail)),
+    }
+
 # Canonical normalized record columns produced by load_records().
 COL = dict(
     name="name", ethnic1="ethnic1", ethnic2="ethnic2", ethnic3="ethnic3",
@@ -153,21 +209,65 @@ def _load_gold(ds):
         )
     fp = ds.gold_file
     df = pd.read_excel(fp, dtype=str).fillna("")
+
+    # Column names below are AUDITED_FR_GOLD.xlsx's. The previous mapping used
+    # the older audit_gold_audited.xlsx schema ("Ethnic 1 (engine)",
+    # "Classification Flag (engine)", "Correct Ethnic 1"), none of which exist
+    # here -- and because df.get() returns a default instead of raising, every
+    # label and flag silently came back blank. The dashboard rendered 448
+    # records with 0 flags and empty equity charts rather than failing.
+    missing = [c for c in (GOLD_ETHNIC1, GOLD_GENDER, GOLD_ETHNIC_FLAG, GOLD_VERDICT)
+               if c not in df.columns]
+    if missing:
+        raise SystemExit(
+            f"{fp.name} is missing expected column(s): {missing}\n"
+            f"Found: {[c for c in df.columns if not str(c).startswith('Unnamed')]}"
+        )
+
+    verdicts = df[GOLD_VERDICT].map(parse_audit_verdict)
+
+    def _correct(axis_key, value_col):
+        """accuracy() compares engine value against a 'correct' value and skips
+        blank ones. In this workbook the human corrected IN PLACE, so the label
+        columns ARE the gold -- comparing them to themselves would report 100%.
+        The real signal is the audit verdict, so emit a value that agrees when
+        the human marked the axis correct and deliberately disagrees when they
+        marked it wrong. Unaudited rows stay blank and are excluded."""
+        out = []
+        for val, v in zip(df[value_col], verdicts):
+            if v is None:
+                out.append("")
+            elif v.get(axis_key):
+                out.append(CORRECTED_SENTINEL)
+            else:
+                out.append(val)
+        return out
+
     out = pd.DataFrame({
-        COL["name"]:          df.get("Funding Request Name", ""),
-        COL["ethnic1"]:       df.get("Ethnic 1 (engine)", ""),
-        COL["ethnic2"]:       df.get("Ethnic 2 (engine)", ""),
-        COL["ethnic3"]:       df.get("Ethnic 3 (engine)", ""),
-        COL["gender"]:        df.get("Gender Id (engine)", ""),
-        COL["sexual"]:        df.get("Sexual Id (engine)", ""),
-        COL["ethnic_flag"]:   df.get("Classification Flag (engine)", ""),
-        COL["gender_flag"]:   df.get("Gender Flag (engine)", ""),
-        COL["sexual_flag"]:   df.get("Sexual Flag (engine)", ""),
-        COL["correct_ethnic"]: df.get("Correct Ethnic 1", ""),
-        COL["correct_gender"]: df.get("Correct Gender Id", ""),
-        COL["correct_sexual"]: df.get("Correct Sexual Id", ""),
+        COL["name"]:           df.get("Funding Request Name", ""),
+        COL["ethnic1"]:        df[GOLD_ETHNIC1],
+        COL["ethnic2"]:        df.get(GOLD_ETHNIC2, ""),
+        COL["ethnic3"]:        df.get(GOLD_ETHNIC3, ""),
+        COL["gender"]:         df[GOLD_GENDER],
+        COL["sexual"]:         df.get(GOLD_SEXUAL, ""),
+        COL["ethnic_flag"]:    df[GOLD_ETHNIC_FLAG],
+        COL["gender_flag"]:    df.get(GOLD_GENDER_FLAG, ""),
+        COL["sexual_flag"]:    df.get(GOLD_SEXUAL_FLAG, ""),
+        COL["correct_ethnic"]: _correct("ethnic", GOLD_ETHNIC1),
+        COL["correct_gender"]: _correct("gender", GOLD_GENDER),
+        COL["correct_sexual"]: _correct("sexual", GOLD_SEXUAL),
+        # Sector (primary) and the two ECF focus areas were hand-classified and
+        # live in the gold workbook -- carry them through so Part A renders them
+        # instead of the "pending import" placeholder.
+        COL["sector"]:         df.get(GOLD_SECTOR, ""),
+        COL["ah"]:             df.get(GOLD_AH, ""),
+        COL["ecd"]:            df.get(GOLD_ECD, ""),
     })
-    meta = dict(source=f"Audited gold set ({fp.name})", mode="gold")
+    n_aud = sum(1 for v in verdicts if v is not None)
+    meta = dict(
+        source=f"Audited gold set ({fp.name}, {n_aud} of {len(df)} rows audited)",
+        mode="gold",
+    )
     return out.fillna(""), meta
 
 
@@ -436,6 +536,42 @@ def bar_list(rows, total, max_count):
     return "".join(out)
 
 
+def count_true(df, col):
+    """How many rows have a truthy value in a boolean focus-area column."""
+    if col not in df.columns:
+        return 0
+    return int(df[col].map(lambda x: str(x).strip().lower() in TRUE_VALUES).sum())
+
+
+def focus_area_card(df, total):
+    """Part A panel for the two ECF focus areas (Affordable Housing, Early
+    Childhood Development). These are yes/no flags, not populations, so they get
+    a compact count-of-yes panel rather than a distribution of groups."""
+    areas = [
+        ("Affordable Housing", COL["ah"]),
+        ("Early Childhood Development", COL["ecd"]),
+    ]
+    tiles = []
+    for name, col in areas:
+        if col not in df.columns:
+            continue
+        n = count_true(df, col)
+        pct = (100.0 * n / total) if total else 0.0
+        tiles.append(
+            f'<div class="acc"><div class="acc-val">{n:,}</div>'
+            f'<div class="acc-label">{esc(name)}</div>'
+            f'<div class="acc-sub">{fmt_pct(pct)} of {total:,} requests</div></div>'
+        )
+    if not tiles:
+        return ""
+    return (
+        '<div class="card" style="grid-column:1/-1;"><h3>ECF focus areas</h3>'
+        '<div class="sub">Requests hand-classified as advancing a priority focus area. '
+        'A request can fall under both, neither, or one.</div>'
+        f'<div class="acc-row">{"".join(tiles)}</div></div>'
+    )
+
+
 def kpi_tile(value, label, sub="", tone=""):
     tone_cls = f" tile-{tone}" if tone else ""
     sub_html = f'<div class="tile-sub">{esc(sub)}</div>' if sub else ""
@@ -652,8 +788,13 @@ def build_html(df, meta):
     # Sector / focus-area panels: render if present, else a pending note.
     sector_present = COL["sector"] in df.columns and df[COL["sector"]].map(lambda x: str(x).strip() != "").any()
     ah_present = COL["ah"] in df.columns and df[COL["ah"]].map(lambda x: str(x).strip() != "").any()
+    ecd_present = COL["ecd"] in df.columns and df[COL["ecd"]].map(lambda x: str(x).strip() != "").any()
+
     pending_html = ""
-    if not (sector_present or ah_present):
+    focus_card = ""
+    if ah_present or ecd_present:
+        focus_card = focus_area_card(df, total)
+    if not (sector_present or ah_present or ecd_present):
         pending_html = (
             '<div class="pending"><strong>Pending import.</strong> '
             'Sector classification and the two ECF focus areas — '
@@ -730,6 +871,7 @@ def build_html(df, meta):
     the equity-relevant groups.</p>
   </div>
   <div class="grid-2">{''.join(a_cards)}{heat_card}</div>
+  {focus_card}
   {pending_html}
 
   <div class="part">

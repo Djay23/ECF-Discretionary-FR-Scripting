@@ -523,8 +523,27 @@ def classify_row(row, taxonomy_entries):
     # Context notes already embedded by resolver (step 6).
     # Only extra notes appended here — no double-append.
     # ------------------------------------------------------------------
-    if notes:
-        note_text = "; ".join(notes)
+    # De-duplicate before joining. Negation is detected TWICE by design, by two
+    # deliberately different checks that emit byte-identical text:
+    #   * build_context_notes()        -- whole-text negation-phrase scan,
+    #                                     already embedded in `flag` by resolve()
+    #   * has_non_prefixed_negation()  -- per-keyword "non-<ethnicity>" check,
+    #                                     arriving here via extra_annotation_notes()
+    # A row that trips both (a general negation phrase AND a "non-<group>"
+    # construction) printed the same sentence twice. That never happened on the
+    # 448 rows of AUDITED_FR_GOLD.xlsx, but it did occur in the 2023-2024 engine
+    # output, so it is data-dependent rather than fixed.
+    #
+    # Compared by whole-string containment rather than by splitting on ";" --
+    # some notes legitimately contain a semicolon (the "especially"/"particularly"
+    # note does), so splitting would fragment them and defeat the comparison.
+    deduped, seen = [], []
+    for n in notes:
+        if n and n not in flag and n not in seen:
+            seen.append(n)
+            deduped.append(n)
+    if deduped:
+        note_text = "; ".join(deduped)
         flag = f"{flag}; {note_text}" if flag else note_text
 
     return (e1, e2, e3, flag)

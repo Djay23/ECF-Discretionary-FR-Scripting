@@ -1882,6 +1882,27 @@ class TestG1EchoDemotionAndServedRescue(unittest.TestCase):
         )
         self.assertEqual(e1, "North American Indigenous Origins")
 
+    def test_negation_note_is_not_duplicated(self):
+        """Negation is detected by two deliberately different checks that emit
+        byte-identical text: build_context_notes()'s whole-text phrase scan
+        (embedded in the flag by resolve()) and has_non_prefixed_negation()'s
+        per-keyword "non-<ethnicity>" check (appended by extra_annotation_notes).
+
+        A row tripping BOTH printed the sentence twice. No row in the 448 of
+        AUDITED_FR_GOLD.xlsx does, so the 2025 corpus cannot catch this -- but
+        the 2023-2024 engine output contained one. Hence a synthetic case."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Test Society",
+                desc=(
+                    "The program serves Somali youth, and is not limited to "
+                    "non-Somali residents; we do not exclude anyone."
+                ),
+            ),
+            TAXONOMY,
+        )
+        self.assertEqual(flag.count("near a negation word"), 1)
+
     def test_self_identification_only_is_flagged(self):
         """A row that classifies ONLY because the org named itself must stay
         flagged. Before this guard, making self-identification a served signal

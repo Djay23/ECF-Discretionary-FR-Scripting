@@ -1,144 +1,49 @@
 import sys
-import random
-from collections import Counter
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Engine 1 and 2
-import bootstrap 
+import bootstrap
 
 import ethnic_taggerv3 as et
-from classify_pipeline import classify_row as pipeline_classify_row, identity_markers
+from classify_pipeline import classify_row as pipeline_classify_row
 import Gender_SexID as gs
 import audit_evidence as ae
-from pathlib import Path
- 
+
 """
 generate_review_report.py
----------------------------
-ClaudeAI Diagnostic tool -- NOT part of the normal classification run, and never
-writes back to your funding requests file. Builds a single Excel
-workbook with several tabs, meant for manual review of what Engine 1
-is actually doing on your real data, before any more classification
-rules get added.
+--------------------------
+Builds ONE self-contained review workbook for the active dataset. Read-only:
+it never writes back to the funding-requests file or the gold file.
 
-Tabs produced:
-  Ethnic (5):
-    1.  General Pop Sample       - random sample (up to 100) of General Population rows
-    2.  Ambiguous Equity Rows    - all rows with "no paired ethnic signal" flag
-    3.  Multiple Rows            - all Multiple Ethnic and Cultural Origins rows
-    4.  Flag Frequency           - distinct ethnic flags, most-common first
-    5.  Classification Frequency - distinct (Ethnic1, Ethnic2, Ethnic3) combos, most-common first
-  Gender (4):
-    6.  Gender Gen Pop Sample    - random sample of Gender General Population rows (recall check)
-    7.  Gender Multiple Rows     - all Multiple gender identities rows
-    8.  Gender Flag Frequency    - distinct gender flags, most-common first
-    9.  Gender Class Frequency   - distinct Gender Id values, most-common first
-  Sexual Identity (4):
-    10. 2SLGBTQIA Rows           - all 2SLGBTQIA+ rows (precision check)
-    11. Sexual Gen Pop Sample    - random sample of Sexual General Population rows (recall check)
-    12. Sexual Flag Frequency    - distinct sexual flags, most-common first
-    13. Sexual Class Frequency   - distinct Sexual Id values, most-common first
-  Flags-by-group (3) — which classification group each flag fell under:
-    14. Ethnic Flags by Group    - (Ethnic 1 group x flag) counts, most-common first
-    15. Gender Flags by Group    - (Gender Id x flag) counts, most-common first
-    16. Sexual Flags by Group    - (Sexual Id x flag) counts, most-common first
+Three sheets:
+  1. "Discretionary Funding Requests" — every row, side by side: what the ENGINE
+     decided vs the hand-AUDITED (gold) value on each axis, an agree? column,
+     the engine's flags, and a "why + evidence" column explaining each flag and
+     pointing to the term/field/snippet it came from.
+  2. "Classification Frequency" — per axis (Ethnic/Gender/Sexual): how often each
+     classification occurred (engine vs audited counts), how many of those rows
+     were flagged, plus an engine-vs-audited agreement summary.
+  3. "Flag Frequency" — each distinct flag type and its count (by axis), plus
+     total flag instances and flagged-row totals.
+
+If the active dataset has no gold file, the audited columns/accuracy are left
+blank and the report is engine-only.
 
 To Run:
-   $env:PYTHONIOENCODING="utf-8"; $env:HF_HUB_OFFLINE="1"; python Engine_1_and_2/Auditing/generate_review_report.py
-
-Output:
-    Data Sheets/review_report(ML implement).xlsx  (separate workbook — FR testing.xlsx is never modified)
+   $env:PYTHONIOENCODING="utf-8"; python Engine_1_and_2/Auditing/generate_review_report.py
 """
 
-SAMPLE_SIZE = 100
-RANDOM_SEED = 42  # fixed so the same sample comes up
-
-GENDER_SAMPLE_COLS = ["Funding Request Name", "Final_Project_Description",
-                      "Final_Summary_Description", "Purpose", "Gender Id", "Gender Flag"]
-SEXUAL_SAMPLE_COLS = ["Funding Request Name", "Final_Project_Description",
-                      "Final_Summary_Description", "Purpose", "Sexual Id", "Sexual Flag"]
-
-
-# ---------------------------------------------------------------------------
-# ADDITIVE LAYER 4 — Deterministic validation moat (no numeric scores).
-#
-# Purely additive triage: it reads the labels/flags/evidence the engine ALREADY
-# produced for a row and sorts it into one of three review tiers. It fabricates
-# no confidence score and changes no classification — it only decides whether a
-# row needs a human look, using real code signals:
-#
-#   * System Blindspot : every axis resolved to General AND no evidence term was
-#                        matched anywhere -> unrecognized terminology, worth a look.
-#   * Targeted Audit   : a "Multiple" multi-group fallback fired, OR a name-vs-body
-#                        field conflict was flagged by the engine.
-#   * Auto-Pass        : a clean, unconflicted single-identity (or clearly-signalled)
-#                        row -- no review needed.
-# ---------------------------------------------------------------------------
-def audit_tier(e1, g_label, s_label, flag, g_flag, s_flag, eth_ev, gen_ev, sex_ev):
-    is_multiple = (e1 == et.MULTIPLE_ETHNIC) or (g_label == gs.GENDER_MULTIPLE)
-    all_general = (
-        e1 == et.GENERAL_POP
-        and g_label == gs.GENDER_GENERAL_POP
-        and s_label == gs.SEXUAL_GENERAL_POP
-    )
-    no_evidence = not (eth_ev.strip() or gen_ev.strip() or sex_ev.strip())
-    all_flags = " ".join(f for f in (flag, g_flag, s_flag) if f).lower()
-    # A direct syntax conflict between distinct free-text fields: the engine
-    # flagged that the signal lives only in the org/name (body did not
-    # corroborate) or that distinct groups co-occur across the text.
-    field_conflict = any(marker in all_flags for marker in (
-        "signal appears only in the organization",
-        "classified from organization name",
-        "org-name self-reference",
-        "co-present",
-        "distinct groups",
-    ))
-    if all_general and no_evidence:
-        return "System Blindspot"
-    if is_multiple or field_conflict:
-        return "Targeted Audit"
-    return "Auto-Pass"
-
-
-def split_flags_joinaware(cell):
-    """Split a flag cell into distinct flags. The engine joins flags with '; '
-    but some individual flags contain an internal '; ' (e.g. "...broader
-    population; confirm the classification isn't narrower..."). Every catalogued
-    flag starts uppercase or with 'Note (low priority):', while those internal
-    continuations start lowercase — so re-attach any lowercase-leading segment to
-    the flag it belongs to (mirrors the stakeholder dashboard's split_flags)."""
-    parts = []
-    for p in str(cell).split(";"):
-        p = p.strip()
-        if not p:
-            continue
-        if parts and p[:1].islower():
-            parts[-1] = parts[-1] + "; " + p
-        else:
-            parts.append(p)
-    return parts
-
-
-def flags_by_group(df, group_col, flag_col):
-    """Long-format tally answering "which group did each flag fall under":
-    (group, flag) -> count, most-common first. One flagged row contributes one
-    count per distinct flag it carries. Rows with no flag are ignored."""
-    counter = Counter()
-    for _, r in df.iterrows():
-        grp = str(r[group_col]).strip() or "(blank)"
-        for f in split_flags_joinaware(r[flag_col]):
-            counter[(grp, f)] += 1
-    return pd.DataFrame(
-        [(g, f, n) for (g, f), n in counter.most_common()],
-        columns=[group_col, flag_col, "Count"],
-    )
+# Audited (hand-corrected / gold) classification columns in the workbook.
+AUDIT_ETHNIC_COLS = ["Ethnic 1 - FR6", "Ethnic 2 - FR7", "Ethnic 3 - FR8"]
+AUDIT_GENDER_COL  = "Gender Id - FR9"
+AUDIT_SEXUAL_COL  = "Sexual Id - FR10"
 
 
 def _read_excel_safe(path, **kwargs):
-    """pd.read_excel that survives an Excel/OneDrive exclusive open-handle lock:
-    on PermissionError, read a temp copy (a plain copy uses a share mode Excel
-    allows) so an open workbook doesn't block the run."""
+    """pd.read_excel that survives an Excel/OneDrive exclusive lock by reading a
+    temp copy (a plain copy uses a share mode Excel allows)."""
     try:
         return pd.read_excel(path, **kwargs)
     except PermissionError:
@@ -154,211 +59,218 @@ def _read_excel_safe(path, **kwargs):
                 pass
 
 
+def _cell(value):
+    """Stripped string for a cell; blank/NaN -> ''."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    text = str(value).strip()
+    return "" if text.lower() == "nan" else text
+
+
+def _join_levels(*values):
+    """Join non-empty level values into one display string ('L1 | L2 | L3')."""
+    return " | ".join(v for v in (_cell(v) for v in values) if v)
+
+
+def _canon(text):
+    """Case/space-insensitive key for comparing engine vs audited labels."""
+    return " ".join(str(text).split()).lower()
+
+
+def split_flags_joinaware(cell):
+    """Split a flag cell into distinct flags. The engine joins flags with '; '
+    but some flags contain an internal '; ' whose continuation starts lowercase,
+    so re-attach any lowercase-leading segment to the flag it belongs to."""
+    parts = []
+    for p in str(cell).split(";"):
+        p = p.strip()
+        if not p:
+            continue
+        if parts and p[:1].islower():
+            parts[-1] = parts[-1] + "; " + p
+        else:
+            parts.append(p)
+    return parts
+
+
+def build_evidence_cell(row, taxonomy_entries, eth_flag, gen_flag, sex_flag):
+    """Reviewer-facing "why + evidence" text for the axes that carry a flag: the
+    flag text explains WHY, the re-scanned evidence shows WHICH term matched, in
+    WHICH field, and the surrounding snippet. Returns '' when nothing is flagged."""
+    axes = (
+        ("ETHNIC", eth_flag, lambda r: ae.ethnic_evidence(r, taxonomy_entries)),
+        ("GENDER", gen_flag, ae.gender_evidence),
+        ("SEXUAL", sex_flag, ae.sexual_evidence),
+    )
+    blocks = []
+    for label, flag, evidence_fn in axes:
+        if not _cell(flag):
+            continue
+        evidence = evidence_fn(row).strip() or "(no matching term re-scanned in the text)"
+        blocks.append(f"{label} - why: {_cell(flag)}  |  evidence: {evidence}")
+    return "\n".join(blocks)
+
+
+def _freq_table(records, axis, engine_key, audit_key, flag_key):
+    """Per-axis frequency: for each classification value (union of engine +
+    audited), how many rows the ENGINE gave it, how many the AUDIT gave it, and
+    how many audited-that-class rows carried a flag. Sorted by audited count."""
+    from collections import Counter
+    engine_ct, audit_ct, flagged_ct = Counter(), Counter(), Counter()
+    for rec in records:
+        e, a = rec[engine_key], rec[audit_key]
+        if e:
+            engine_ct[e] += 1
+        if a:
+            audit_ct[a] += 1
+            if _cell(rec[flag_key]):
+                flagged_ct[a] += 1
+    values = sorted(set(engine_ct) | set(audit_ct),
+                    key=lambda v: (-audit_ct[v], -engine_ct[v], v))
+    return [
+        {"Axis": axis, "Classification": v,
+         "Engine Count": engine_ct[v], "Audited Count": audit_ct[v],
+         "Flagged (audited rows)": flagged_ct[v]}
+        for v in values
+    ]
+
+
 def main():
     ds = bootstrap.dataset()
-    print(f"[dataset] active: {ds.name}  ->  reads {ds.raw_file.name}, writes {ds.output_file.name}")
+    print(f"[dataset] active: {ds.name}")
 
-    taxonomy_filepath = ds.taxonomy_file
-    funding_filepath = ds.raw_file
-    report_name = ("review_report(ML implement).xlsx" if ds.name == "2025"
-                    else f"review_report(ML implement)_{ds.name}.xlsx")
-    OUTPUT_FILE = bootstrap.PROJECT_ROOT / "Data Sheets" / report_name
+    # Prefer the gold workbook (it holds source text AND the audited columns);
+    # fall back to the raw file (engine-only, no audit) when no gold exists.
+    have_gold = getattr(ds, "gold_file", None) is not None and Path(ds.gold_file).exists()
+    source = ds.gold_file if have_gold else ds.raw_file
+    print(f"[source] {'gold' if have_gold else 'raw (no gold — engine-only)'}: {Path(source).name}")
 
-    tax_df = _read_excel_safe(taxonomy_filepath, sheet_name=et.TAXONOMY_SHEET, dtype=str)
-    data_df = _read_excel_safe(funding_filepath, sheet_name=et.DATA_SHEET, dtype=str)
-
+    tax_df = _read_excel_safe(ds.taxonomy_file, sheet_name=et.TAXONOMY_SHEET, dtype=str)
+    data_df = _read_excel_safe(source, sheet_name=ds.data_sheet, dtype=str)
     taxonomy_entries = et.build_taxonomy(tax_df)
 
-    CROSS_DOMAIN_NOTE = "Ethnic/cultural signal co-present - verify intersectional target population"
+    records = []
+    for _, row in data_df.iterrows():
+        # --- engine (live) ---
+        e1, e2, e3, eth_flag = pipeline_classify_row(row, taxonomy_entries)
+        g_label, gen_flag = gs.classify_gender(row)
+        s_label, sex_flag = gs.classify_sexual(row)
+        eth_engine = _join_levels(e1, e2, e3)
+        gen_engine = _cell(g_label)
+        sex_engine = _cell(s_label)
 
-    rows = []
-    for idx, row in data_df.iterrows():
-        e1, e2, e3, flag = pipeline_classify_row(row, taxonomy_entries)
-        g_label, g_flag  = gs.classify_gender(row)
-        s_label, s_flag  = gs.classify_sexual(row)
+        # --- audited (from gold columns; blank if not present) ---
+        eth_audit = _join_levels(*[row.get(c, "") for c in AUDIT_ETHNIC_COLS]) if have_gold else ""
+        gen_audit = _cell(row.get(AUDIT_GENDER_COL, "")) if have_gold else ""
+        sex_audit = _cell(row.get(AUDIT_SEXUAL_COL, "")) if have_gold else ""
 
-        # Cross-domain co-signal: gender/sexual classification alongside ethnic signal
-        has_gender_or_sexual = (g_label != gs.GENDER_GENERAL_POP or
-                                s_label != gs.SEXUAL_GENERAL_POP)
-        has_ethnic = (e1 != et.GENERAL_POP)
-        if has_gender_or_sexual and has_ethnic:
-            g_flag = "; ".join(p for p in [g_flag, CROSS_DOMAIN_NOTE] if p)
-            s_flag = "; ".join(p for p in [s_flag, CROSS_DOMAIN_NOTE] if p)
+        def agree(engine, audit):
+            if not have_gold or not audit:
+                return ""
+            return "YES" if _canon(engine) == _canon(audit) else "NO"
 
-        eth_ev = ae.ethnic_evidence(row, taxonomy_entries)
-        gen_ev = ae.gender_evidence(row)
-        sex_ev = ae.sexual_evidence(row)
-
-        # --- Additive Layer 3: intersectional marker string (string-safe) ---
-        # All distinct matched identity tags across axes. Existing label columns
-        # are untouched; this is extra visibility only.
-        markers = identity_markers(row, taxonomy_entries)
-        if g_label != gs.GENDER_GENERAL_POP:
-            markers.append(g_label)
-        if s_label != gs.SEXUAL_GENERAL_POP:
-            markers.append(s_label)
-        # Pipe-delimited + sorted: taxonomy labels contain literal commas
-        # (e.g. "Black, not otherwise specified"), so a comma delimiter is
-        # unsafe for any downstream split(). sorted() gives a stable string
-        # so exact-match/diff comparisons downstream are order-independent.
-        multi_identity_markers = " | ".join(sorted(markers))
-
-        # --- Additive Layer 4: deterministic triage tier ---
-        tier = audit_tier(e1, g_label, s_label, flag, g_flag, s_flag,
-                          eth_ev, gen_ev, sex_ev)
-
-        rows.append({
-            "Funding Request Name": row.get("Funding Request Name", f"row {idx}"),
-            "SF_18_ID_Funding_Request__c": row.get("SF_18_ID_Funding_Request__c", ""),
-            "Final_Project_Description": row.get("Final_Project_Description", ""),
-            "Final_Summary_Description": row.get("Final_Summary_Description", ""),
-            "Purpose": row.get("Purpose", ""),
-            "Ethnic 1": e1,
-            "Ethnic 2": e2,
-            "Ethnic 3": e3,
-            "Classification Flag": flag,
-            "Gender Id": g_label,
-            "Gender Flag": g_flag,
-            "Sexual Id": s_label,
-            "Sexual Flag": s_flag,
-            "multi_identity_markers": multi_identity_markers,
-            "audit_tier": tier,
-            "Ethnic Evidence": eth_ev,
-            "Gender Evidence": gen_ev,
-            "Sexual Evidence": sex_ev,
+        records.append({
+            "Funding Request Name": _cell(row.get("Funding Request Name", "")),
+            "SF_18_ID_Funding_Request__c": _cell(row.get("SF_18_ID_Funding_Request__c", "")),
+            "Final_Project_Description": _cell(row.get("Final_Project_Description", "")),
+            "Final_Summary_Description": _cell(row.get("Final_Summary_Description", "")),
+            "Purpose": _cell(row.get("Purpose", "")),
+            "Ethnic (engine)": eth_engine,
+            "Ethnic (audited)": eth_audit,
+            "Ethnic agree?": agree(eth_engine, eth_audit),
+            "Gender (engine)": gen_engine,
+            "Gender (audited)": gen_audit,
+            "Gender agree?": agree(gen_engine, gen_audit),
+            "Sexual (engine)": sex_engine,
+            "Sexual (audited)": sex_audit,
+            "Sexual agree?": agree(sex_engine, sex_audit),
+            "Classification Flag": _cell(eth_flag),
+            "Gender Classification Flag": _cell(gen_flag),
+            "Sexual Classification Flag": _cell(sex_flag),
+            "Flag Explanation (why + evidence)": build_evidence_cell(
+                row, taxonomy_entries, eth_flag, gen_flag, sex_flag),
         })
 
-    results_df = pd.DataFrame(rows)
-    print(f"{len(results_df)} total rows classified.")
+    print(f"{len(records)} rows classified.")
 
-    # --- Tab 1: General Population sample (random, not first-N) ---
-    general_df = results_df[results_df["Ethnic 1"] == et.GENERAL_POP]
-    print(f"General Population rows: {len(general_df)}")
-    sample_n = min(SAMPLE_SIZE, len(general_df))
-    general_sample = general_df.sample(n=sample_n, random_state=RANDOM_SEED) if sample_n > 0 else general_df
+    # --- Sheet 1: the full data sheet ---
+    detail_df = pd.DataFrame(records)
 
-    # --- Tab 2: every "no paired ethnic signal" row, not a sample ---
-    ambiguous_df = results_df[results_df["Classification Flag"].str.contains(
-        "no paired ethnic signal", case=False, na=False)]
-    print(f"Ambiguous equity term (no signal) rows: {len(ambiguous_df)}")
-
-    # --- Tab 3: every Multiple row ---
-    multiple_df = results_df[results_df["Ethnic 1"] == et.MULTIPLE_ETHNIC]
-    print(f"Multiple Ethnic and Cultural Origins rows: {len(multiple_df)}")
-
-    # --- Tab 4: flag frequency, most common first ---
-    flag_counts = (
-        results_df[results_df["Classification Flag"] != ""]["Classification Flag"]
-        .value_counts()
-        .reset_index()
+    # --- Sheet 2: classification frequency (per axis) + agreement summary ---
+    freq_rows = (
+        _freq_table(records, "Ethnic", "Ethnic (engine)", "Ethnic (audited)", "Classification Flag")
+        + _freq_table(records, "Gender", "Gender (engine)", "Gender (audited)", "Gender Classification Flag")
+        + _freq_table(records, "Sexual", "Sexual (engine)", "Sexual (audited)", "Sexual Classification Flag")
     )
-    flag_counts.columns = ["Classification Flag", "Count"]
+    freq_df = pd.DataFrame(freq_rows)
 
-    # --- Tab 5: classification (E1/E2/E3) frequency, most common first ---
-    class_counts = (
-        results_df.assign(flagged=results_df["Classification Flag"] != "")
-        .groupby(["Ethnic 1", "Ethnic 2", "Ethnic 3"])
-        .agg(Count=("flagged", "size"), Flagged_Count=("flagged", "sum"))
-        .reset_index()
-        .sort_values("Count", ascending=False)
+    def _accuracy(axis, col):
+        judged = [r for r in records if r[col]]
+        agreed = sum(1 for r in judged if r[col] == "YES")
+        pct = f"{agreed / len(judged) * 100:.1f}%" if judged else "n/a"
+        return {"Axis": axis, "Engine == Audited": agreed,
+                "Rows compared": len(judged), "Accuracy": pct}
+
+    accuracy_df = pd.DataFrame([
+        _accuracy("Ethnic", "Ethnic agree?"),
+        _accuracy("Gender", "Gender agree?"),
+        _accuracy("Sexual", "Sexual agree?"),
+    ]) if have_gold else pd.DataFrame([{"note": "no gold file — engine-only report"}])
+
+    # --- Sheet 3: flag frequency (per axis) + totals ---
+    from collections import Counter
+    flag_ct = Counter()
+    axis_flag_ct = Counter()
+    flagged_row_ct = Counter()
+    any_flag_rows = 0
+    for r in records:
+        row_flagged = False
+        for axis, col in (("Ethnic", "Classification Flag"),
+                          ("Gender", "Gender Classification Flag"),
+                          ("Sexual", "Sexual Classification Flag")):
+            cell = r[col]
+            if _cell(cell):
+                row_flagged = True
+                flagged_row_ct[axis] += 1
+                for f in split_flags_joinaware(cell):
+                    flag_ct[(axis, f)] += 1
+                    axis_flag_ct[axis] += 1
+        if row_flagged:
+            any_flag_rows += 1
+    flag_freq_df = pd.DataFrame(
+        [{"Axis": axis, "Flag": f, "Count": n}
+         for (axis, f), n in flag_ct.most_common()]
     )
-    class_counts.rename(columns={"Flagged_Count": "Flagged Count"}, inplace=True)
+    totals_df = pd.DataFrame([
+        {"Metric": "Rows with >=1 flag", "Value": any_flag_rows},
+        {"Metric": "Total flag instances", "Value": sum(flag_ct.values())},
+        {"Metric": "Ethnic flag instances", "Value": axis_flag_ct["Ethnic"]},
+        {"Metric": "Gender flag instances", "Value": axis_flag_ct["Gender"]},
+        {"Metric": "Sexual flag instances", "Value": axis_flag_ct["Sexual"]},
+    ])
 
-    # --- Gender tabs ---
-    gender_gen_pop_df = results_df[results_df["Gender Id"] == gs.GENDER_GENERAL_POP]
-    g_sample_n = min(SAMPLE_SIZE, len(gender_gen_pop_df))
-    gender_gen_pop_sample = (
-        gender_gen_pop_df.sample(n=g_sample_n, random_state=RANDOM_SEED)
-        if g_sample_n > 0 else gender_gen_pop_df
-    )[GENDER_SAMPLE_COLS]
-    gender_multiple_df = results_df[results_df["Gender Id"] == gs.GENDER_MULTIPLE]
-    gender_flag_counts = (
-        results_df[results_df["Gender Flag"] != ""]["Gender Flag"]
-        .value_counts().reset_index()
-    )
-    gender_flag_counts.columns = ["Gender Flag", "Count"]
-    gender_class_counts = (
-        results_df["Gender Id"].value_counts().reset_index()
-    )
-    gender_class_counts.columns = ["Gender Id", "Count"]
+    report_name = ("Classification Review.xlsx" if ds.name == "2025"
+                   else f"Classification Review_{ds.name}.xlsx")
+    out_path = bootstrap.PROJECT_ROOT / "Data Sheets" / report_name
 
-    # --- Sexual identity tabs ---
-    sexual_2slgbtqia_df = results_df[results_df["Sexual Id"] == gs.SEXUAL_2SLGBTQIA]
-    sexual_gen_pop_df   = results_df[results_df["Sexual Id"] == gs.SEXUAL_GENERAL_POP]
-    s_sample_n = min(SAMPLE_SIZE, len(sexual_gen_pop_df))
-    sexual_gen_pop_sample = (
-        sexual_gen_pop_df.sample(n=s_sample_n, random_state=RANDOM_SEED)
-        if s_sample_n > 0 else sexual_gen_pop_df
-    )[SEXUAL_SAMPLE_COLS]
-    sexual_flag_counts = (
-        results_df[results_df["Sexual Flag"] != ""]["Sexual Flag"]
-        .value_counts().reset_index()
-    )
-    sexual_flag_counts.columns = ["Sexual Flag", "Count"]
-    sexual_class_counts = (
-        results_df["Sexual Id"].value_counts().reset_index()
-    )
-    sexual_class_counts.columns = ["Sexual Id", "Count"]
+    with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
+        detail_df.to_excel(writer, sheet_name="Discretionary Funding Requests", index=False)
 
-    # --- Flags-by-group (Q5): which classification group each flag fell under ---
-    ethnic_flags_by_group = flags_by_group(results_df, "Ethnic 1",  "Classification Flag")
-    gender_flags_by_group = flags_by_group(results_df, "Gender Id", "Gender Flag")
-    sexual_flags_by_group = flags_by_group(results_df, "Sexual Id", "Sexual Flag")
-    print(f"Flags-by-group rows: ethnic={len(ethnic_flags_by_group)}, "
-          f"gender={len(gender_flags_by_group)}, sexual={len(sexual_flags_by_group)}")
+        # Classification Frequency: accuracy summary block, then the per-axis table.
+        accuracy_df.to_excel(writer, sheet_name="Classification Frequency",
+                             index=False, startrow=0)
+        freq_df.to_excel(writer, sheet_name="Classification Frequency",
+                        index=False, startrow=len(accuracy_df) + 2)
 
-    # --- Audit Detail tab — every row, all labels/flags/evidence ---
-    # SF_18_ID_Funding_Request__c is included so future hand-audits can join
-    # back to audit_gold.xlsx by stable ID instead of Funding Request Name.
-    AUDIT_DETAIL_COLS = [
-        "Funding Request Name",
-        "SF_18_ID_Funding_Request__c",
-        "Final_Project_Description", "Final_Summary_Description", "Purpose",
-        "Ethnic 1", "Ethnic 2", "Ethnic 3",
-        "Gender Id", "Sexual Id",
-        "multi_identity_markers", "audit_tier",
-        "Classification Flag", "Gender Flag", "Sexual Flag",
-        "Ethnic Evidence", "Gender Evidence", "Sexual Evidence",
-    ]
-    audit_detail_df = results_df[AUDIT_DETAIL_COLS]
+        # Flag Frequency: totals block, then the per-flag table.
+        totals_df.to_excel(writer, sheet_name="Flag Frequency", index=False, startrow=0)
+        flag_freq_df.to_excel(writer, sheet_name="Flag Frequency",
+                             index=False, startrow=len(totals_df) + 2)
 
-    # --- Additive Layer 4: Manual Audit Queue — every non-Auto-Pass row ---
-    # Deterministic triage output. Auto-Pass rows are omitted; Targeted Audit
-    # and System Blindspot rows are surfaced together for human review, tier
-    # column first so a reviewer can sort/triage.
-    manual_audit_df = results_df[results_df["audit_tier"] != "Auto-Pass"][AUDIT_DETAIL_COLS]
-    tier_counts = results_df["audit_tier"].value_counts().to_dict()
-    print(f"Audit tiers: {tier_counts}")
-    print(f"Manual audit queue (Targeted Audit + System Blindspot): {len(manual_audit_df)} rows")
+    print(f"\nWritten to: {out_path}")
+    print("Sheets: 'Discretionary Funding Requests', 'Classification Frequency', 'Flag Frequency'.")
+    print("Read-only report — your funding-requests file and gold file were not modified.")
 
-    with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
-        # Primary audit surface
-        audit_detail_df.to_excel(writer, sheet_name="Audit Detail", index=False)
-        # Deterministic validation moat (additive Layer 4)
-        manual_audit_df.to_excel(writer, sheet_name="Manual Audit Queue", index=False)
-        # Ethnic tabs
-        general_sample.to_excel(writer, sheet_name="General Pop Sample", index=False)
-        ambiguous_df.to_excel(writer, sheet_name="Ambiguous Equity Rows", index=False)
-        multiple_df.to_excel(writer, sheet_name="Multiple Rows", index=False)
-        flag_counts.to_excel(writer, sheet_name="Flag Frequency", index=False)
-        class_counts.to_excel(writer, sheet_name="Classification Frequency", index=False)
-        # Gender tabs
-        gender_gen_pop_sample.to_excel(writer, sheet_name="Gender Gen Pop Sample", index=False)
-        gender_multiple_df.to_excel(writer, sheet_name="Gender Multiple Rows", index=False)
-        gender_flag_counts.to_excel(writer, sheet_name="Gender Flag Frequency", index=False)
-        gender_class_counts.to_excel(writer, sheet_name="Gender Class Frequency", index=False)
-        # Sexual identity tabs
-        sexual_2slgbtqia_df.to_excel(writer, sheet_name="2SLGBTQIA Rows", index=False)
-        sexual_gen_pop_sample.to_excel(writer, sheet_name="Sexual Gen Pop Sample", index=False)
-        sexual_flag_counts.to_excel(writer, sheet_name="Sexual Flag Frequency", index=False)
-        sexual_class_counts.to_excel(writer, sheet_name="Sexual Class Frequency", index=False)
-        # Flags-by-group tabs (which group each flag fell under)
-        ethnic_flags_by_group.to_excel(writer, sheet_name="Ethnic Flags by Group", index=False)
-        gender_flags_by_group.to_excel(writer, sheet_name="Gender Flags by Group", index=False)
-        sexual_flags_by_group.to_excel(writer, sheet_name="Sexual Flags by Group", index=False)
-
-    print(f"\nWritten to: {OUTPUT_FILE}")
-    print("This file is a separate review workbook -- your original funding\nrequests file was not opened for writing and was not modified.")
 
 if __name__ == "__main__":
     main()

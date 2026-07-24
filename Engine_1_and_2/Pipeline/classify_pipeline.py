@@ -51,11 +51,10 @@ live in resolver.py. This function is pure orchestration.
 """
 
 # ---------------------------------------------------------------------------
-# ML AUGMENTATION LAYER — Phase B: evidence-role NLI arbiter (Plan.md
-# "ML AUGMENTATION LAYER" section). Off by default so the deterministic
-# rule engine stays the shipping path; set USE_ML_ROLE_ARBITER=1 to A/B
-# test the learned role frames against the regex-only path (audit_score.py
-# picks up the env var the same way — no code change needed to compare).
+# ML AUGMENTATION LAYER — evidence-role NLI arbiter. Off by default so the
+# deterministic rule engine stays the shipping path; set USE_ML_ROLE_ARBITER=1
+# to A/B test the learned role frames against the regex-only path
+# (audit_score.py reads the same env var — no code change needed to compare).
 # ---------------------------------------------------------------------------
 
 USE_ML_ROLE_ARBITER = os.environ.get("USE_ML_ROLE_ARBITER") == "1"
@@ -73,11 +72,11 @@ USE_ML_ROLE_ARBITER = os.environ.get("USE_ML_ROLE_ARBITER") == "1"
 ML_ROLE_NOTE_MARGIN = 0.5
 ML_ROLE_OVERRIDE_MARGIN = 1.5
 
-# Column FR testing.xlsx uses to mark a row as already stakeholder-reviewed
+# Column the workbook uses to mark a row as already stakeholder-reviewed
 # (non-blank = a human already corrected/confirmed this row's classification).
 # classify_row() skips the ML role arbiter entirely for such rows so it can
 # never attach a second-guessing note to a human-confirmed decision,
-# regardless of margin. See memory: gold-standard-location.
+# regardless of margin.
 STAKEHOLDER_REVIEWED_COL = "Classification Accuracy (Corrected in Different Areas)"
 
 
@@ -146,7 +145,7 @@ def apply_ml_role_arbiter(candidates):
 
 
 # ---------------------------------------------------------------------------
-# P2-1 — French language accommodation filter
+# French language accommodation filter
 # ---------------------------------------------------------------------------
 
 def filter_french_language_accommodation(candidates, combined):
@@ -176,7 +175,7 @@ def filter_french_language_accommodation(candidates, combined):
 
 
 # ---------------------------------------------------------------------------
-# G1 step 5 — Generalizable silent-body name rule
+# Generalizable silent-body name rule
 # ---------------------------------------------------------------------------
 
 SILENT_NAME_FLAG = "Classified from organization name (silent body) - verify served population"
@@ -190,11 +189,10 @@ SILENT_NAME_FLAG = "Classified from organization name (silent body) - verify ser
 # and that rule always attached SILENT_NAME_FLAG. Once self-identification
 # became a served signal, those rows started classifying through the ordinary
 # taxonomy branch instead, where source_flag() returns "" -- so they silently
-# lost their flag (observed on Black Canadian Women in Action, Jewish Family
-# Services, Ukrainian Shumka Dancers). The label was right and the flag was
-# gone, which is the worst combination: a confident classification with nothing
-# telling a reviewer it was INFERRED from the org's name rather than stated.
-# This restores the "any name-derived classification is flagged" guarantee.
+# lost their flag. The label was right and the flag was gone, which is the
+# worst combination: a confident classification with nothing telling a reviewer
+# it was INFERRED from the org's name rather than stated. This restores the
+# "any name-derived classification is flagged" guarantee.
 SELF_ID_FLAG = (
     "Classified from the organization's own self-description - the text never states "
     "who is served; verify served population"
@@ -202,17 +200,16 @@ SELF_ID_FLAG = (
 
 def classify_from_raw_name(raw_name, taxonomy_entries):
     """
-    Plan.md Chunk G1 step 5. Only called when the body carries no signal at
-    all (the existing "not body_candidates and not bipoc_present" guard in
-    classify_row) -- i.e. a truly silent body, NOT merely a body with a
-    weak/org_name-echo mention (a body that DOES mention an identity term,
-    even as a self-reference or historical aside, is handled by the normal
-    resolver weak-candidate path instead; see infer_role's org-name-echo
-    demotion).
+    Only called when the body carries no signal at all (the existing
+    "not body_candidates and not bipoc_present" guard in classify_row) --
+    i.e. a truly silent body, NOT merely a body with a weak/org_name-echo
+    mention (a body that DOES mention an identity term, even as a
+    self-reference or historical aside, is handled by the normal resolver
+    weak-candidate path instead; see infer_role's org-name-echo demotion).
 
     Classifies from identity terms in the RAW (pre-normalize, pre-identity-
-    rewrite) funding-request account name, generalizing the old per-org
-    ORG_NAME_ETHNICITY_MAP last resort to any unseen org (2024/2023-ready).
+    rewrite) funding-request account name, generalizing a per-org last
+    resort to any unseen org.
 
     Returns (l1, l2, l3, flag) — ALWAYS flagged when non-None — or None if
     nothing in the name is recognized.
@@ -275,18 +272,18 @@ def extra_annotation_notes(combined, states, bipoc_present, resolved_label=None)
     Excludes: Case 13 ethnocultural org title — called separately in
               classify_row() because it requires the raw row and taxonomy.
 
-    Fix 4 (noise removal): "Ambiguous equity term with no paired ethnic
-    signal", "Equity/diversity buzzword present alongside a real signal",
-    and "Possible consulted-party mention (expert/advisor role)" no longer
-    fire — check_grassroots_case() and EXPERT_ROLE_PHRASES stay defined and
+    Noise removal: "Ambiguous equity term with no paired ethnic signal",
+    "Equity/diversity buzzword present alongside a real signal", and
+    "Possible consulted-party mention (expert/advisor role)" no longer fire
+    — check_grassroots_case() and EXPERT_ROLE_PHRASES stay defined and
     available for other callers; this function just stops emitting their
     note text.
 
-    Fix 6 (context-only gating): Emphasis and 'Hindu' are CONTEXTUAL —
-    verify-manually notes, not classification-relevant like negation/BIPOC
-    — so only fire when the row actually resolved to something other than
-    General. When resolved_label is None (caller not yet gating), they fire
-    unconditionally, preserving prior behaviour for any other caller.
+    Context-only gating: Emphasis and 'Hindu' are CONTEXTUAL — verify-manually
+    notes, not classification-relevant like negation/BIPOC — so only fire when
+    the row actually resolved to something other than General. When
+    resolved_label is None (caller not yet gating), they fire unconditionally,
+    preserving prior behaviour for any other caller.
     """
     notes = []
 
@@ -371,12 +368,12 @@ def classify_row(row, taxonomy_entries):
     # All extractor functions are dumb sensors: no filtering,
     # no negation guards, no context logic. Each returns every match.
     #
-    # A signal must be corroborated in the body to classify (Plan.md D1).
+    # A signal must be corroborated in the body to classify.
     # The name is only consulted for a curated known-org lookup and to
     # decide whether a name-only signal should be flagged.
     # ------------------------------------------------------------------
     # extract_org_candidates is deliberately NOT part of this bundle: the
-    # known-org map is a name-only last resort (Plan.md Chunk G1 step 2).
+    # known-org map is a name-only last resort.
     # Consulting it on body text would let an org's self-reference in its
     # own description inject a definitive (non-role-tagged) org_lookup
     # candidate; name_org below is the only place it's consulted.
@@ -390,8 +387,8 @@ def classify_row(row, taxonomy_entries):
         )
 
     # name_text is passed through so a candidate whose body match merely
-    # echoes the org's own name (e.g. "Black Canadian Women in Action is
-    # undertaking...") is tagged role="org_name" (weak) instead of "served".
+    # echoes the org's own name (e.g. an org restating its own name in its
+    # description) is tagged role="org_name" (weak) instead of "served".
     body_candidates = _extract(body_text, name_text)
     # NaN-safe blank check: a pandas row's blank AN cell is a float NaN
     # (truthy in Python), not "" -- `row.get(col, "") or ""` was WRONG here
@@ -410,8 +407,8 @@ def classify_row(row, taxonomy_entries):
     # A body mention only corroborates when its role is "served". An org-name
     # echo (or provider/example/aspirational mention) is weak, NOT
     # corroboration: a body whose only ethnic mention is the org's own name
-    # restated ("Jewish Family Services is migrating its files to SharePoint")
-    # is administratively silent, exactly like a body with no mention at all.
+    # restated in an administrative sentence is administratively silent,
+    # exactly like a body with no mention at all.
     served_body = [c for c in body_candidates if c.get("role", "served") == "served"]
 
     # True when EVERY served mention is the org naming itself -- i.e. the row
@@ -464,7 +461,7 @@ def classify_row(row, taxonomy_entries):
     context = build_context_notes(extract_context_signals(combined), ethnic_term_present)
 
     # ------------------------------------------------------------------
-    # Step 4b — French language accommodation filter (P2-1)
+    # Step 4b — French language accommodation filter
     # Drop French/European candidates when text is about language access,
     # not ethnic identity. Annotation note collected into pre_notes so it
     # is appended alongside the resolver flag in Step 8.
@@ -491,7 +488,7 @@ def classify_row(row, taxonomy_entries):
     # ------------------------------------------------------------------
     # Step 7 — Build extra annotation notes
     # Cultural-association, emphasis, Hindu, and negation checks. Emphasis/
-    # Hindu are gated to non-General rows (Fix 6) — see extra_annotation_notes.
+    # Hindu are gated to non-General rows — see extra_annotation_notes.
     # ------------------------------------------------------------------
     # ml_role_note already carries its own priority-appropriate prefix
     # (see apply_ml_role_arbiter's two-tier note text) — do not re-wrap it.
@@ -530,9 +527,8 @@ def classify_row(row, taxonomy_entries):
     #   * has_non_prefixed_negation()  -- per-keyword "non-<ethnicity>" check,
     #                                     arriving here via extra_annotation_notes()
     # A row that trips both (a general negation phrase AND a "non-<group>"
-    # construction) printed the same sentence twice. That never happened on the
-    # 448 rows of AUDITED_FR_GOLD.xlsx, but it did occur in the 2023-2024 engine
-    # output, so it is data-dependent rather than fixed.
+    # construction) would otherwise print the same sentence twice. It is
+    # data-dependent (only fires when both checks match), not a fixed case.
     #
     # Compared by whole-string containment rather than by splitting on ";" --
     # some notes legitimately contain a semicolon (the "especially"/"particularly"

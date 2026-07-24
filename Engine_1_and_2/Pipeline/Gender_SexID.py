@@ -38,10 +38,10 @@ from gender_constants import (
     FLAG_ORG_NAME,
     # Org-name data
     ORG_NAME_CONTEXT_PATTERNS,
-    # Generalizable silent-body name rule (Plan.md Chunk G1 step 5)
+    # Generalizable silent-body name rule
     GENDER_SILENT_NAME_WOMEN_PATTERN, GENDER_SILENT_NAME_MEN_PATTERN,
     SEXUAL_SILENT_NAME_PATTERN,
-    # Incidental family-context guard (Plan.md Chunk G2)
+    # Incidental family-context guard
     RELATIONAL_MALE_GUARD_PATTERNS,
     FAMILY_LEFT_BEHIND_BEFORE_PATTERNS, FAMILY_LEFT_BEHIND_AFTER_PATTERNS,
     # Sexual identity labels
@@ -105,7 +105,7 @@ def is_org_name_context(text):
 SILENT_NAME_FLAG_TEXT = "Classified from organization name (silent body) - verify served population"
 
 # ===========================================================================
-# INCIDENTAL FAMILY-CONTEXT GUARD (Plan.md Chunk G2, row 54093)
+# INCIDENTAL FAMILY-CONTEXT GUARD
 # ===========================================================================
 
 def _is_family_left_behind_mention(text, start, end, window=60):
@@ -125,7 +125,7 @@ def _is_family_left_behind_mention(text, start, end, window=60):
 
 def classify_gender_from_raw_name(raw_name):
     """
-    Generalizable silent-body name rule (Plan.md Chunk G1 step 5) — gender
+    Generalizable silent-body name rule — gender
     axis. Only consulted when the body carries NO gender-term mention at
     all (not even a weak org-name echo — see classify_gender). Classifies
     from women/men terms in the RAW funding-request account name; both
@@ -169,13 +169,12 @@ def extract_gender_candidates(text, name_text=""):
     -------
     keys: set[str]  — accepted identity keys
     org_echo_keys: set[str]  — subset of keys whose match merely echoes the
-        org's own name inside the body (Plan.md Fix 1 Phase 2 — e.g. "Black
-        Canadian Women in Action is undertaking..." repeating the org name
-        in the description) rather than describing a served population.
+        org's own name inside the body (e.g. an org restating its own name
+        in its description) rather than describing a served population.
     family_context_keys: set[str]  — subset of keys whose match is only an
         incidental family-context mention of an absent/left-behind relative
-        (Plan.md Chunk G2 — e.g. "...their fathers... remain in Ukraine")
-        rather than the served population. Disjoint from org_echo_keys.
+        (e.g. "...their fathers... remain in Ukraine") rather than the
+        served population. Disjoint from org_echo_keys.
     flags_out: set[str]  — annotation flag strings triggered by this text
     any_negated : bool — True if any negation encountered (→ FLAG_NEGATION)
     """
@@ -187,11 +186,11 @@ def extract_gender_candidates(text, name_text=""):
 
     # Standard (unambiguous) patterns.
     # Scan ALL occurrences (not just the first) so that when a term appears
-    # more than once -- e.g. an org restates its own name ("Edmonton Women's
-    # Shelter provides...") AND separately describes who it serves ("...for
-    # women fleeing violence") -- a later served occurrence rescues the key
-    # even if an earlier occurrence was an org-name echo (or, Plan.md Chunk
-    # G2, an incidental family-context mention).
+    # more than once -- e.g. an org restates its own name ("<Org> Shelter
+    # provides...") AND separately describes who it serves ("...for women
+    # fleeing violence") -- a later served occurrence rescues the key even
+    # if an earlier occurrence was an org-name echo (or an incidental
+    # family-context mention).
     for pattern, identity_key, extra_flag_key in GENDER_TERM_PATTERNS:
         for m in re.finditer(pattern, text, re.IGNORECASE):
             term = m.group(0)
@@ -252,15 +251,15 @@ def extract_gender_candidates(text, name_text=""):
         keys.add("lgbtq_umbrella")
         if term.lower().startswith("2s"):
             keys.add("two_spirit")
-        # Plan.md Chunk G10 item 4 — FLAG_UMBRELLA_ACRONYM removed entirely;
+        # FLAG_UMBRELLA_ACRONYM removed entirely;
         # the "Multiple: 2SLGBTQIA+ umbrella..." text in resolve_gender
         # already tells the reviewer the source, so this was pure duplicate
         # noise. Classification (the "lgbtq_umbrella" key) is unaffected.
 
-    # Plan.md Chunk G10 item 3 — FLAG_AMBIGUOUS_TERM removed entirely.
+    # FLAG_AMBIGUOUS_TERM removed entirely.
     # femme/masc/butch/stud are gender-coded slang; femme->women_girls is
-    # still a real classifying signal via GENDER_TERM_PATTERNS above (Fix
-    # 8, French "femme" = woman) and is unaffected. AMBIGUOUS_CODED_TERMS
+    # still a real classifying signal via GENDER_TERM_PATTERNS above
+    # (French "femme" = woman) and is unaffected. AMBIGUOUS_CODED_TERMS
     # itself is left in gender_constants.py -- audit_evidence.py still
     # consults it independently for evidence-column display.
 
@@ -274,7 +273,7 @@ def resolve_gender(keys, flags_set, any_negated, aspirational):
     2+ other keys   → Multiple gender identities  (flag lists which identities)
     Annotation flags are appended; they never change the branch.
 
-    Fix 6: Aspirational is a contextual flag (verify-manually), not
+    Aspirational is a contextual flag (verify-manually), not
     classification-relevant like negation/BIPOC/two-spirit — it only fires
     once the row has actually resolved to a specific group, not General.
     """
@@ -302,7 +301,7 @@ def resolve_gender(keys, flags_set, any_negated, aspirational):
         flag_parts.insert(0, f"Multiple: {', '.join(label_list)}")
         return GENDER_MULTIPLE, "; ".join(flag_parts)
 
-    # 'gender-diverse' is a distinct concept (Plan.md Fix 2a), not a single
+    # 'gender-diverse' is a distinct concept, not a single
     # identity — it always routes to Multiple, same short-circuit shape as
     # the 2SLGBTQIA+ umbrella acronym above.
     if "gender_diverse" in keys:
@@ -316,7 +315,7 @@ def resolve_gender(keys, flags_set, any_negated, aspirational):
     if len(keys) == 1:
         return IDENTITY_KEY_TO_LABEL[next(iter(keys))], "; ".join(flag_parts)
 
-    # Plan.md Chunk G10 item 1 — 2+ concrete, non-diverse keys (e.g.
+    # 2+ concrete, non-diverse keys (e.g.
     # men/boys + women/girls, non-binary + transgender) → Multiple with NO
     # primary flag; the label itself already says "Multiple", and which
     # identities combined isn't ambiguous enough to need a review flag.
@@ -328,14 +327,13 @@ def resolve_gender(keys, flags_set, any_negated, aspirational):
 def classify_gender(row):
     """Public entry point — gender identity classification for a single row.
 
-    A signal must be corroborated in the body to classify (Plan.md D1); a
-    name-only signal degrades to General Population + FLAG_ORG_NAME. A body
-    mention that only echoes the org's own name (Plan.md Fix 1 Phase 2, e.g.
-    "Black Canadian Women in Action is undertaking...") is not corroboration
-    either — it degrades to General + a transparency note. Likewise, a bare
-    relational-male noun that only mentions an absent/left-behind family
-    member (Plan.md Chunk G2, e.g. "...their fathers... remain in Ukraine")
-    is not corroboration — General + a transparency note.
+    A signal must be corroborated in the body to classify; a name-only signal
+    degrades to General Population + FLAG_ORG_NAME. A body mention that only
+    echoes the org's own name (an org restating its own name in its
+    description) is not corroboration either — it degrades to General + a
+    transparency note. Likewise, a bare relational-male noun that only
+    mentions an absent/left-behind family member (e.g. "...their fathers...
+    remain in Ukraine") is not corroboration — General + a transparency note.
     """
     body_text, name_text = get_body_and_name_texts(row)
     if not (body_text + name_text).strip():
@@ -349,15 +347,16 @@ def classify_gender(row):
     # org-echo-only, or family-context-only signal matter.
     if not served_keys and not flags_set and not any_negated:
         # Org-echo-only body: the org's own gender-named identity is restated
-        # in an otherwise administrative body ("Women Building Futures must
-        # replace servers"). Per the org-name ladder (Plan.md step 3) this is
-        # NOT a served signal but the org name IS the best available evidence,
-        # so classify from the raw org name -- UNLESS the identity is disclaimed
-        # ("beyond its original focus ...") or the body serves a real population
-        # on another axis. The cross-axis gate runs on the org-name-STRIPPED
-        # body so the echo itself is not miscounted as a served population.
-        # Family-context-only mentions (Chunk G2, "their fathers ... remain in
-        # Ukraine") are NOT an org identity and fall through to General below.
+        # in an otherwise administrative body (e.g. a gender-named org whose
+        # body only covers a server replacement). Per the org-name ladder this
+        # is NOT a served signal but the org name IS the best available
+        # evidence, so classify from the raw org name -- UNLESS the identity is
+        # disclaimed ("beyond its original focus ...") or the body serves a
+        # real population on another axis. The cross-axis gate runs on the
+        # org-name-STRIPPED body so the echo itself is not miscounted as a
+        # served population. Family-context-only mentions ("their fathers ...
+        # remain in Ukraine") are NOT an org identity and fall through to
+        # General below.
         disclaimed = matches_any(IDENTITY_EXPANSION_DISCLAIMER_PATTERNS, body)
         if org_echo_keys and not disclaimed and not body_names_a_population(
                 _body_without_org_name(body, row.get("Funding Request Name", ""))):
@@ -383,11 +382,11 @@ def classify_gender(row):
         # Truly silent body (org_echo_keys and family_context_keys both
         # empty implies keys itself is empty here, since served_keys is
         # already empty in this branch) -- generalizable silent-body name
-        # rule (Plan.md Chunk G1 step 5). Cross-axis gate (Plan.md Chunk G1
-        # FIX): only apply it when the body is truly administrative -- no
-        # served population on ANY axis (e.g. BCW 51622 serves "Haitian
-        # youth": a real, gender-neutral ethnic signal -- gender must stay
-        # General, not borrow "Women" from the org name).
+        # rule. Cross-axis gate: only apply it when the body is truly
+        # administrative -- no served population on ANY axis (e.g. a body that
+        # serves a named ethnic group but no gender: a real, gender-neutral
+        # ethnic signal -- gender must stay General, not borrow "Women" from
+        # the org name).
         if not body_names_a_population(body):
             name_rule = classify_gender_from_raw_name(row.get("Funding Request Name", ""))
             if name_rule is not None:
@@ -415,13 +414,13 @@ def extract_sexual_candidates(text):
     found_gender_diverse: bool — at least one gender-diverse term survived guards
     found_gender_diverse_key: bool — the ambiguous "gender_diverse" umbrella
         term specifically (not trans/non-binary/two-spirit/etc.) survived
-        guards (Plan.md Chunk G10 item 2 — SFLAG_GENDER_TERM fires only
+        guards (SFLAG_GENDER_TERM fires only
         when this is True, since the other gender-diverse-family terms
         unambiguously belong under 2SLGBTQIA+ already)
     any_negated : bool — at least one negation encountered
     example_suppressed : bool — at least one term was dropped ONLY because it
         appeared in an example/illustrative context ("...groups such as
-        2SLGBTQIA+..."), Plan.md Fix 7 — the caller surfaces this as a
+        2SLGBTQIA+..."); the caller surfaces this as a
         transparency note instead of silently dropping it with no trace.
     """
     found_gender_diverse = False
@@ -465,14 +464,14 @@ def resolve_sexual(found, found_gender_diverse_key, any_negated, aspirational, e
     """
     found → 2SLGBTQIA+; else → General Population.
     SFLAG_GENDER_TERM fires only when the ambiguous "gender_diverse" umbrella
-    term specifically contributed (Plan.md Chunk G10 item 2) — the other
+    term specifically contributed — the other
     gender-diverse-family terms (trans/non-binary/two-spirit/...) unambiguously
     belong under 2SLGBTQIA+ already, so flagging every one of those was noise.
     Flags are annotations only — they never change the branch.
 
-    Fix 6: Aspirational is a contextual flag — it only fires once the row
+    Aspirational is a contextual flag — it only fires once the row
     has actually resolved to 2SLGBTQIA+, not General.
-    Fix 7: when the only signal was example-suppressed, keep General but
+    When the only signal was example-suppressed, keep General but
     name what was dropped instead of silently discarding it with no trace.
     """
     flag_parts = []
@@ -498,8 +497,8 @@ def resolve_sexual(found, found_gender_diverse_key, any_negated, aspirational, e
 def classify_sexual(row):
     """Public entry point — sexual identity classification for a single row.
 
-    A signal must be corroborated in the body to classify (Plan.md D1); a
-    name-only signal degrades to General Population + FLAG_ORG_NAME.
+    A signal must be corroborated in the body to classify; a name-only
+    signal degrades to General Population + FLAG_ORG_NAME.
     """
     body_text, name_text = get_body_and_name_texts(row)
     if not (body_text + name_text).strip():
@@ -510,10 +509,9 @@ def classify_sexual(row):
     # Body is truly silent (no signal, no negation, no example-suppressed
     # mention) — only then does a name-only signal matter.
     if not found and not any_negated and not example_suppressed:
-        # Truly silent body -- generalizable silent-body name rule
-        # (Plan.md Chunk G1 step 5). Cross-axis gate (Plan.md Chunk G1 FIX):
-        # only apply it when the body is truly administrative -- no served
-        # population on ANY axis.
+        # Truly silent body -- generalizable silent-body name rule.
+        # Cross-axis gate: only apply it when the body is truly
+        # administrative -- no served population on ANY axis.
         if not body_names_a_population(body):
             name_rule = classify_sexual_from_raw_name(row.get("Funding Request Name", ""))
             if name_rule is not None:

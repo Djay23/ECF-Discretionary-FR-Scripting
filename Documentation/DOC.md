@@ -58,7 +58,7 @@ The business logic is built to handle 12 specific structural scenarios discovere
 | **Case 7** | **Country Structure** | Parses explicit country names structured inside broader narrative phrases. | "People from Jamaica", "Youth from India" |
 | **Case 8** | **Multiple Groups** | Identifies overlapping ethnic cohorts, routing them to multi-group resolution logic. | "African and Caribbean youth", "Somali and Ethiopian Families" |
 | **Case 9** | **Broad Identity Labels** | Maps overarching social, racial, or cultural descriptors. | "Black youth", "Arab communities", "Jewish population" |
-| **Case 10** | **Organization Lookup** | Fallback validation that cross-references known organization names to infer identities. | "Bent Arrow Traditional Medicine" $\rightarrow$ North American Indigenous Origins |
+| **Case 10** | **Organization Lookup** | Fallback validation that cross-references known organization names to infer identities. | A curated known-org name $\rightarrow$ North American Indigenous Origins |
 | **Case 11** | **Grassroots Markers** | Evaluates secondary keywords to separate environmental grassroots initiatives from ethnic ones. | "Grassroots" + ethnic keywords indicates ethnic origin; else matches to General |
 | **Case 12** | **General / Catch-all** | Fallback destination when no ethnic signals exist or prior cases are completely exhausted. | "All communities", "Open to everyone" |
 

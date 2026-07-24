@@ -84,7 +84,7 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
     Example:
     - "African and Caribbean youth"
     - "Somali and Ethiopian Families"
-    -  "As families from increasingly diverse cultural backgrounds turn to BCW for support beyond its original focus on Black communities"
+    -  "As families from increasingly diverse cultural backgrounds turn to the organization for support beyond its original focus on Black communities"
     *How do we handle cases like this where it mentions a specific ethnic group but is actually targetting a more diverse and broader population?
 
 ### Case 9, BIPOC and Another group mentioned":
@@ -100,9 +100,9 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
     - "Arab communities"
     - "Jewish population"
 
-### Case 10, Bent Arrow mention:
+### Case 10, Known-org name mention:
     Example:
-    - "Bent Arrow Traditional Medicine"
+    - A curated known-org name (e.g. an Indigenous-serving organization)
     This corresponds with 'North American Indigenous Origins'
     *TO NOTE: This is often in the Account name, and needs to be the final point of lookup --If the current conclusion falls under 'General Population'
     - 'Treaty 6' as indigenous
@@ -139,7 +139,7 @@ Create an automation for a spreadsheet of funding requests, filling out the 'Eth
 ## Classification Phrase Expansion:
 > [!NOTE]
 > Include the highlighting of what phrase was targetted in the Classification Flag Notes section.
-> Need to Highlight Black Canadian Women for flagging.
+> Need to highlight identity-named organizations for flagging.
 - **Context Override**: 
     * Historical Reference Detected (including these phrases): 
         + Historically; Formerly; Previously; Originally; Used to serve (focus, target, support); Once (Served, Focused, Targeted, Supported); Founded; Established; Created; Was, Were, etc. 
@@ -360,7 +360,7 @@ Is this something a human reviewer actually needs to look at?
 
 # 2026-07-08
 ## Sprint 3 - Auditing - Classification of Sexual & Gender Identity
-- Continued implementation and bug fixes from Plan.md
+- Continued implementation and bug fixes from the implementation plan
 - Implement Machine Learning using vectors to locally train to improve classification accuracy from 95% to 99%, reducing number of irrelevant flags as a result.
 
 ### To Do:
@@ -381,7 +381,7 @@ Is this something a human reviewer actually needs to look at?
 - Hand classifying ECF Focus areas until better classification engine brainstormed for Early Childhood Education (ECD) & Affordable Housing (AH)
 
 ### Current:
-- Indigenous misfire in cases that should be general: 50616, 50671, 51, 78, 96, 196, 344, 347, 387, 418, 428, 427 --> higher risk. 
+- Indigenous misfire in several cases that should be general --> higher risk. 
 
 # 2026-07-13
 ### Sprint 3 - Continued auditing
@@ -441,3 +441,7 @@ Is this something a human reviewer actually needs to look at?
     - Nationalities: Formerly Eritrean/Congolese/Oromian unrecognized; Now recognized & Chinatown Centre mapped to Chinese Ethnic group.
     - Flagged classification rows of
 
+# 2027-07-24
+- Code cleanup
+- Comment cleanup
+- Refactoring bootstrap, Audit files and classify_pipeline

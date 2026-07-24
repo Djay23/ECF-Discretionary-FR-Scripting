@@ -16,14 +16,14 @@ Funding Requests.
 
 Reads:
     "Taxonomy - Definitions.xlsx" -> sheet "Ethnic and Cultural Origins"
-    "Discretionary FR working -2025 (Oreva).xlsx" -> sheet "Discretionary Funding Requests"
+    "Data Sheets/FR testing.xlsx" -> sheet "Discretionary Funding Requests"
 
 Aggregates matches across all 4 input columns (Final_Project_Description,
 Final_Summary_Description, Purpose, Funding Request Name), then resolves
 using the case hierarchy below.
 
 To Run:
-    python ethnic_taggerv3.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"
+    python ethnic_taggerv3.py "Taxonomy/Taxonomy - Definitions.xlsx" "Data Sheets/FR testing.xlsx"
 
 Case coverage (see README):
     1.  Exact match (deepest taxonomy term)
@@ -37,7 +37,7 @@ Case coverage (see README):
     9.  BIPOC (context-aware) -> Multiple Ethnic and Cultural Origins
     9b. Broad identity labels (Black, Arab, Jewish, etc.) -> Other Ethnic
         and Cultural Origins
-    10. Known organization name lookup (Bent Arrow, Treaty 6, etc.)
+    10. Known organization name lookup (curated known-org list)
         -> only consulted if result would otherwise be General Population
     11. "Grassroots" -> ethnic-indicating ONLY if paired with another
         ethnic keyword; otherwise ignored entirely
@@ -114,7 +114,7 @@ INPUT_COLS_PRIORITY = [
     "Funding Request Name",
 ]
 
-# Name/body split (Plan.md Phase 1, D1): a signal must be corroborated in the
+# Name/body split: a signal must be corroborated in the
 # served-population body text to classify; a name-only signal degrades to
 # General + flag. See get_body_and_name_texts().
 BODY_COLS = ["Final_Project_Description", "Final_Summary_Description", "Purpose"]
@@ -207,7 +207,7 @@ def is_example_mention(keyword, text):
     return snippet is not None and matches_any(EXAMPLE_PHRASES, snippet)
 
 # ---------------------------------------------------------------------------
-# Phase 2 — Evidence-role inference (Plan.md Fix 1 Phase 2)
+# Phase 2 — Evidence-role inference
 #
 # A matched identity term is "served" (strong, default) unless the text
 # immediately around it frames it as an org name, a service provider, an
@@ -217,8 +217,8 @@ def is_example_mention(keyword, text):
 
 def _echoes_org_name(text, start, end, name_text, min_gram=3, slack=3):
     """True if THIS SPECIFIC match sits inside (or immediately touches) a
-    verbatim restatement of the org's own name in the body -- e.g. the
-    "women" in "Black Canadian Women in Action (BCW) is undertaking..." --
+    verbatim restatement of the org's own name in the body -- e.g. an
+    identity word that appears only because the org restated its own name --
     a self-reference to the org's own name, not a served-population claim.
 
     Requires actual positional overlap with an occurrence of a contiguous
@@ -226,10 +226,10 @@ def _echoes_org_name(text, start, end, name_text, min_gram=3, slack=3):
     character window -- normalize_text strips all punctuation (periods
     included), so a window-based check can't tell "the org's name and this
     term are in the same clause" from "the org happens to restate its own
-    name in the very next, unrelated sentence" (e.g. HERizon Healing
-    Society names itself at the start of almost every sentence; a
-    "BIPOC girls and young women" mention two sentences earlier is not an
-    echo just because "HERizon Healing Society" appears soon after it).
+    name in the very next, unrelated sentence" (e.g. an org that names
+    itself at the start of almost every sentence: a served-population
+    mention two sentences earlier is not an echo just because the org name
+    reappears soon after it).
     """
     if not name_text:
         return False
@@ -248,14 +248,13 @@ def _echoes_org_name(text, start, end, name_text, min_gram=3, slack=3):
 
 def _name_word_echo(span, name_text):
     """True if the matched span's bare word also appears, as a standalone
-    word, in the funding-request NAME text (Plan.md Chunk G1 step 4 — echo
-    demotion upgrade). This is a looser check than _echoes_org_name's
-    contiguous multi-word positional overlap: it catches a single-word
-    identity term (e.g. "Black") that the org's OWN NAME also carries (e.g.
-    "Black Canadian Women in Action"), even when the body mention doesn't
-    restate the full name verbatim near this occurrence (e.g. "...beyond
-    its original focus on Black communities" — no "Canadian Women in
-    Action" nearby, so _echoes_org_name alone would miss it).
+    word, in the funding-request NAME text. This is a looser check than
+    _echoes_org_name's contiguous multi-word positional overlap: it catches
+    a single-word identity term (e.g. "Black") that the org's OWN NAME also
+    carries, even when the body mention doesn't restate the full name
+    verbatim near this occurrence (e.g. a passing "...its original focus on
+    Black communities" with no other name words nearby, which
+    _echoes_org_name alone would miss).
     """
     if not name_text or not span:
         return False
@@ -294,8 +293,8 @@ def is_served_role(role):
 
 # Copula immediately preceding the match: "<Org> ... is the only <Indigenous>
 # Artist-Run Centre". Anchored to the END of the before-window so only a
-# copula DIRECTLY in front of the term counts -- "IWDIMAA program from
-# Cameroonian Association" has no copula and must not qualify.
+# copula DIRECTLY in front of the term counts -- a phrase like "<program>
+# from <Ethnicity> Association" has no copula and must not qualify.
 _SELF_ID_COPULA = re.compile(
     r"\b(?:is|are|was|were)\s+(?:the\s+|a\s+|an\s+)?"
     r"(?:only\s+|first\s+|sole\s+|leading\s+|largest\s+)?$"
@@ -311,17 +310,17 @@ _SELF_ID_NAME_STOPWORDS = {
 
 def _org_self_identifies(text, start, name_text, window=140):
     """True when the REQUESTING organization is describing ITSELF immediately
-    before this match -- "Ociciwan Contemporary Art Collective is the only
-    Indigenous Artist-Run Centre based in Edmonton".
+    before this match -- e.g. "<Org> is the only Indigenous Artist-Run Centre
+    based in Edmonton".
 
     This is the counterpart to _name_word_echo for orgs whose name does NOT
-    contain the identity word. An org named in an Indigenous language
-    (Ociciwan, Niginan, amiskwaciy, Kihciy Askiy) can never match a name-string
-    test, so its self-description would otherwise be demoted by the generic
-    "<Ethnicity> Centre/Association" org-name pattern -- which exists to catch
-    THIRD-PARTY orgs ("in partnership with the Council of India"), not the
-    applicant describing itself. Without this, the name-string approach
-    systematically misses exactly the orgs most likely to be Indigenous-serving.
+    contain the identity word. An org named in an Indigenous language can
+    never match a name-string test, so its self-description would otherwise
+    be demoted by the generic "<Ethnicity> Centre/Association" org-name
+    pattern -- which exists to catch THIRD-PARTY orgs ("in partnership with
+    the <Ethnicity> Council"), not the applicant describing itself. Without
+    this, the name-string approach systematically misses exactly the orgs
+    most likely to be Indigenous-serving.
 
     Requires BOTH a copula directly in front of the term AND a distinctive word
     from the requesting org's own name earlier in the same window, so a
@@ -349,8 +348,8 @@ def infer_role(text, start, end, name_text="", window=60):
     what the term refers to, not whether it's included or excluded.
 
     Historical/expansion framing ("beyond its original focus on X",
-    "historically served X") is likewise NOT its own role (Plan.md Chunk G1
-    step 3 — annotation-only invariant, see extract_context_signals). It
+    "historically served X") is likewise NOT its own role (annotation-only
+    invariant, see extract_context_signals). It
     demotes a candidate only indirectly: when it coincides with an org-name
     echo (step 2/4 below), the echo role wins; otherwise the match falls
     through to "served" like any other unclassified framing.
@@ -362,32 +361,29 @@ def infer_role(text, start, end, name_text="", window=60):
         return "example"
     if matches_any(ASPIRATIONAL_PHRASES, before):
         return "aspirational"
-    # Plan.md Chunk G6 — same aspirational-reach frames, wider window: a row
-    # that restates one aspirational claim across two concatenated body
-    # columns (e.g. "...hoping to double its reach in the Edmonton area. To
-    # expand and hone programming to include more indigenous...") can put
-    # the lead verb ("wants to"/"hoping to") more than `window` chars before
-    # a LATER restatement of the same mention. Only consulted as a fallback
+    # Same aspirational-reach frames, wider window: a row that restates one
+    # aspirational claim across two concatenated body columns can put the
+    # lead verb ("wants to"/"hoping to") more than `window` chars before a
+    # LATER restatement of the same mention. Only consulted as a fallback
     # -- the narrow check above still wins when it applies.
     before_wide = text[max(0, start - ASPIRATIONAL_WIDE_WINDOW):start]
     if matches_any(ASPIRATIONAL_PHRASES, before_wide):
         return "aspirational"
-    # Plan.md Chunk G7 — fictional/historical story-setting frame: the term
-    # names the SETTING of a play/myth/themed event, not a real served
-    # population (e.g. Theatre Prospero "based on the tale of an Egyptian
-    # prince"; Arts On The Ave "A Byzantine Winter Festival"). Checked here,
-    # ahead of org_name/provider, since a setting reference isn't an org
-    # name or a provider role either -- it's simply not about a served
-    # population at all. Reuses the weak "topic" role (same demotion
-    # outcome as the G3 curriculum-topic case).
+    # Fictional/historical story-setting frame: the term names the SETTING of
+    # a play/myth/themed event, not a real served population (e.g. a show
+    # "based on the tale of an Egyptian prince", or a "Byzantine Winter
+    # Festival"). Checked here, ahead of org_name/provider, since a setting
+    # reference isn't an org name or a provider role either -- it's simply
+    # not about a served population at all. Reuses the weak "topic" role
+    # (same demotion outcome as the curriculum-topic case).
     if matches_any(ROLE_SETTING_BEFORE_PATTERNS, before) or matches_any(ROLE_SETTING_AFTER_PATTERNS, after):
         return "topic"
-    # Self-identification beats the org-name patterns below (Ociciwan): those
-    # patterns exist to demote THIRD-PARTY org names, but they also fire on the
+    # Self-identification beats the org-name patterns below: those patterns
+    # exist to demote THIRD-PARTY org names, but they also fire on the
     # applicant describing itself ("... is the only Indigenous Artist-Run
     # Centre"), where the identity IS the served population. Checked first so
     # the applicant's own claim wins; a genuine third party ("in partnership
-    # with the Council of India") has no copula + own-name pair and still
+    # with the <Ethnicity> Council") has no copula + own-name pair and still
     # demotes normally.
     if _org_self_identifies(text, start, name_text):
         return SELF_ID_ROLE
@@ -395,17 +391,16 @@ def infer_role(text, start, end, name_text="", window=60):
         return "org_name"
     if matches_any(ROLE_PROVIDER_BEFORE_PATTERNS, before) or matches_any(ROLE_PROVIDER_AFTER_PATTERNS, after):
         return "provider"
-    # Served-frame rescue (Plan.md Chunk G1 step 2) — MUST run before the
-    # echo checks below. An explicit "for X"/"serving X" lead-in, or a
-    # service-continuity phrase ("continues today"), means this occurrence
-    # IS the served population even if it also happens to echo the org's
-    # own name elsewhere in the same text (e.g. "Somali Canadian Cultural
-    # Society ... serving the Somali community").
+    # Served-frame rescue — MUST run before the echo checks below. An explicit
+    # "for X"/"serving X" lead-in, or a service-continuity phrase ("continues
+    # today"), means this occurrence IS the served population even if it also
+    # happens to echo the org's own name elsewhere in the same text (e.g. an
+    # "<Ethnicity> Cultural Society ... serving the <Ethnicity> community").
     if matches_any(SERVED_FRAME_BEFORE_PATTERNS, before) or matches_any(SERVED_FRAME_CONTINUATION_PATTERNS, text) \
             or matches_any(INDIGENOUS_CONTEXT_RESCUE_PATTERNS, text):
         return "served"
-    # Allyship / reconciliation-ally frame (Plan.md Task 4 / G11): "an ally
-    # to indigenous people", "allies of X", "in support of reconciliation"
+    # Allyship / reconciliation-ally frame: "an ally to indigenous people",
+    # "allies of X", "in support of reconciliation"
     # names the org/speaker's relationship to the group, not the group as a
     # served population. Checked AFTER the served-frame rescue above, so a
     # genuinely served row (residential-school/ceremony context, or an
@@ -416,19 +411,14 @@ def infer_role(text, start, end, name_text="", window=60):
     # Org-name echo == SELF-IDENTIFICATION, not a non-claim.
     #
     # These two checks previously returned "org_name" (weak), on the theory
-    # that an org restating its own name ("Black Canadian Women in Action
-    # (BCW) is undertaking...") is a self-reference rather than a
-    # served-population claim. The hand-audit in AUDITED_FR_GOLD.xlsx
-    # contradicts that: an ethnicity-named org naming its own ethnicity IS
-    # evidence of who it serves. Black Canadian Women in Action was demoted to
-    # General on both counts -- the name echo AND the expansion phrasing
-    # "beyond its original focus on Black communities" -- yet gold is Black.
-    #
-    # Measured over all 448 rows: treating these as served fixes that row and
-    # regresses NOTHING. The demotion turned out to be near-inert, because
-    # dedup() already rescues any group with one served mention elsewhere, so
-    # it only ever changed the outcome when the echo was the ONLY mention --
-    # exactly the self-identification case it was getting wrong.
+    # that an org restating its own name is a self-reference rather than a
+    # served-population claim. The hand-audit contradicts that: an
+    # ethnicity-named org naming its own ethnicity IS evidence of who it
+    # serves. Treating these as served is correct and regresses nothing: the
+    # demotion was near-inert, because dedup() already rescues any group with
+    # one served mention elsewhere, so it only ever changed the outcome when
+    # the echo was the ONLY mention -- exactly the self-identification case
+    # it was getting wrong.
     #
     # Third-party org names are still demoted, by the ROLE_ORG_NAME_*
     # patterns above; that path is untouched.
@@ -437,7 +427,7 @@ def infer_role(text, start, end, name_text="", window=60):
     if (matches_any(EXPANSION_PHRASES, before) or matches_any(HISTORICAL_PHRASES, before)) \
             and _name_word_echo(span, name_text):
         return SELF_ID_ROLE
-    # Topic / consultation framing (Plan.md Chunk G3): a term immediately
+    # Topic / consultation framing: a term immediately
     # followed by "perspectives" or "knowledge holders" describes a
     # CURRICULUM TOPIC being taught or a CONSULTED-PARTY mention, not the
     # served population -- e.g. "...teach eco-action strategies, and
@@ -452,7 +442,7 @@ def infer_role(text, start, end, name_text="", window=60):
     return "served"
 
 def indigenous_topic_keep_role(text, start, end, window=100):
-    """Plan.md Chunk G6 (hybrid policy) — ONLY consulted by extractors.py for
+    """Hybrid policy — ONLY consulted by extractors.py for
     a candidate already known to be North American Indigenous Origins (see
     extract_taxonomy_candidates/extract_pattern_candidates), and only when
     infer_role() above already returned "served" (the default). A term
@@ -908,9 +898,9 @@ def get_column_texts(row):
 
 def parse_raw_org_name(raw_name):
     """
-    Plan.md Chunk G1 step 5 — strip the "Funding Request for ... NNNNN"
-    wrapper and trailing FR-id off the RAW (pre-normalize, pre-identity-
-    rewrite) funding-request account name, leaving just the org name text.
+    Strip the "Funding Request for ... NNNNN" wrapper and trailing FR-id off
+    the RAW (pre-normalize, pre-identity-rewrite) funding-request account
+    name, leaving just the org name text.
     Used by the generalizable silent-body name rule so identity-phrase
     rewrites (e.g. "african canadian" -> "africancanadian") never hide a
     term that should drive name-only classification.
@@ -930,17 +920,18 @@ def parse_raw_org_name(raw_name):
 
 def _body_without_org_name(body_norm, raw_name):
     """Return the (already-normalized) body with the org's OWN name word
-    tokens removed, so a self-reference echo ("Women Building Futures must
-    replace servers", "The Ukrainian Shumka Dancers are undertaking...") is
-    not mistaken for a served population by the cross-axis
+    tokens removed, so a self-reference echo (an org restating its own name
+    in an administrative sentence) is not mistaken for a served population
+    by the cross-axis
     body_names_a_population() gate.
 
     Only meaningful in the silent-body name-rule branch, where the body has
     already been shown to carry no SERVED candidate on the classifying axis --
     so any body word that coincides with the org name is, by construction, the
     echo and safe to drop. A body that genuinely serves a population on
-    ANOTHER axis (BCW 51622's "Haitian youth") keeps that term, since it is
-    not part of the org name, so the gate still fires and blocks the borrow.
+    ANOTHER axis (e.g. a named ethnic group unrelated to the org name) keeps
+    that term, since it is not part of the org name, so the gate still fires
+    and blocks the borrow.
     """
     org = parse_raw_org_name(raw_name)
     if not org:
@@ -958,11 +949,10 @@ def body_names_a_population(text):
     body text name ANY identifiable served population at all -- ethnic,
     national, or gender/sexual-identity?
 
-    Used to gate the generalizable silent-body name rule (Plan.md Chunk G1
-    FIX): the name fallback on any ONE axis must fire ONLY when the body is
-    truly administrative -- no served population named on ANY axis. e.g.
-    BCW 51622's body serves "Haitian youth" -- a real (ethnic) served
-    population that simply isn't gendered -- so the GENDER axis must stay
+    Used to gate the generalizable silent-body name rule: the name fallback
+    on any ONE axis must fire ONLY when the body is truly administrative --
+    no served population named on ANY axis. e.g. a body that serves a named
+    ethnic group that simply isn't gendered means the GENDER axis must stay
     General rather than borrowing "Women" from the org's own name; but a
     genuinely administrative body (bathroom-vanity replacement, ED-salary
     continuity, a website update) has no population signal on any axis, so

@@ -299,8 +299,8 @@ ORG_NAME_ETHNICITY_MAP = {
 # IS the served population, even if it also happens to echo the org's own
 # name, or follows historical/expansion framing, elsewhere in the same
 # text. This precedence check runs BEFORE the org-name-echo demotion in
-# infer_role() -- e.g. "Somali Canadian Cultural Society ... serves the
-# Somali community" must keep Somali as served despite "Somali" also
+# infer_role() -- e.g. an "<Ethnicity> Cultural Society ... serves the
+# <Ethnicity> community" must keep that term as served despite it also
 # appearing in the org's own name.
 # ============================================================
 SERVED_FRAME_BEFORE_PATTERNS = [
@@ -390,7 +390,7 @@ ETHNIC_ANNOTATION_NEGATION_PHRASES = [
 ASPIRATIONAL_PHRASES = [
     r"hop(es?|ing) to (serve|reach|support|engage|include|target)",
     r"plan(s|ning) to (serve|reach|support|engage|include|target)",
-    # Plan.md Chunk G10 item 6 — "support" dropped from this alternation:
+    # "support" dropped from this alternation:
     # "aims to support X" is ordinary present-tense mission language (what
     # the org does), not a future/not-yet-achieved reach claim like "aims to
     # expand/reach/include" — treating it as aspirational was over-firing
@@ -412,7 +412,7 @@ ASPIRATIONAL_PHRASES = [
     r"hop(es?|ing) to \w+ (its|their|the|this) reach\b",
 ]
 
-# Plan.md Chunk G6 — same aspirational-reach frames as ASPIRATIONAL_PHRASES,
+# Same aspirational-reach frames as ASPIRATIONAL_PHRASES,
 # but checked against a WIDER before-window (see infer_role) because the
 # lead verb ("wants to"/"hoping to") can sit further back than the standard
 # 60-char window when a row restates the same aspirational goal across two
@@ -468,7 +468,7 @@ SERVING_CONTEXT_WORDS = [
 ]
 
 # =============================================================================
-# Phase 2 — Evidence-role frames (Plan.md Fix 1 Phase 2)
+# Phase 2 — Evidence-role frames
 #
 # Weak roles: a matched identity term surrounded by one of these frames
 # describes an ORG NAME or a SERVICE PROVIDER, not the served population.

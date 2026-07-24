@@ -266,7 +266,7 @@ SEXUAL_GENDER_DIVERSE_PATTERNS = (
     + [BARE_TRANS_PATTERN]
 )
 
-# Plan.md Chunk G10 item 2 — of the SEXUAL_GENDER_DIVERSE_KEYS umbrella, only
+# Of the SEXUAL_GENDER_DIVERSE_KEYS umbrella, only
 # the "gender_diverse" key itself (bare "gender-diverse") is ambiguous enough
 # to warrant SFLAG_GENDER_TERM. The other keys (trans/non-binary/two-spirit/
 # agender/gender-fluid/gender-neutral/genderqueer) unambiguously belong under

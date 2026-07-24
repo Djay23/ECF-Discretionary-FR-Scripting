@@ -1,7 +1,7 @@
 """
 vendor_models.py
 -----------------
-One-time setup (Plan.md ML AUGMENTATION LAYER, Phase A): download the two
+One-time setup for the ML augmentation layer: download the two
 frozen pretrained models ml_arbiter.py depends on into a local, read-only,
 offline vendored directory restricted to safetensors weights only, and
 record a SHA-256 manifest for supply-chain verification.
@@ -13,7 +13,7 @@ After vendoring, ml_arbiter.py loads exclusively from MODELS_DIR with
 HF_HUB_OFFLINE=1 / TRANSFORMERS_OFFLINE=1 set — no network access at
 inference time.
 
-NOTE: picklescan/modelscan (Plan.md's suggested pre-load scan) do not
+NOTE: picklescan/modelscan (a suggested pre-load scan) do not
 support this project's Python version (3.14) as of this writing — both
 cap at Python <3.13. Safetensors-only vendoring is the primary mitigation
 here: this script only downloads *.safetensors weights, never the

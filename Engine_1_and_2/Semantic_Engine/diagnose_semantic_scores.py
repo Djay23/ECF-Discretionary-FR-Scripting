@@ -30,7 +30,7 @@ stand-in suggested, which is why every row may currently be clearing
 the bar.
 
 To Run:
-    python diagnose_semantic_scores.py "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\Taxonomy - Definitions.xlsx" "C:\\Users\\oadode\\OneDrive - Edmonton Community Foundation\\Desktop\\Discretionary FR Scripting\\ECF-Discretionary-FR-Scripting\\FR testing.xlsx"
+    python diagnose_semantic_scores.py "Taxonomy/Taxonomy - Definitions.xlsx" "Data Sheets/FR testing.xlsx"
 """
 print("Using ethnic_taggerv3 from:", et.__file__)
 print("Using semantic_fallback from:", sf.__file__)

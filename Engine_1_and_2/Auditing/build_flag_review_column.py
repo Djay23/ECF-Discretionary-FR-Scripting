@@ -124,7 +124,7 @@ FLAG_DISPOSITIONS = [
     ("contains", "mentioned via org-name self-reference in body", "Mentioned via org-name self-reference",
      "KEEP", "transparency note; org self-reference, not served"),
     ("contains", "incidental family context", "Incidental family context",
-     "KEEP", "transparency; targets 54093 backlog"),
+     "KEEP", "transparency; targets family-context backlog"),
     ("contains", "example/illustrative", "Example/illustrative mention",
      "KEEP", "transparency note; illustrative mention, not classified"),
 

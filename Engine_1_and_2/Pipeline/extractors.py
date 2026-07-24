@@ -21,7 +21,7 @@ Signal Extraction Layer — Layer 1 of the 3-layer classification pipeline.
 
 Responsibility:
     Detect the PRESENCE of ethnic signals in text, and tag each with an
-    evidence role (Plan.md Fix 1 Phase 2): 'served' (strong, default) or a
+    evidence role: 'served' (strong, default) or a
     weak role ('org_name' | 'provider' | 'example' | 'aspirational' |
     'negated') inferred from the text immediately around the match.
 
@@ -64,7 +64,7 @@ def _candidate(level1: str, level2: str, level3: str, depth: int, source: str,
         "role":   role,
         "self_id": self_id,
         # span/context: the matched text and its local window, kept so the
-        # ML role arbiter (Plan.md Chunk F Phase B) can re-score this exact
+        # ML role arbiter can re-score this exact
         # occurrence later without re-running extraction. Empty for
         # org_lookup candidates (not span-anchored, see extract_org_candidates).
         "span":    span,
@@ -100,7 +100,7 @@ def extract_taxonomy_candidates(text: str, taxonomy_entries: list, name_text: st
         pattern = re.compile(r'\b' + re.escape(kw) + r's?\b', re.IGNORECASE)
         non_ethnic_before = NON_ETHNIC_SENSE_BEFORE_PATTERNS.get(kw)
         for m in pattern.finditer(text):
-            # Plan.md Chunk G7 — a spurious non-ethnic sense of this exact
+            # A spurious non-ethnic sense of this exact
             # keyword ("final polish" on a video edit, not the Polish
             # people) is skipped entirely at this occurrence: there is no
             # ethnic claim here at all, so it must not even become a weak
@@ -184,11 +184,11 @@ def extract_compound_candidates(text: str, name_text: str = "") -> list:
         m = re.search(compound_pattern, text, re.IGNORECASE)
         if m:
             role = infer_role(text, m.start(), m.end(), name_text)
-            # Plan.md Chunk G7 — "byzantine" is the one ALWAYS_MULTIPLE_COMPOUNDS
-            # entry naming a historical/defunct civilization with no living
-            # modern population; "Byzantine ... Festival" in this dataset is
-            # reliably a themed/branded event name (Arts On The Ave 54622 "A
-            # Byzantine Winter Festival"), not a served-population claim.
+            # "byzantine" is the one ALWAYS_MULTIPLE_COMPOUNDS entry naming a
+            # historical/defunct civilization with no living modern
+            # population; "Byzantine ... Festival" is reliably a themed/branded
+            # event name (e.g. a "Byzantine Winter Festival"), not a
+            # served-population claim.
             # Scoped to this one compound (not a generic frame — see
             # BYZANTINE_FESTIVAL_AFTER_PATTERN's constants.py docstring) so a
             # real ethnocultural org's own "[Ethnicity] ... Festival" (e.g.

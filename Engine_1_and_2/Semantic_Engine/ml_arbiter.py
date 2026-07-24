@@ -121,8 +121,8 @@ def cache_key(*parts) -> str:
 
 def build_gold_embedding_store(gold_rows, force: bool = False):
     """
-    Embed each gold-audited row's body and name text SEPARATELY (Plan.md:
-    "reuse get_body_and_name_texts to embed body and name separately") and
+    Embed each gold-audited row's body and name text SEPARATELY (reuse
+    get_body_and_name_texts to embed body and name separately) and
     cache the result to disk, keyed by a hash of the input texts so the
     store is automatically invalidated when the gold file changes.
 
@@ -147,8 +147,8 @@ def build_gold_embedding_store(gold_rows, force: bool = False):
 
     if cache_path.exists() and not force:
         # allow_pickle=False: an .npz of plain string/float arrays can never
-        # execute code on load, unlike the previous pickle cache (Plan.md
-        # no-pickle / sensitive-data-at-rest rule).
+        # execute code on load, unlike the previous pickle cache
+        # (no-pickle / sensitive-data-at-rest rule).
         with np.load(cache_path, allow_pickle=False) as data:
             return {"ids": [str(x) for x in data["ids"]],
                     "body_vecs": data["body_vecs"],
@@ -191,9 +191,8 @@ def knn(vec: np.ndarray, k: int, store: dict, field: str = "body_vecs"):
 def nli_role(span: str, text: str) -> dict:
     """
     Zero-shot evidence-role scoring for an identity span found in text,
-    using the vendored NLI cross-encoder (Plan.md Phase B intent — this
-    Phase A helper just exposes the scoring primitive, not yet wired into
-    the resolver).
+    using the vendored NLI cross-encoder (advisory only — this helper just
+    exposes the scoring primitive, not yet wired into the resolver).
 
     Scores each of ROLE_HYPOTHESES as a (premise, hypothesis) pair, where
     the premise is the local context with the target span wrapped in

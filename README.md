@@ -16,7 +16,7 @@ Every classification is accompanied by a **Classification Flag** column that pre
 ### Developer Intent & Philosophy
 The codebase is built for **modularity**, **determinism**, and **auditability**. It eliminates manual classification variance while staying flexible enough to adjust rules as community demographic landscapes evolve.
 
-The central design decision is a **strict separation between signal detection and decision-making**. Extractors are "dumb sensors" that surface every possible match; a single deterministic **state-machine resolver** makes every classification decision. No probabilistic model is in the shipping path — machine-learning components exist in the tree but are **hibernated / advisory-only** (see §6). This keeps the engine fully reproducible and testable: the same row always produces the same label, and every decision can be traced to a rule.
+The central design decision is a **strict separation between signal detection and decision-making**. Extractors are "dumb sensors" that surface every possible match; a single deterministic **state-machine resolver** makes every classification decision. No probabilistic model is in the shipping path — machine-learning components exist in the tree but are **hibernated / advisory-only** (see ->6). This keeps the engine fully reproducible and testable: the same row always produces the same label, and every decision can be traced to a rule.
 
 ---
 
@@ -31,16 +31,14 @@ B --> C[Layer 1 — extractors.py<br/>Signal extraction + evidence-role tagging]
 C --> D[Layer 2 — ethnic_taggerv3.py<br/>Role inference + context annotation]
 D --> E[Layer 3 — resolver.py<br/>Deterministic state machine]
 E --> F[Ethnic 1/2/3 + Classification Flag]
-F -->|If result == General Population| G[Advisory: Semantic Suggestion REVIEW column]
 
 style E fill:#d4edda,stroke:#28a745,stroke-width:2px
-style G fill:#fff3cd,stroke:#ffc107,stroke-width:2px
 ```
 
 Orchestration lives in `classify_pipeline.py`, which contains **no classification logic** — it only wires the layers together. All ethnic-origin decisions live in `resolver.py`.
 
 ### Step 1 — Ingestion & Text Prioritization
-The pipeline reads the active dataset's workbook (see §7 — dataset switching) and builds a hierarchical taxonomy dictionary from `Taxonomy - Definitions.xlsx`, parsing column D **"All Terms"** (Level 1 + Level 2 + Level 3 concatenated with the literal word `Origins` as delimiter), falling back to the individual Level 1/2/3 columns if that cell is blank. Entries are sorted **deepest-first, then longest-keyword-first** so that "Southern and East African" is captured before the broader "African".
+The pipeline reads the active dataset's workbook (see ->7 — dataset switching) and builds a hierarchical taxonomy dictionary from `Taxonomy - Definitions.xlsx`, parsing column D **"All Terms"** (Level 1 + Level 2 + Level 3 concatenated with the literal word `Origins` as delimiter), falling back to the individual Level 1/2/3 columns if that cell is blank. Entries are sorted **deepest-first, then longest-keyword-first** so that "Southern and East African" is captured before the broader "African".
 
 The four input columns are split into two groups:
 
@@ -49,7 +47,7 @@ The four input columns are split into two groups:
 | **Body** (served-population evidence) | `Final_Project_Description`, `Final_Summary_Description`, `Purpose` | A signal here can classify a row. |
 | **Name** (organization / request title) | `Funding Request Name` | Consulted only for a curated known-org lookup and to decide whether a *name-only* signal should be flagged. |
 
-**Corroboration rule:** a signal must appear in the **body** to classify. A signal that appears **only in the name** degrades to `General Population` with an explanatory flag — unless a curated known-org lookup or the silent-body name rule applies (see §4).
+**Corroboration rule:** a signal must appear in the **body** to classify. A signal that appears **only in the name** degrades to `General Population` with an explanatory flag — unless a curated known-org lookup or the silent-body name rule applies (see ->4).
 
 ### Step 2 — Layer 1: Signal Extraction (`extractors.py`)
 Six extractor functions scan the text and emit **one candidate per occurrence** of a match. They perform **no filtering, no negation guards, and no suppression** — every match becomes a candidate:
@@ -166,7 +164,9 @@ Both share the silent-body name rule and family-context guards (so an incidental
 
 Two ML/semantic components exist but do not decide classifications:
 
-1. **Semantic taxonomy suggestion** (`Semantic_Engine/semantic_fallback.py`): a local sentence-embedding model (MiniLM) that, **only for rows the deterministic engine resolved to `General Population`**, suggests the nearest taxonomy entry above a similarity+margin threshold. It writes to the **advisory `Semantic Suggestion (REVIEW)` column only** — it never overrides or auto-writes an `Ethnic 1/2/3` result, because embeddings don't understand negation or context override.
+1. **Semantic taxonomy suggestion** (`Semantic_Engine/semantic_fallback.py`): a local sentence-embedding model (MiniLM) that, **only for rows the deterministic engine resolved to `General Population`**, suggests the nearest taxonomy entry above a similarity+margin threshold. It never overrides or auto-writes an `Ethnic 1/2/3` result, because embeddings don't understand negation or context override. This only runs when the optional `sentence-transformers` dependency is installed (excluded from the lean default install), so it is effectively dormant in production.
+
+    > **Column note:** the review column this originally populated (`OUTPUT_SEMANTIC = "Semantic Suggestion (REVIEW)"` in code) was manually repurposed in the workbook into a human-review/correction column titled **"Classification Accuracy (Corrected in Different Areas)"**. The engine now *reads* that same column as its **stakeholder-reviewed gate** (`STAKEHOLDER_REVIEWED_COL`): any row a human has marked there is skipped by the NLI role arbiter so it can never second-guess a human-confirmed decision. Note the code constant `OUTPUT_SEMANTIC` still carries the old header string and has not been reconciled with the rename.
 
 2. **NLI role arbiter** (`Semantic_Engine/ml_arbiter.py`, wired in `classify_pipeline.apply_ml_role_arbiter`): a vendored cross-encoder that can offer a second opinion on `served` role frames. It is **off by default** (`USE_ML_ROLE_ARBITER=1` to A/B test), is **advisory-only** (attaches a verify note, never changes `role` or any label), and skips stakeholder-reviewed rows entirely.
 
@@ -191,7 +191,7 @@ Engine_1_and_2/
 ├── Constants/
 │   ├── constants.py           # Ethnic patterns, country map, org map, phrase lists
 │   └── gender_constants.py    # Gender/sexual labels, patterns, flags
-├── Semantic_Engine/           # Advisory/hibernated ML (see §6)
+├── Semantic_Engine/           # Advisory/hibernated ML (see ->6)
 └── Auditing/                  # Regression, review reports, stakeholder dashboard
 ```
 
@@ -228,7 +228,7 @@ $env:PYTHONIOENCODING="utf-8"; $env:HF_HUB_OFFLINE="1"; python Engine_1_and_2/ru
 
 ### Run an Engine Individually
 ```powershell
-python Engine_1_and_2/Pipeline/ethnic_taggerv3.py   # ethnic + Semantic Suggestion (REVIEW) columns
+python Engine_1_and_2/Pipeline/ethnic_taggerv3.py   # ethnic columns (+ optional semantic suggestions if installed)
 python Engine_1_and_2/Pipeline/Gender_SexID.py      # gender + sexual columns
 ```
 
@@ -247,6 +247,6 @@ python Engine_1_and_2/Semantic_Engine/diagnose_semantic_scores.py
 ### Output Columns Written
 | Axis | Columns |
 | :--- | :--- |
-| Ethnic | `Ethnic 1 - FR6`, `Ethnic 2 - FR7`, `Ethnic 3 - FR8`, `Classification Flag`, `Semantic Suggestion (REVIEW)` |
+| Ethnic | `Ethnic 1 - FR6`, `Ethnic 2 - FR7`, `Ethnic 3 - FR8`, `Classification Flag` |
 | Gender | `Gender Id - FR9`, `Gender Classification Flag` |
 | Sexual | `Sexual Id - FR10`, `Sexual Classification Flag` |

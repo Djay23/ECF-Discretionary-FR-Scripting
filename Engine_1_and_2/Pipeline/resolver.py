@@ -87,9 +87,9 @@ def source_flag(source: str, level1: str = "") -> str:
 def _role_rank(role: str) -> int:
     """Higher rank wins when dedup picks a representative occurrence for a
     group. "served" (a genuine served-population claim) always outranks
-    "topic_keep" (Plan.md Chunk G6 — a topic/partnership mention that keeps
-    the classification but only via a verify flag), which in turn outranks
-    any other weak role (org_name/provider/example/aspirational/topic)."""
+    "topic_keep" (a topic/partnership mention that keeps the classification
+    but only via a verify flag), which in turn outranks any other weak role
+    (org_name/provider/example/aspirational/topic)."""
     if role == "served":
         return 2
     if role == "topic_keep":
@@ -102,14 +102,13 @@ def dedup(states: List[State]) -> List[State]:
     Two detection methods landing on the same conclusion are a single
     confirmed answer, not a multi-group signal.
 
-    Evidence-role rescue (Plan.md Fix 1 Phase 2): if ANY occurrence of a
-    group was matched with role "served", that group counts as served even
-    if OTHER occurrences of the same group were weak (org_name/provider/
-    example/aspirational/negated) -- e.g. "program for Black Edmontonians
-    ... delivered by Black professionals" keeps Black as served via the
-    first phrase, despite the second being a weak "provider" mention.
-    The first-seen entry is kept as the representative (preserving its
-    source label) unless a later "served" (or, failing that, "topic_keep")
+    Evidence-role rescue: if ANY occurrence of a group was matched with role
+    "served", that group counts as served even if OTHER occurrences of the
+    same group were weak (org_name/provider/example/aspirational/negated) --
+    e.g. a group named once as the served population and again only as the
+    delivering provider still counts as served via the first mention. The
+    first-seen entry is kept as the representative (preserving its source
+    label) unless a later "served" (or, failing that, "topic_keep")
     occurrence needs to promote it.
     """
     best: dict = {}
@@ -131,7 +130,7 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
     """
     Deterministic state machine resolver.
 
-    Decision order (preserved from ethnic_taggerv3.classify_row):
+    Decision order:
 
         1. BIPOC signal present              → MULTIPLE_ETHNIC
         2. No primary candidates             → org fallback or GENERAL_POP
@@ -169,25 +168,47 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
 
     # -----------------------------------------------------------------------
     # Step 1 — BIPOC signal
-    # BIPOC is checked before the "no candidates" gate because it produces
-    # MULTIPLE_ETHNIC regardless of whether other ethnic signals are present.
+    #
+    # BIPOC is checked before the "no candidates" gate because when it is the
+    # ONLY signal present it still has to produce MULTIPLE_ETHNIC.
+    #
+    #   BIPOC + NO other served group     -> Multiple. "BIPOC" spells out
+    #       Black + Indigenous + People of Colour, so standing alone it is
+    #       definitionally Multiple. Left unflagged: nothing to adjudicate.
+    #
+    #   BIPOC + exactly ONE named group   -> classify AS that group, not
+    #       Multiple: the named group is the served population and BIPOC is
+    #       only umbrella framing around it. A low-priority verify note is
+    #       kept so broad-mandate orgs (where BIPOC really is the umbrella)
+    #       still surface for manual review.
+    #
+    #   BIPOC + TWO OR MORE served groups -> Multiple via Step 3's ordinary
+    #       distinct-L1 rule; BIPOC contributes nothing and isn't consulted.
     # -----------------------------------------------------------------------
     if bipoc_present:
-        if served:
-            groups = sorted(set(s["level1"] for s in served))
-            flag = ("Note (low priority): BIPOC keyword alongside specific group(s) (" + ", ".join(groups) + ") - verify manually")
-        else:
-            #bare "BIPOC signal detected" removed
-            # as a primary flag; BIPOC-alone -> Multiple is unambiguous
-            flag = ""
-        return build_output(MULTIPLE_ETHNIC, "", "", flag, context_flags)
+        bipoc_groups = sorted(set(s["level1"] for s in served))
+        if len(bipoc_groups) != 1:
+            # No bare "BIPOC signal detected" primary flag: BIPOC-alone ->
+            # Multiple is unambiguous. Only annotate when a specific group
+            # also appears, so a reviewer can confirm the umbrella call.
+            flag = ("Note (low priority): BIPOC keyword alongside specific group(s) ("
+                    + ", ".join(bipoc_groups) + ") - verify manually") if served else ""
+            return build_output(MULTIPLE_ETHNIC, "", "", flag, context_flags)
+        # Exactly one served group: fall through to the ordinary single-L1
+        # resolution below so the L2/L3 depth is chosen the same way as for
+        # any other single-group row. The note rides along in context_flags,
+        # which build_output appends to whichever branch ends up firing.
+        context_flags = context_flags + [
+            "Note (low priority): BIPOC keyword alongside specific group(s) ("
+            + ", ".join(bipoc_groups) + ") - classified as that group; verify manually"
+        ]
 
     # -----------------------------------------------------------------------
     # Step 2 — No served candidates
     # Try org fallback first; if only weak (org_name/provider/example/
     # aspirational/negated) candidates remain, keep General but name them in
-    # a transparency note (partial Fix 7) instead of silently dropping them.
-    # Otherwise fall through to plain General Population.
+    # a transparency note instead of silently dropping them. Otherwise fall
+    # through to plain General Population.
     # -----------------------------------------------------------------------
     if not served:
         if org:
@@ -257,9 +278,9 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
     # -----------------------------------------------------------------------
     distinct_l1 = set(s["level1"] for s in primary)
     if len(distinct_l1) >= 2:
-        # Fix 4: the generic "Review: multiple distinct groups detected" string
-        # is dropped as pure noise — the Multiple classification itself already
-        # says as much. No primary flag; context flags (if any) still appended.
+        # The generic "multiple distinct groups detected" string is dropped as
+        # pure noise — the Multiple classification itself already says as much.
+        # No primary flag; context flags (if any) still appended.
         return build_output(MULTIPLE_ETHNIC, "", "", "", context_flags)
 
     indigenous_topic_keep_only = (
@@ -290,15 +311,13 @@ def resolve(states: List[State], context_flags: ContextFlags, bipoc_present: boo
     specific = [s for s in primary if s["level2"] or s["level3"]]
 
     # Step 4a — North American Indigenous umbrella + specific sub-group(s).
-    # Scoped to Indigenous only. (Fix 9) When a broad umbrella signal (L1-only:
+    # Scoped to Indigenous only. When a broad umbrella signal (L1-only:
     # indigenous / aboriginal / treaty 6 / indigenous canadian) co-occurs with
     # TWO OR MORE distinct specific sub-groups (Métis, First Nations, Inuit,
     # Cree, ...), classify at the general L1 and flag for review — genuinely
     # ambiguous which sub-group(s) are served. But when exactly ONE distinct
     # sub-group co-occurs with the umbrella, don't roll up: fall through to
-    # the normal pool resolution below, which narrows to that sub-group
-    # (gold treats "Indigenous men ... Métis Settlements" as Métis, not a
-    # general roll-up).
+    # the normal pool resolution below, which narrows to that one sub-group.
     if shared_l1 == INDIGENOUS_L1 and specific:
         umbrella_present = any(not (s["level2"] or s["level3"]) for s in primary)
         distinct_subs = {s["level2"] or s["level3"] for s in specific}

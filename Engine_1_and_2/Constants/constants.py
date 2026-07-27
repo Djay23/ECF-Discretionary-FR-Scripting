@@ -66,6 +66,43 @@ PATTERN_RULES = [
 ]
 
 # ============================================================
+# Terms that must NEVER be added to COUNTRY_REGION_MAP.
+#
+# Expanding the map to ~200 nationalities looks obviously correct and is not:
+# measured over all 448 rows it produced 0 fixes and 4 regressions. Two distinct
+# failure modes, both observed in the real corpus:
+#
+#   1. HOMOGRAPHS — the word is ordinary English far more often than a
+#      nationality. "english" appears 19 times, every one of them a LANGUAGE
+#      reference ("English as a second language"); adding it flipped four
+#      audited-correct rows to European Origins, including a Somali row.
+#      "polish" appears once: "final polish for public release".
+#
+#   2. NATIONALITY-AS-ATTRIBUTE — the word really is the nationality, but it
+#      modifies an OBJECT, cuisine, or art form rather than naming a population:
+#      "Mongolian yurts" (storage equipment), "pre-hispanic Mexican dance"
+#      (an art form). No exclusion list fixes this one -- it is the same
+#      served-vs-attribute problem the evidence-role frames exist for -- so it
+#      is a standing argument against adding nationalities speculatively.
+#      This corpus is arts- and food-heavy: "Greek yogurt", "Italian restaurant",
+#      "French doors", "Turkish coffee" are all live risks.
+#
+# Add a nationality only when it has an ACTUAL served-population occurrence in
+# the data, never pre-emptively.
+#
+# NOTE for any future expansion: entries with a directional prefix must be
+# matched LONGEST-FIRST. "south sudan" maps to Southern and East African but
+# "sudan" maps to North African, so a naive substring match assigns South
+# Sudanese people to the wrong region entirely. Same trap for
+# "equatorial guinea"/"guinea" and "north korea"/"korea".
+# ============================================================
+EXCLUDED_NATIONALITY_TERMS = frozenset({
+    "english", "polish", "spanish", "portuguese",   # homographs / language names
+    "chad", "turkey", "georgia", "jordan", "oman",  # homographs: names & places
+    "mongolian", "greek", "italian", "french",      # commonly modify objects/cuisine/art
+})
+
+# ============================================================
 # CASES 6 & 7 — Country/nationality NOT in taxonomy
 # Covers both "Jamaican" (nationality) and "from Jamaica" (Case 7)
 # ============================================================
@@ -116,6 +153,27 @@ COUNTRY_REGION_MAP = {
     "zimbabwean": ("African Origins", "Southern and East African Origins", ""),
     "mozambique": ("African Origins", "Southern and East African Origins", ""),
     "mozambican": ("African Origins", "Southern and East African Origins", ""),
+    # --- Added 2026-07-21, evidence-driven (see EXCLUDED_NATIONALITY_TERMS below).
+    # A bulk expansion of ~200 nationalities was built and measured over all 448
+    # rows first: it produced 0 fixes and 4 regressions, so only terms with an
+    # ACTUAL occurrence in the corpus were kept. These three had one:
+    #   eritrean  -- 5 uses, all served-population ("Ethiopian and Eritrean youth").
+    #                Without it a row naming both collapses to the Ethiopian L3
+    #                and silently drops Eritrean; with it, two sub-groups compete
+    #                and the resolver correctly rolls up to the L2 region.
+    #   congolese -- 1 use, served-population ("5 canadians 5 congolese 5 ivorians").
+    #                Bare "congo" is deliberately NOT added: unlike the demonym it
+    #                reads as a geographic reference ("our work in Congo"), which
+    #                is not an Edmonton served population.
+    #   oromo/oromian -- an ethnic group within Ethiopia, not a country, so it can
+    #                never come from a country list; carried only by the org name
+    #                ("Foundation for Oromian Culture"). "oromian" is the form that
+    #                actually appears -- "oromo" is added as the standard demonym.
+    "eritrean": ("African Origins", "Southern and East African Origins", ""),
+    "eritrea": ("African Origins", "Southern and East African Origins", ""),
+    "congolese": ("African Origins", "Central and West African Origins", ""),
+    "oromo": ("African Origins", "Southern and East African Origins", ""),
+    "oromian": ("African Origins", "Southern and East African Origins", ""),
     "ghanaian": ("African Origins", "Central and West African Origins", ""),
     "sierra leonean": ("African Origins", "Central and West African Origins", ""),
     "egyptian": ("African Origins", "North African Origins", ""),
@@ -222,6 +280,16 @@ ORG_NAME_ETHNICITY_MAP = {
     "bent arrow": ("North American Indigenous Origins", "", ""),
     "treaty 6": ("North American Indigenous Origins", "", ""), # Flag for review, as "Treaty 6" could refer to the geographic region (which would be L1 or L2) rather than the organization (which would be Case 10). Only trigger if "Treaty 6" appears in the funding request name or purpose, not just the description.
     "niginan housing ventures": ("North American Indigenous Origins", "", ""),
+    # Stakeholder ruling (2026-07-21): this centre predominantly serves the
+    # Chinese community. Deliberately curated as a WHOLE-ORG-NAME entry rather
+    # than by teaching the extractors the word "Chinatown" -- "Chinatown" alone
+    # is a NEIGHBOURHOOD, not an ethnic signal, and must not classify on its own
+    # (e.g. a separate row about greening Chinatown's public realm serves that
+    # district's residents and businesses generally, and correctly stays
+    # General). Keying the full org name gets this row right without making the
+    # place name a trigger anywhere else.
+    "edmonton chinatown multicultural centre": (
+        "Asian Origins", "East and Southeast Asian Origins", "Chinese"),
 }
 
 # ============================================================
@@ -231,8 +299,8 @@ ORG_NAME_ETHNICITY_MAP = {
 # IS the served population, even if it also happens to echo the org's own
 # name, or follows historical/expansion framing, elsewhere in the same
 # text. This precedence check runs BEFORE the org-name-echo demotion in
-# infer_role() -- e.g. "Somali Canadian Cultural Society ... serves the
-# Somali community" must keep Somali as served despite "Somali" also
+# infer_role() -- e.g. an "<Ethnicity> Cultural Society ... serves the
+# <Ethnicity> community" must keep that term as served despite it also
 # appearing in the org's own name.
 # ============================================================
 SERVED_FRAME_BEFORE_PATTERNS = [
@@ -322,7 +390,7 @@ ETHNIC_ANNOTATION_NEGATION_PHRASES = [
 ASPIRATIONAL_PHRASES = [
     r"hop(es?|ing) to (serve|reach|support|engage|include|target)",
     r"plan(s|ning) to (serve|reach|support|engage|include|target)",
-    # Plan.md Chunk G10 item 6 — "support" dropped from this alternation:
+    # "support" dropped from this alternation:
     # "aims to support X" is ordinary present-tense mission language (what
     # the org does), not a future/not-yet-achieved reach claim like "aims to
     # expand/reach/include" — treating it as aspirational was over-firing
@@ -344,7 +412,7 @@ ASPIRATIONAL_PHRASES = [
     r"hop(es?|ing) to \w+ (its|their|the|this) reach\b",
 ]
 
-# Plan.md Chunk G6 — same aspirational-reach frames as ASPIRATIONAL_PHRASES,
+# Same aspirational-reach frames as ASPIRATIONAL_PHRASES,
 # but checked against a WIDER before-window (see infer_role) because the
 # lead verb ("wants to"/"hoping to") can sit further back than the standard
 # 60-char window when a row restates the same aspirational goal across two
@@ -400,7 +468,7 @@ SERVING_CONTEXT_WORDS = [
 ]
 
 # =============================================================================
-# Phase 2 — Evidence-role frames (Plan.md Fix 1 Phase 2)
+# Phase 2 — Evidence-role frames
 #
 # Weak roles: a matched identity term surrounded by one of these frames
 # describes an ORG NAME or a SERVICE PROVIDER, not the served population.
@@ -521,7 +589,7 @@ KEYWORD_ALIASES = {
     "somalian": "somali",
     "ethopian": "ethiopian",
     "ethipian": "ethiopian",
-    "rwandese": "rwandan",
+    "rwandese": "   ndan",
     "congolaise": "congolese",
     "congolais": "congolese",
     "mozambiquean": "mozambican",

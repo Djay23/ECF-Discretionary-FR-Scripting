@@ -1,10 +1,10 @@
 """
 run_all.py
 ----------
-Single entry point for a full classification pass over
-    Data Sheets/FR testing.xlsx  (sheet "Discretionary Funding Requests")
+Single entry point for a full classification pass over the active dataset
+(see dataset_config.py -- ACTIVE_DATASET or the ECF_DATASET env var).
 
-Runs, in order, against the same workbook:
+Runs, in order, against that dataset's workbook:
     1. ethnic_taggerv3.main()  -> Ethnic 1/2/3 - FR6/7/8, Classification Flag,
                                   Semantic Suggestion (REVIEW)
     2. Gender_SexID.main()     -> Gender Id - FR9, Gender Classification Flag,
@@ -32,6 +32,9 @@ import ethnic_taggerv3 as et
 import Gender_SexID as gs
 
 def main():
+    ds = bootstrap.dataset()
+    print(f"[dataset] active: {ds.name}  ->  reads {ds.raw_file.name}, writes {ds.output_file.name}")
+
     print("=" * 70)
     print("STEP 1/2 — Ethnic classification (ethnic_taggerv3)")
     print("=" * 70)
@@ -42,8 +45,8 @@ def main():
     print("=" * 70)
     gs.main()
 
-    print("\nAll engines complete. Ethnic, gender, and sexual columns written to "
-          "Data Sheets/FR testing.xlsx.")
+    print(f"\nAll engines complete. Ethnic, gender, and sexual columns written to "
+          f"{ds.output_file}.")
 
 if __name__ == "__main__":
     main()

@@ -11,7 +11,8 @@ from constants import (
     NON_ETHNIC_SENSE_BEFORE_PATTERNS,
     BYZANTINE_FESTIVAL_AFTER_PATTERN,
 )
-from ethnic_taggerv3 import infer_role, indigenous_topic_keep_role, matches_any
+from ethnic_taggerv3 import (infer_role, indigenous_topic_keep_role, matches_any,
+                             SELF_ID_ROLE, is_served_role)
 
 """
 extractors.py
@@ -20,7 +21,7 @@ Signal Extraction Layer — Layer 1 of the 3-layer classification pipeline.
 
 Responsibility:
     Detect the PRESENCE of ethnic signals in text, and tag each with an
-    evidence role (Plan.md Fix 1 Phase 2): 'served' (strong, default) or a
+    evidence role: 'served' (strong, default) or a
     weak role ('org_name' | 'provider' | 'example' | 'aspirational' |
     'negated') inferred from the text immediately around the match.
 
@@ -45,6 +46,15 @@ ROLE_CONTEXT_WINDOW = 60
 
 def _candidate(level1: str, level2: str, level3: str, depth: int, source: str,
                role: str = "served", span: str = "", context: str = "") -> dict:
+    # SELF_ID_ROLE is normalized back to plain "served" here, with the
+    # provenance kept as a separate flag. Every consumer that asks
+    # role == "served" (resolver.dedup, classify_row's corroboration gate,
+    # identity_markers, the ML arbiter) therefore keeps working unchanged,
+    # while classify_row can still tell that a row's ONLY served evidence was
+    # the organization naming itself -- and flag it accordingly.
+    self_id = (role == SELF_ID_ROLE)
+    if self_id:
+        role = "served"
     return {
         "level1": level1,
         "level2": level2,
@@ -52,8 +62,9 @@ def _candidate(level1: str, level2: str, level3: str, depth: int, source: str,
         "depth":  depth,
         "source": source,
         "role":   role,
+        "self_id": self_id,
         # span/context: the matched text and its local window, kept so the
-        # ML role arbiter (Plan.md Chunk F Phase B) can re-score this exact
+        # ML role arbiter can re-score this exact
         # occurrence later without re-running extraction. Empty for
         # org_lookup candidates (not span-anchored, see extract_org_candidates).
         "span":    span,
@@ -89,7 +100,7 @@ def extract_taxonomy_candidates(text: str, taxonomy_entries: list, name_text: st
         pattern = re.compile(r'\b' + re.escape(kw) + r's?\b', re.IGNORECASE)
         non_ethnic_before = NON_ETHNIC_SENSE_BEFORE_PATTERNS.get(kw)
         for m in pattern.finditer(text):
-            # Plan.md Chunk G7 — a spurious non-ethnic sense of this exact
+            # A spurious non-ethnic sense of this exact
             # keyword ("final polish" on a video edit, not the Polish
             # people) is skipped entirely at this occurrence: there is no
             # ethnic claim here at all, so it must not even become a weak
@@ -97,7 +108,7 @@ def extract_taxonomy_candidates(text: str, taxonomy_entries: list, name_text: st
             if non_ethnic_before and matches_any(non_ethnic_before, text[max(0, m.start() - 20):m.start()]):
                 continue
             role = infer_role(text, m.start(), m.end(), name_text)
-            if role == "served" and entry["level1"] == INDIGENOUS_L1:
+            if is_served_role(role) and entry["level1"] == INDIGENOUS_L1:
                 role = indigenous_topic_keep_role(text, m.start(), m.end()) or role
             candidates.append(_candidate(
                 entry["level1"],
@@ -127,7 +138,7 @@ def extract_pattern_candidates(text: str, name_text: str = "") -> list:
         depth = 3 if l3 else (2 if l2 else 1)
         for m in re.finditer(pattern, text, re.IGNORECASE):
             role = infer_role(text, m.start(), m.end(), name_text)
-            if role == "served" and l1 == INDIGENOUS_L1:
+            if is_served_role(role) and l1 == INDIGENOUS_L1:
                 role = indigenous_topic_keep_role(text, m.start(), m.end()) or role
             candidates.append(_candidate(
                 l1, l2, l3, depth, "pattern", role,
@@ -173,16 +184,16 @@ def extract_compound_candidates(text: str, name_text: str = "") -> list:
         m = re.search(compound_pattern, text, re.IGNORECASE)
         if m:
             role = infer_role(text, m.start(), m.end(), name_text)
-            # Plan.md Chunk G7 — "byzantine" is the one ALWAYS_MULTIPLE_COMPOUNDS
-            # entry naming a historical/defunct civilization with no living
-            # modern population; "Byzantine ... Festival" in this dataset is
-            # reliably a themed/branded event name (Arts On The Ave 54622 "A
-            # Byzantine Winter Festival"), not a served-population claim.
+            # "byzantine" is the one ALWAYS_MULTIPLE_COMPOUNDS entry naming a
+            # historical/defunct civilization with no living modern
+            # population; "Byzantine ... Festival" is reliably a themed/branded
+            # event name (e.g. a "Byzantine Winter Festival"), not a
+            # served-population claim.
             # Scoped to this one compound (not a generic frame — see
             # BYZANTINE_FESTIVAL_AFTER_PATTERN's constants.py docstring) so a
             # real ethnocultural org's own "[Ethnicity] ... Festival" (e.g.
             # "Ukrainian Dance Festival") is untouched.
-            if role == "served" and m.group(0).lower() == "byzantine":
+            if is_served_role(role) and m.group(0).lower() == "byzantine":
                 after = text[m.end():m.end() + 60]
                 if matches_any([BYZANTINE_FESTIVAL_AFTER_PATTERN], after):
                     role = "topic"

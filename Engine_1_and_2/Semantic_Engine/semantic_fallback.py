@@ -41,7 +41,7 @@ machine will download the model from Hugging Face (a few hundred MB),
 which requires a normal internet connection; after that it's cached
 locally and works offline.
 
-ML AUGMENTATION LAYER, Phase A (Plan.md): this module now also re-exports
+ML AUGMENTATION LAYER, Phase A: this module now also re-exports
 ml_arbiter.py's embed/knn/nli_role helpers (frozen multilingual-e5-small +
 NLI cross-encoder, vendored offline — see vendor_models.py) so this stays
 the single entry point for "semantic" functionality. Purely additive: the

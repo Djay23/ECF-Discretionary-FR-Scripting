@@ -37,16 +37,37 @@ NLI_DIR = MODELS_DIR / "cross-encoder__nli-deberta-v3-small"
 
 CACHE_DIR = SEMANTIC_ENGINE_DIR.parent.parent / ".ml_cache"
 
-# Role hypotheses scored by nli_role() — same five roles as the Phase 2
-# regex-based role frames in extractors.py/ethnic_taggerv3.infer_role, so
-# this can back up or replace them (Phase B) without changing the contract.
+# Role hypotheses scored by nli_role() — the five Phase 2 regex-based role
+# frames in extractors.py/ethnic_taggerv3.infer_role, plus "topic",
+# "aspirational", and "allyship" (added to catch weak-role families the regex
+# frames only recognize via a narrow anchored phrase list — see
+# ROLE_TOPIC_AFTER_PATTERNS / ASPIRATIONAL_PHRASES / ROLE_ALLYSHIP_BEFORE_PATTERNS
+# in constants.py). "allyship" gets its own hypothesis even though the regex
+# frame collapses it into the "topic" role string (infer_role, "Reuses the
+# weak 'topic' role") — the arbiter never sets `role` at all, so it only
+# needs a hypothesis that discriminates well semantically, and "topic"'s
+# wording ("a subject being taught") is a poor match for solidarity/
+# partnership language. Adding a hypothesis here never changes
+# classify_pipeline output on its own — see apply_ml_role_arbiter, which only
+# ever attaches an annotation, never a role or label change.
 ROLE_HYPOTHESES = {
     "served": "This text describes who the program serves.",
     "org_name": "This is the name of an organization or partner.",
     "provider": "This describes a service provider or professional role, not who is served.",
     "example": "This is an example or illustrative mention, not a description of who is served.",
     "negated": "This population is explicitly excluded or not served.",
+    "topic": "This text names a subject or perspective being taught or discussed, not a population being served.",
+    "aspirational": "This describes a future goal or planned expansion, not the population currently served.",
+    "allyship": "This describes the organization's support for, partnership with, or solidarity with a group, not the group as the population served.",
 }
+
+# NOT ADDED: a "cultural_origin" hypothesis for the "adapted from First Nation
+# practices" / "grounded in Cree tradition" family. It was tried and measured
+# on 2026-07-21 and is deliberately left out: this NLI model's verdicts swung
+# from 6/8 to 3/8 on a hand-built probe set after a single unrelated hypothesis
+# was removed, i.e. the ranking is driven by prompt wording rather than by the
+# distinction being asked about. Adding hypotheses tuned on a handful of
+# examples fits noise. See knn_gold.py for the parallel negative result.
 
 _encoder = None
 _nli = None
@@ -100,8 +121,8 @@ def cache_key(*parts) -> str:
 
 def build_gold_embedding_store(gold_rows, force: bool = False):
     """
-    Embed each gold-audited row's body and name text SEPARATELY (Plan.md:
-    "reuse get_body_and_name_texts to embed body and name separately") and
+    Embed each gold-audited row's body and name text SEPARATELY (reuse
+    get_body_and_name_texts to embed body and name separately) and
     cache the result to disk, keyed by a hash of the input texts so the
     store is automatically invalidated when the gold file changes.
 
@@ -126,8 +147,8 @@ def build_gold_embedding_store(gold_rows, force: bool = False):
 
     if cache_path.exists() and not force:
         # allow_pickle=False: an .npz of plain string/float arrays can never
-        # execute code on load, unlike the previous pickle cache (Plan.md
-        # no-pickle / sensitive-data-at-rest rule).
+        # execute code on load, unlike the previous pickle cache
+        # (no-pickle / sensitive-data-at-rest rule).
         with np.load(cache_path, allow_pickle=False) as data:
             return {"ids": [str(x) for x in data["ids"]],
                     "body_vecs": data["body_vecs"],
@@ -170,9 +191,8 @@ def knn(vec: np.ndarray, k: int, store: dict, field: str = "body_vecs"):
 def nli_role(span: str, text: str) -> dict:
     """
     Zero-shot evidence-role scoring for an identity span found in text,
-    using the vendored NLI cross-encoder (Plan.md Phase B intent — this
-    Phase A helper just exposes the scoring primitive, not yet wired into
-    the resolver).
+    using the vendored NLI cross-encoder (advisory only — this helper just
+    exposes the scoring primitive, not yet wired into the resolver).
 
     Scores each of ROLE_HYPOTHESES as a (premise, hypothesis) pair, where
     the premise is the local context with the target span wrapped in

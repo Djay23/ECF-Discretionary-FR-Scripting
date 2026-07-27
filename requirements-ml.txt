@@ -1,0 +1,26 @@
+# Optional ML layer — NOT needed to run the classifier.
+#
+# Install only if doing one of these:
+#   * running with USE_ML_ROLE_ARBITER=1 (the NLI evidence-role arbiter)
+#   * Engine_1_and_2/Semantic_Engine/knn_gold.py       (kNN over audited rows)
+#   * Engine_1_and_2/Semantic_Engine/vendor_models.py  (one-time model download)
+#   * Engine_1_and_2/Auditing/calibrate_ml_role_margins.py
+#
+#   pip install -r requirements-ml.txt
+#
+# Heavy: pulls torch (~535 MB) plus transformers, tokenizers, safetensors,
+# scikit-learn and scipy transitively -- roughly 650 MB of packages on top of
+# the ~1.1 GB of vendored model weights. That is the entire reason this is a
+# separate file: a machine that only needs to classify should not pay for it.
+#
+# Note on what is pinned: the project imports sentence_transformers,
+# huggingface_hub and faiss directly. torch / transformers / tokenizers /
+# safetensors are never imported by project code -- they arrive transitively
+# via sentence-transformers -- so they are deliberately NOT pinned here. Pin
+# them in requirements.lock.txt instead if you need exact reproducibility.
+
+-r requirements.txt
+
+sentence-transformers==5.6.0
+huggingface_hub==1.20.1
+faiss-cpu==1.14.3

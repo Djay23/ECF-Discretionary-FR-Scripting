@@ -5,7 +5,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bootstrap  
 
-from classify_pipeline import classify_row
+from classify_pipeline import classify_row, STAKEHOLDER_REVIEWED_COL
 from ethnic_taggerv3 import MULTIPLE_ETHNIC, OTHER_ETHNIC, GENERAL_POP
 
 """
@@ -126,7 +126,7 @@ class TestClassifyPipeline(unittest.TestCase):
         self.assertEqual(e1, MULTIPLE_ETHNIC)
         self.assertEqual(e2, "")
         self.assertEqual(e3, "")
-        # Fix 4: the generic "Review: multiple distinct groups detected"
+        # the generic "Review: multiple distinct groups detected"
         # string is dropped as noise — the Multiple classification says as
         # much on its own.
         self.assertEqual(flag, "")
@@ -182,7 +182,7 @@ class TestClassifyPipeline(unittest.TestCase):
         self.assertEqual(e1, MULTIPLE_ETHNIC)
         self.assertEqual(e2, "")
         self.assertEqual(e3, "")
-        # Fix 4: generic "Review: multiple distinct groups detected" string dropped.
+        # generic "Review: multiple distinct groups detected" string dropped.
         self.assertEqual(flag, "")
 
     # ------------------------------------------------------------------
@@ -191,7 +191,7 @@ class TestClassifyPipeline(unittest.TestCase):
     def test_bipoc_alone(self):
         """
         BIPOC with no other ethnic keyword produces MULTIPLE with no primary
-        flag (Plan.md Chunk G10 item 5: the bare "BIPOC signal detected"
+        flag (the bare "BIPOC signal detected"
         text was dropped as noise -- BIPOC-alone -> Multiple is unambiguous
         locked policy, same treatment as the G9 Step-2b removal). No
         specific group is named.
@@ -208,20 +208,42 @@ class TestClassifyPipeline(unittest.TestCase):
     # ------------------------------------------------------------------
     # 7. BIPOC alongside a specific taxonomy group
     # ------------------------------------------------------------------
-    def test_bipoc_plus_specific_group_flagged_for_review(self):
+    def test_bipoc_plus_one_specific_group_classifies_as_that_group(self):
         """
-        BIPOC + a named group is ambiguous: the resolver flags it for
-        manual review and names the co-present group in the flag text.
+        BIPOC + exactly ONE named group classifies AS that group, and is still
+        flagged for manual review.
+
+        This reverses the previous expectation (Multiple). The hand-audit
+        marked the forced-Multiple outcome WRONG where a specific named group
+        (e.g. "Asian diaspora", "Caribbean", "African") appears alongside a
+        BIPOC umbrella term -- in each the named group is the served
+        population and BIPOC is umbrella framing around it. The verify note is
+        retained so broad-mandate orgs, where gold does say Multiple, stay in
+        the review queue.
         """
         e1, e2, e3, flag = classify_row(
             row(desc="BIPOC-focused services with a particular emphasis on Somali youth."),
             TAXONOMY,
         )
+        self.assertEqual(e1, "African Origins")
+        self.assertIn("BIPOC keyword alongside", flag)
+        self.assertIn("African Origins", flag)
+
+    def test_bipoc_alone_still_resolves_to_multiple(self):
+        """
+        BIPOC with NO other served group keeps resolving to Multiple, unflagged
+        -- 18/18 correct in the audit, and definitionally right ("BIPOC" spells
+        out Black + Indigenous + People of Colour). Guards the half of the rule
+        that must NOT change.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(desc="A capacity-building program serving BIPOC entrepreneurs across the city."),
+            TAXONOMY,
+        )
         self.assertEqual(e1, MULTIPLE_ETHNIC)
         self.assertEqual(e2, "")
         self.assertEqual(e3, "")
-        self.assertIn("BIPOC keyword alongside", flag)
-        self.assertIn("African Origins", flag)
+        self.assertNotIn("BIPOC keyword alongside", flag)
 
     # ------------------------------------------------------------------
     # 8. Ambiguous equity word WITHOUT a paired ethnic signal
@@ -230,7 +252,7 @@ class TestClassifyPipeline(unittest.TestCase):
         """
         An AMBIGUOUS_EQUITY_WORD with no real ethnic signal resolves to
         General Population — it does NOT short-circuit classification
-        before other evidence is weighed. Fix 4: the "Ambiguous equity term
+        before other evidence is weighed. the "Ambiguous equity term
         with no paired ethnic signal" note is dropped as noise; no flag.
         """
         e1, e2, e3, flag = classify_row(
@@ -248,7 +270,7 @@ class TestClassifyPipeline(unittest.TestCase):
     def test_grassroots_with_signal_classifies_normally_and_flags(self):
         """
         An AMBIGUOUS_EQUITY_WORD alongside a real ethnic signal does NOT
-        block classification — the signal wins. Fix 4: the "buzzword"
+        block classification — the signal wins. the "buzzword"
         note is dropped as noise; no flag.
         """
         e1, e2, e3, flag = classify_row(
@@ -337,7 +359,7 @@ class TestClassifyPipeline(unittest.TestCase):
         """
         When no taxonomy/pattern/country/compound signal is present,
         a known organization name resolves the row via last-resort lookup.
-        Org lookup is name-only (Plan.md Chunk G1) -- real data always
+        Org lookup is name-only -- real data always
         embeds the account name in the Funding Request Name column, not
         the body, so the token belongs in `name`, not `desc`.
         """
@@ -393,7 +415,7 @@ class TestClassifyPipeline(unittest.TestCase):
         """
         A group name that appears ONLY in the Funding Request Name (e.g.
         "Somali Cultural Association" — no body text) is a truly silent
-        body. Plan.md Chunk G1 step 5's generalizable silent-body name rule
+        body. 's generalizable silent-body name rule
         classifies from that name instead of defaulting flat to General —
         always flagged for manual verification of the served population.
         """
@@ -582,7 +604,7 @@ class TestSprint2Fixes(unittest.TestCase):
     # ------------------------------------------------------------------
     def test_indigenous_umbrella_with_one_subgroup_narrows_not_widens(self):
         """
-        Fix 9: exactly ONE distinct sub-group co-occurring with the
+        exactly ONE distinct sub-group co-occurring with the
         'Indigenous' umbrella should narrow to that sub-group, not roll up
         to the general L1 (gold: PCC Prostate 'Indigenous men ... Métis
         Settlements' → Métis, not general Indigenous)."""
@@ -596,7 +618,7 @@ class TestSprint2Fixes(unittest.TestCase):
         self.assertNotIn("Indigenous umbrella term co-occurs", flag)
 
     def test_indigenous_umbrella_with_metis_narrows_not_widens(self):
-        """Fix 9: Métis (specific, accented) + 'Indigenous' (umbrella), only
+        """Métis (specific, accented) + 'Indigenous' (umbrella), only
         one distinct sub-group → narrows to Métis, no roll-up flag."""
         e1, e2, e3, flag = classify_row(
             row(desc="Celebrating the Métis Homeland and Indigenous artists at the festival."),
@@ -607,7 +629,7 @@ class TestSprint2Fixes(unittest.TestCase):
         self.assertNotIn("Indigenous umbrella term co-occurs", flag)
 
     def test_indigenous_umbrella_with_two_subgroups_still_widens_and_flags(self):
-        """Fix 9: TWO distinct sub-groups (Cree, Métis) + 'Indigenous' umbrella
+        """TWO distinct sub-groups (Cree, Métis) + 'Indigenous' umbrella
         → genuinely ambiguous, still rolls up to general L1 + flag."""
         e1, e2, e3, flag = classify_row(
             row(desc="Programs for Cree and Métis families and Indigenous youth in Edmonton."),
@@ -670,11 +692,11 @@ class TestSprint2Fixes(unittest.TestCase):
         self.assertEqual(e1, "African Origins")
 
     # ------------------------------------------------------------------
-    # S6. "Black African" alone → African Origins (Fix 2 rewrite)
+    # S6. "Black African" alone → African Origins (rewrite)
     # ------------------------------------------------------------------
     def test_black_african_alone_resolves_to_african_origins(self):
         """
-        Fix 2: r"\\bblack africans?\\b" is rewritten to "african" before
+        r"\\bblack africans?\\b" is rewritten to "african" before
         extraction, so 'black' is never extracted separately.
         Result: African Origins (L1), not Multiple.
         """
@@ -691,9 +713,9 @@ class TestSprint2Fixes(unittest.TestCase):
     def test_somali_and_black_produces_multiple_no_generic_flag(self):
         """
         "Somali project for Black Muslim communities" — Somali (African Origins)
-        + Black (Other Ethnic) → Multiple, no primary flag (Plan.md Chunk G9:
+        + Black (Other Ethnic) → Multiple, no primary flag (
         the generic "multiple distinct groups detected" text is dropped as
-        noise here too, same as Step 3's Fix 4 treatment — Black vs African
+        noise here too, same as Step 3's treatment — Black vs African
         is a locked policy call, not something needing a review flag).
         """
         e1, e2, e3, flag = classify_row(
@@ -741,7 +763,7 @@ class TestSprint2Fixes(unittest.TestCase):
     def test_french_canadian_association_keeps_ethnic_signal(self):
         """
         A named French org appearing ONLY in the name (no body text) is a
-        truly silent body. Plan.md Chunk G1 step 5 explicitly EXCLUDES
+        truly silent body. explicitly EXCLUDES
         French/francophone as a name-only ethnic signal (too ambiguous
         with language-accommodation service orgs) -- General + a targeted
         exclusion note, not a French/European classification and not the
@@ -775,7 +797,7 @@ class TestSprint2Fixes(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Step 4 umbrella-drop + deepest-shared-level tests (Fix 1)
+# Step 4 umbrella-drop + deepest-shared-level tests
 # ---------------------------------------------------------------------------
 
 class TestStep4UmbrellaDrop(unittest.TestCase):
@@ -952,13 +974,32 @@ class TestBlueprint2Fixes(unittest.TestCase):
     # ------------------------------------------------------------------
     # B7. Eritrean Cultural Association → review flag (Case 13)
     # ------------------------------------------------------------------
-    def test_eritrean_cultural_association_flagged(self):
+    def test_eritrean_cultural_association_now_classifies(self):
         """
-        'eritrean' is not in taxonomy or COUNTRY_REGION_MAP, and 'eritrean'
-        is not in NON_ETHNIC_LEADING_WORDS — Case 13 should flag it for review.
+        'eritrean' was added to COUNTRY_REGION_MAP on evidence (5 served-population
+        uses in AUDITED_FR_GOLD.xlsx), so this no longer falls through to the
+        Case 13 "potential ethnocultural org name" safety net -- it resolves to
+        the real region and is still flagged for verification, which is strictly
+        more useful to a reviewer than the generic prompt this test used to assert.
         """
         e1, e2, e3, flag = classify_row(
             row(name="Eritrean Cultural Association"),
+            TAXONOMY_B2,
+        )
+        self.assertEqual(e1, "African Origins")
+        self.assertEqual(e2, "Southern and East African Origins")
+        self.assertTrue(flag, "a name-only classification must still be flagged")
+
+    def test_unknown_ethnonym_still_hits_case13_safety_net(self):
+        """
+        Replaces the coverage the test above used to provide. Case 13 exists to
+        catch ethnonyms NOT in the taxonomy or COUNTRY_REGION_MAP; 'Eritrean' can
+        no longer test that because it is now known. 'Chechen' is verified absent
+        from both, so the safety net must still fire for it -- this is what
+        protects the next unseen 2023/24 nationality.
+        """
+        e1, e2, e3, flag = classify_row(
+            row(name="Chechen Cultural Association"),
             TAXONOMY_B2,
         )
         self.assertIn("Potential ethnocultural organization name", flag)
@@ -1000,7 +1041,7 @@ class TestBlueprint2Fixes(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Name/body split (Phase 1, Chunk B) — Plan.md D1: a signal that lives only
+# Name/body split (Phase 1,) — a signal that lives only
 # in the Funding Request Name must not classify on its own.
 # ---------------------------------------------------------------------------
 
@@ -1023,13 +1064,13 @@ class TestNameBodySplit(unittest.TestCase):
         self.assertEqual(e2, "Black, not otherwise specified")
 
     def test_name_only_ethnic_signal_degrades_to_general(self):
-        """'Black Canadian Women in Action' with a truly neutral body (zero
-        Black mentions anywhere, unlike real gold row 54525 which has a
-        weak historical/self-reference mention -- see
+        """An identity-named org with a truly neutral body (zero Black
+        mentions anywhere, unlike the org-name-echo case which has a weak
+        historical/self-reference mention -- see
         TestGenderSexualClassifier.test_org_name_echo_with_expansion_disclaimer_stays_general)
-        is a silent body. Plan.md Chunk G1 step 5's generalizable
-        silent-body name rule classifies from the name instead of the old
-        flat General default -- always flagged."""
+        is a silent body. The generalizable silent-body name rule classifies
+        from the name instead of the old flat General default -- always
+        flagged."""
         e1, e2, e3, flag = classify_row(
             row(
                 name="Black Canadian Women in Action",
@@ -1046,8 +1087,7 @@ class TestNameBodySplit(unittest.TestCase):
         Canadian Society is replacing its sound system") — a weak self-
         reference, not a served signal. The body is administratively silent,
         so classify from the org name + flag instead of the old flat General.
-        Mirrors real gold rows Jewish Family Services 50644 -> Jewish and
-        Ukrainian Shumka 54507 -> Ukrainian."""
+        Mirrors identity-named orgs whose body only restates their own name."""
         e1, e2, e3, flag = classify_row(
             row(
                 name="Somali Canadian Society",
@@ -1061,8 +1101,8 @@ class TestNameBodySplit(unittest.TestCase):
         self.assertIn("silent body", flag)
 
     def test_known_org_in_name_still_classifies(self):
-        """Niginan Housing Ventures (curated known-org map) classifies from
-        the name alone even with an empty body — the D1 exception."""
+        """A curated known-org name classifies from the name alone even with
+        an empty body — the name-only exception."""
         e1, e2, e3, flag = classify_row(
             row(name="Niginan Housing Ventures"),
             TAXONOMY_S2,
@@ -1081,21 +1121,20 @@ class TestNameBodySplit(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Phase 2 — Evidence-role tiering (Plan.md Fix 1 Phase 2), tied to real gold
-# rows: Alberta Ballet 51597 (org_name descriptor demoted, African survives
-# as served) and Digestive Health/CDHF (provider-only mention demotes to
-# General + transparency note).
+# Phase 2 — Evidence-role tiering: an org-name descriptor is demoted while a
+# genuinely served group survives; a provider-only mention demotes to
+# General + transparency note.
 # ---------------------------------------------------------------------------
 
 class TestEvidenceRoleTiering(unittest.TestCase):
 
-    def test_alberta_ballet_black_descriptor_demoted_african_survives(self):
+    def test_black_descriptor_demoted_african_survives(self):
         """
-        Real gold row (Alberta Ballet 51597): 'Black' only appears as a
-        proper-noun descriptor ('the first Black classical ballet company')
-        — org_name role, demoted. 'African' appears as the served population
-        ('dance program for youth of African descent') — served, survives.
-        Resolves to African Origins alone, not Multiple.
+        'Black' only appears as a proper-noun descriptor ('the first Black
+        classical ballet company') — org_name role, demoted. 'African'
+        appears as the served population ('dance program for youth of African
+        descent') — served, survives. Resolves to African Origins alone, not
+        Multiple.
         """
         e1, e2, e3, flag = classify_row(
             row(
@@ -1115,9 +1154,9 @@ class TestEvidenceRoleTiering(unittest.TestCase):
     def test_provider_only_mention_demotes_to_general_with_note(self):
         """
         A group named only via a provider/professional-title construction
-        ('Sharon Swampy, Indigenous Nutritionist') is not the served
-        population — General + a transparency note naming the group and
-        its role (partial Fix 7), not a classification.
+        ('a named Indigenous Nutritionist') is not the served population —
+        General + a transparency note naming the group and its role, not a
+        classification.
         """
         e1, e2, e3, flag = classify_row(
             row(desc=(
@@ -1129,7 +1168,7 @@ class TestEvidenceRoleTiering(unittest.TestCase):
         self.assertEqual(e1, GENERAL_POP)
         self.assertIn("provider context only", flag)
 
-    def test_council_51599_provider_mention_does_not_demote_when_served_present(self):
+    def test_council_provider_mention_does_not_demote_when_served_present(self):
         """
         Counter-example (guardrail): when the SAME group has both a served
         mention and a provider mention ('program for Black Edmontonians ...
@@ -1199,7 +1238,7 @@ class TestGenderSexualClassifier(unittest.TestCase):
         self.assertNotEqual(label, GENDER_MULTIPLE)
 
     def test_two_concrete_keys_produces_multiple_with_no_flag(self):
-        """Plan.md Chunk G10 item 1: 2+ concrete, non-diverse keys (men/boys
+        """2+ concrete, non-diverse keys (men/boys
         + women/girls here) → Multiple gender identities with NO primary
         flag -- the generic "Multiple: <identities>" text was dropped as
         noise (unlike the lgbtq_umbrella and gender_diverse branches above,
@@ -1212,8 +1251,8 @@ class TestGenderSexualClassifier(unittest.TestCase):
     # Item 2 — Org / proper-name context: keep classification + add flag
     # ------------------------------------------------------------------
     def test_boys_girls_club_classified_and_flagged(self):
-        """'Boys & Girls Club' with no body text is a silent body. Plan.md
-        Chunk G1 step 5's name rule finds BOTH women/men terms in the name
+        """'Boys & Girls Club' with no body text is a silent body.
+        's name rule finds BOTH women/men terms in the name
         ("boys" and "girls") -> General Population (the "both present"
         case), flagged for verification -- not FLAG_ORG_NAME (that fires
         only on a body-text org-name construct, and there's no body here)."""
@@ -1227,11 +1266,11 @@ class TestGenderSexualClassifier(unittest.TestCase):
         self.assertEqual(label, GENDER_WOMEN_GIRLS)
         self.assertIn(FLAG_ORG_NAME, flag)
 
-    def test_wardrobe_for_women_name_only_degrades_to_general(self):
-        """'Wardrobe for Women Association' with a neutral body (ED salary,
-        zero gender-term mentions) is a silent body. Plan.md Chunk G1 step 5
-        classifies from the name's "Women" term instead of the old flat
-        General default -- Women and/or girls, flagged for verification."""
+    def test_womens_org_name_only_degrades_to_general(self):
+        """A women's-org name with a neutral body (ED salary, zero
+        gender-term mentions) is a silent body. The name rule classifies
+        from the name's "Women" term instead of the old flat General
+        default -- Women and/or girls, flagged for verification."""
         label, flag = classify_gender(row(
             name="Suit Yourself - Wardrobe for Women Association",
             desc="Funding will cover the Executive Director's salary and benefits.",
@@ -1242,7 +1281,7 @@ class TestGenderSexualClassifier(unittest.TestCase):
     def test_boys_girls_clubs_big_brothers_big_sisters_name_only(self):
         """'Boys & Girls Clubs Big Brothers Big Sisters' with an empty body
         is a silent body; the name carries BOTH women/men terms (girls/
-        sisters AND boys/brothers) -> General Population (Plan.md Chunk G1
+        sisters AND boys/brothers) -> General Population (
         step 5's "both present" case), flagged for verification."""
         label, flag = classify_gender(row(name="Boys & Girls Clubs Big Brothers Big Sisters"))
         self.assertEqual(label, GENDER_GENERAL_POP)
@@ -1250,7 +1289,7 @@ class TestGenderSexualClassifier(unittest.TestCase):
 
     def test_org_name_echo_with_expansion_disclaimer_stays_general(self):
         """
-        Real gold row (Black Canadian Women in Action 54525): the org
+        Real gold row: the org
         restates its own name AND explicitly disclaims it as the CURRENT
         served population ("beyond its original focus on Black communities").
         The G5 disclaimer guard (IDENTITY_EXPANSION_DISCLAIMER_PATTERNS) keeps
@@ -1271,10 +1310,9 @@ class TestGenderSexualClassifier(unittest.TestCase):
     def test_org_echo_only_body_classifies_from_org_name(self):
         """G5 org-name ladder: an org-name echo with NO other ethnic or
         gender/sex signal in the body classifies from the org-name signal +
-        flag (real gold row Alberta Immigrant Women & Children Centre 54640 —
-        an admin/autism body serving 'newcomer families', which is not itself
-        a gender signal, so the org's 'Women' name wins). Stakeholder-
-        confirmed 2026-07-13; gold reconciled to Women and/or girls."""
+        flag (an admin body serving 'newcomer families', which is not itself
+        a gender signal, so the org's 'Women' name wins). Gold reconciled to
+        Women and/or girls."""
         label, flag = classify_gender(row(
             name="Alberta Immigrant Women & Children Centre",
             summary=(
@@ -1287,7 +1325,7 @@ class TestGenderSexualClassifier(unittest.TestCase):
         self.assertIn("organization name", flag)
 
     def test_org_echo_both_genders_in_name_stays_general(self):
-        """Real gold row (Boys & Girls Clubs Big Brothers Big Sisters 50610):
+        """Real gold row:
         the body echoes an abbreviated form of the org's own name. The org-name
         ladder fires, but the name carries BOTH women (girls/sisters) and men
         (boys/brothers) terms → General (all-youth org), now with the silent-
@@ -1303,10 +1341,9 @@ class TestGenderSexualClassifier(unittest.TestCase):
         self.assertEqual(label, GENDER_GENERAL_POP)
 
     def test_org_echo_admin_body_classifies_women_from_name(self):
-        """G5 (real gold row Women Building Futures 54513): a pure-admin body
-        that only echoes the org's own name ("Women Building Futures must
-        replace its servers") is administratively silent — classify Women from
-        the name + flag, not the old General."""
+        """G5: a pure-admin body that only echoes a women's-org name in the
+        body ("<Org> must replace its servers") is administratively silent —
+        classify Women from the name + flag, not the old General."""
         label, flag = classify_gender(row(
             name="Women Building Futures Society",
             desc=(
@@ -1326,7 +1363,7 @@ class TestGenderSexualClassifier(unittest.TestCase):
 
     # ------------------------------------------------------------------
     # Item 3 — Gender-diverse term → Sexual: SFLAG_GENDER_TERM now scoped to
-    # the ambiguous "gender-diverse" umbrella term only (Plan.md Chunk G10
+    # the ambiguous "gender-diverse" umbrella term only (
     # item 2) — trans/non-binary/two-spirit/etc. unambiguously belong under
     # 2SLGBTQIA+ already, so they no longer carry the flag.
     # ------------------------------------------------------------------
@@ -1346,7 +1383,7 @@ class TestGenderSexualClassifier(unittest.TestCase):
 
     def test_gender_diverse_term_still_flags_gender_term(self):
         """'gender-diverse' specifically → 2SLGBTQIA+ with SFLAG_GENDER_TERM
-        still present (Plan.md Chunk G10 item 2 kept this one case — the
+        still present (kept this one case — the
         umbrella term itself is genuinely ambiguous)."""
         label, flag = classify_sexual(row(desc="Program serving gender-diverse youth and gay adults."))
         self.assertEqual(label, SEXUAL_2SLGBTQIA)
@@ -1393,11 +1430,11 @@ class TestGenderSexualClassifier(unittest.TestCase):
 
     # ------------------------------------------------------------------
     # Item 4 — Ambiguous coded terms: classification unaffected, flag
-    # removed entirely (Plan.md Chunk G10 item 3)
+    # removed entirely
     # ------------------------------------------------------------------
     def test_femme_alone_classifies_no_ambiguous_flag(self):
         """
-        'femme-identified' alone → Women and/or girls (Fix 8: "femme" is
+        'femme-identified' alone → Women and/or girls ("femme" is
         French for "woman", a real classifying signal); FLAG_AMBIGUOUS_TERM
         no longer fires (removed entirely per G10 item 3).
         """
@@ -1418,7 +1455,7 @@ class TestGenderSexualClassifier(unittest.TestCase):
         self.assertNotIn("Ambiguous coded", flag)
 
     # ------------------------------------------------------------------
-    # Fix 8 — French gender terms
+    # French gender terms
     # ------------------------------------------------------------------
     def test_french_femmes_plural_classifies_as_women_girls(self):
         """'femmes' (French plural, no coded-slang ambiguity in this form)
@@ -1431,12 +1468,12 @@ class TestGenderSexualClassifier(unittest.TestCase):
         label, flag = classify_gender(row(desc="Un programme de soutien pour les hommes."))
         self.assertEqual(label, GENDER_MEN_BOYS)
 
-    def test_association_femme_moderne_name_only_degrades_to_general(self):
-        """'Association Femme Moderne' with a neutral body (zero gender-term
-        mentions) is a silent body. Plan.md Chunk G1 step 5 classifies from
-        the name's "Femme" term (French for woman) -> Women and/or girls,
-        flagged for verification -- superseding the old Fix 8 flat-General
-        default for this exact silent-body shape."""
+    def test_femme_org_name_only_degrades_to_general(self):
+        """A French women's-org name (contains "Femme") with a neutral body
+        (zero gender-term mentions) is a silent body. The name rule
+        classifies from the name's "Femme" term (French for woman) -> Women
+        and/or girls, flagged for verification -- superseding the old
+        flat-General default for this exact silent-body shape."""
         label, flag = classify_gender(row(
             name="Association Femme Moderne",
             desc="Funding will cover office rent and administrative costs.",
@@ -1461,13 +1498,13 @@ class TestGenderSexualClassifier(unittest.TestCase):
         self.assertEqual(s_label, SEXUAL_GENERAL_POP)
 
     # ------------------------------------------------------------------
-    # Fix 7 — transparency note for example-suppressed sexual-identity signal
+    # Transparency note for example-suppressed sexual-identity signal
     # ------------------------------------------------------------------
     def test_sexual_example_suppression_leaves_transparency_note(self):
-        """'... groups such as 2SLGBTQIA+ ...' is a real gold pattern (Autism
-        54463, CMHA 54531): the signal is correctly suppressed as an
-        example/illustrative mention, but General is annotated with a note
-        naming what was dropped instead of vanishing with no trace."""
+        """'... groups such as 2SLGBTQIA+ ...' is a real gold pattern: the
+        signal is correctly suppressed as an example/illustrative mention,
+        but General is annotated with a note naming what was dropped instead
+        of vanishing with no trace."""
         label, flag = classify_sexual(row(
             desc="We support equity-deserving groups such as 2SLGBTQIA+ individuals and newcomers."
         ))
@@ -1475,10 +1512,10 @@ class TestGenderSexualClassifier(unittest.TestCase):
         self.assertIn("2SLGBTQIA+ mentioned in example/illustrative context", flag)
 
     # ------------------------------------------------------------------
-    # Fix 2a — "gender-diverse" is a distinct concept, not a single identity
+    # "gender-diverse" is a distinct concept, not a single identity
     # ------------------------------------------------------------------
     def test_gender_diverse_alone_produces_gender_multiple(self):
-        """'gender-diverse' alone → Multiple gender identities (Plan.md Fix 2a)."""
+        """'gender-diverse' alone → Multiple gender identities."""
         label, flag = classify_gender(row(desc="Programming for gender-diverse youth."))
         self.assertEqual(label, GENDER_MULTIPLE)
         self.assertIn("gender-diverse", flag)
@@ -1491,13 +1528,13 @@ class TestGenderSexualClassifier(unittest.TestCase):
 
     def test_gender_diverse_produces_sexual_2slgbtqia(self):
         """'gender-diverse' also signals 2SLGBTQIA+ on the sexual axis, via
-        SEXUAL_GENDER_DIVERSE_KEYS (Plan.md Fix 2a)."""
+        SEXUAL_GENDER_DIVERSE_KEYS."""
         label, flag = classify_sexual(row(desc="Programming for gender-diverse youth."))
         self.assertEqual(label, SEXUAL_2SLGBTQIA)
         self.assertIn(SFLAG_GENDER_TERM, flag)
 
     # ------------------------------------------------------------------
-    # Fix 2b — "Womens'"/"Mens'" plural-possessive tokenization
+    # — "Womens'"/"Mens'" plural-possessive tokenization
     # ------------------------------------------------------------------
     def test_womens_plural_possessive_classified(self):
         """normalize_text strips the trailing apostrophe in "Womens'" down to
@@ -1514,7 +1551,7 @@ class TestGenderSexualClassifier(unittest.TestCase):
 
 # ---------------------------------------------------------------------------
 # ML AUGMENTATION LAYER — Phase B: evidence-role NLI arbiter
-# (Plan.md "ML AUGMENTATION LAYER" section). The arbiter is gated behind
+#. The arbiter is gated behind
 # USE_ML_ROLE_ARBITER (off by default) and calls the real vendored NLI
 # model when on — these tests mock ml_arbiter.nli_role so the plumbing
 # (override/no-override, note text, margin gating) is verified
@@ -1548,30 +1585,106 @@ class TestMLRoleArbiter(unittest.TestCase):
         result = self.classify_pipeline.apply_ml_role_arbiter(candidates)
         self.assertEqual(result, candidates)
 
-    def test_flag_on_overrides_served_when_margin_cleared(self):
-        """A weak-role NLI verdict that beats 'served' by >= the configured
-        margin demotes the candidate and records why in ml_role_note."""
+    def test_flag_on_never_changes_role_at_high_margin(self):
+        """Even at high confidence, the arbiter is advisory-only: role and
+        classification are never mutated -- only ml_role_note is attached,
+        worded as a high-confidence verify note."""
         import unittest.mock as mock
         self.classify_pipeline.USE_ML_ROLE_ARBITER = True
         fake_scores = {"served": 0.0, "org_name": 2.0, "provider": -5.0,
-                        "example": -5.0, "negated": -5.0, "best_role": "org_name"}
+                        "example": -5.0, "negated": -5.0, "topic": -5.0,
+                        "aspirational": -5.0, "best_role": "org_name"}
         with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
             result = self.classify_pipeline.apply_ml_role_arbiter([self._candidate()])
-        self.assertEqual(result[0]["role"], "org_name")
+        self.assertEqual(result[0]["role"], "served")
         self.assertIn("Somali", result[0]["ml_role_note"])
-        self.assertIn("served -> org_name", result[0]["ml_role_note"])
+        self.assertIn("high confidence", result[0]["ml_role_note"])
+        self.assertNotIn("Note (low priority)", result[0]["ml_role_note"])
+
+    def test_flag_on_low_priority_note_in_ambiguity_moat(self):
+        """A margin inside the 0.5-1.5 ambiguity moat attaches a low-priority
+        verify note -- still never changes role."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 0.0, "org_name": 1.0, "provider": -5.0,
+                        "example": -5.0, "negated": -5.0, "topic": -5.0,
+                        "aspirational": -5.0, "best_role": "org_name"}
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            result = self.classify_pipeline.apply_ml_role_arbiter([self._candidate()])
+        self.assertEqual(result[0]["role"], "served")
+        self.assertIn("Note (low priority)", result[0]["ml_role_note"])
 
     def test_flag_on_keeps_served_when_margin_not_cleared(self):
-        """A weak-role verdict that doesn't clear ML_ROLE_OVERRIDE_MARGIN
-        leaves the regex-assigned role untouched (conservative default)."""
+        """A weak-role verdict that doesn't clear ML_ROLE_NOTE_MARGIN
+        leaves the candidate untouched entirely -- no note attached."""
         import unittest.mock as mock
         self.classify_pipeline.USE_ML_ROLE_ARBITER = True
         fake_scores = {"served": 1.0, "org_name": 1.2, "provider": -5.0,
-                        "example": -5.0, "negated": -5.0, "best_role": "org_name"}
+                        "example": -5.0, "negated": -5.0, "topic": -5.0,
+                        "aspirational": -5.0, "best_role": "org_name"}
         with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
             result = self.classify_pipeline.apply_ml_role_arbiter([self._candidate()])
         self.assertEqual(result[0]["role"], "served")
         self.assertNotIn("ml_role_note", result[0])
+
+    def test_flag_on_topic_hypothesis_produces_note_not_change(self):
+        """The new 'topic' hypothesis behaves like any other weak role:
+        advisory note only, never a role change."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 0.0, "org_name": -5.0, "provider": -5.0,
+                        "example": -5.0, "negated": -5.0, "topic": 2.0,
+                        "aspirational": -5.0, "best_role": "topic"}
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            result = self.classify_pipeline.apply_ml_role_arbiter([self._candidate()])
+        self.assertEqual(result[0]["role"], "served")
+        self.assertIn("topic", result[0]["ml_role_note"])
+
+    def test_flag_on_aspirational_hypothesis_produces_note_not_change(self):
+        """The new 'aspirational' hypothesis behaves like any other weak
+        role: advisory note only, never a role change."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 0.0, "org_name": -5.0, "provider": -5.0,
+                        "example": -5.0, "negated": -5.0, "topic": -5.0,
+                        "aspirational": 2.0, "best_role": "aspirational"}
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            result = self.classify_pipeline.apply_ml_role_arbiter([self._candidate()])
+        self.assertEqual(result[0]["role"], "served")
+        self.assertIn("aspirational", result[0]["ml_role_note"])
+
+    def test_flag_on_allyship_hypothesis_produces_note_not_change(self):
+        """The new 'allyship' hypothesis (partnership/solidarity framing,
+        e.g. 'an ally to Indigenous people') behaves like any other weak
+        role: advisory note only, never a role change -- even though the
+        regex frame that covers the same case collapses it into 'topic'."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 0.0, "org_name": -5.0, "provider": -5.0,
+                        "example": -5.0, "negated": -5.0, "topic": -5.0,
+                        "aspirational": -5.0, "allyship": 2.0, "best_role": "allyship"}
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            result = self.classify_pipeline.apply_ml_role_arbiter([self._candidate()])
+        self.assertEqual(result[0]["role"], "served")
+        self.assertIn("allyship", result[0]["ml_role_note"])
+
+    def test_flag_on_negated_hypothesis_now_produces_note(self):
+        """Regression test: 'negated' used to be silently discarded
+        alongside 'served' (a no-op with zero output regardless of
+        confidence). Under the flag-only redesign there's no reason to keep
+        suppressing it -- a confident negated verdict must now produce a
+        note, worded via the 'may be explicitly excluded' clause rather
+        than the generic 'reads as <role>' phrasing."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 0.0, "org_name": -5.0, "provider": -5.0,
+                        "example": -5.0, "negated": 2.0, "topic": -5.0,
+                        "aspirational": -5.0, "allyship": -5.0, "best_role": "negated"}
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            result = self.classify_pipeline.apply_ml_role_arbiter([self._candidate()])
+        self.assertEqual(result[0]["role"], "served")
+        self.assertIn("ml_role_note", result[0])
+        self.assertIn("explicitly excluded", result[0]["ml_role_note"])
 
     def test_flag_on_never_promotes_weak_to_served(self):
         """A candidate the regex already tagged weak (e.g. 'example') is
@@ -1602,19 +1715,64 @@ class TestMLRoleArbiter(unittest.TestCase):
             "assertion to be meaningful",
         )
 
+    def test_stakeholder_reviewed_row_skips_arbiter_entirely(self):
+        """classify_row() must never invoke the ML arbiter on a row already
+        marked stakeholder-reviewed (FR testing.xlsx column AN non-blank) --
+        no ml_role_note should reach the flag output regardless of margin."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 0.0, "org_name": 5.0, "provider": -5.0,
+                        "example": -5.0, "negated": -5.0, "topic": -5.0,
+                        "aspirational": -5.0, "best_role": "org_name"}
+        reviewed_row = row(desc="A program serving the Somali community.")
+        reviewed_row[STAKEHOLDER_REVIEWED_COL] = "Wrong Ethnic"
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            e1, e2, e3, flag = classify_row(reviewed_row, TAXONOMY)
+        self.assertNotIn("ML role arbiter", flag)
+
+    def test_unreviewed_row_still_reaches_arbiter(self):
+        """Sanity check for the above: the same row WITHOUT a stakeholder
+        review mark does reach the arbiter (control case)."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 0.0, "org_name": 5.0, "provider": -5.0,
+                        "example": -5.0, "negated": -5.0, "topic": -5.0,
+                        "aspirational": -5.0, "best_role": "org_name"}
+        plain_row = row(desc="A program serving the Somali community.")
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            e1, e2, e3, flag = classify_row(plain_row, TAXONOMY)
+        self.assertIn("ML role arbiter", flag)
+
+    def test_nan_stakeholder_column_still_reaches_arbiter(self):
+        """Regression test: a pandas row's BLANK AN cell is a float NaN, not
+        "" -- `row.get(col, "") or ""` is wrong (its default only applies
+        when the key is absent, never when the value is NaN, and NaN is
+        truthy in Python), so every real pandas-sourced row was silently
+        treated as reviewed and the arbiter never ran on live data. A plain
+        dict test with a missing/empty-string key can't catch this -- it
+        must use an actual float NaN, as pd.read_excel produces."""
+        import unittest.mock as mock
+        self.classify_pipeline.USE_ML_ROLE_ARBITER = True
+        fake_scores = {"served": 0.0, "org_name": 5.0, "provider": -5.0,
+                        "example": -5.0, "negated": -5.0, "topic": -5.0,
+                        "aspirational": -5.0, "best_role": "org_name"}
+        nan_row = row(desc="A program serving the Somali community.")
+        nan_row[STAKEHOLDER_REVIEWED_COL] = float("nan")
+        with mock.patch("ml_arbiter.nli_role", return_value=fake_scores):
+            e1, e2, e3, flag = classify_row(nan_row, TAXONOMY)
+        self.assertIn("ML role arbiter", flag)
+
 
 
 # ---------------------------------------------------------------------------
-# Chunk G1 — Org-name handling (echo demotion + generalizable silent-body
-# name rule). Tied to real gold rows: 54525 (Black Canadian Women in Action,
-# ethnic + gender), 51622 (BCW/Haitian youth, gender cross-axis gate), the
-# SCERDO/Somali silent-body rows, and the reviewer-verified "Correct Sex &
-# Gender" column for the Edmonton Women's Shelter / Wardrobe for Women /
-# Alberta Immigrant Women & Children Centre rows.
+# Org-name handling (echo demotion + generalizable silent-body name rule).
+# Covers identity-named orgs on the ethnic and gender axes, the cross-axis
+# gate where a body serves an ungendered ethnic group, silent-body rows, and
+# the reviewer-verified name-only women's-org cases.
 # ---------------------------------------------------------------------------
 
 class TestG1SilentBodyNameRule(unittest.TestCase):
-    """Ethnic axis — generalizable silent-body name rule (Plan.md step 5)."""
+    """Ethnic axis — generalizable silent-body name rule."""
 
     def test_silent_body_umbrella_term_classifies_umbrella(self):
         """A truly silent body (no desc) with an umbrella ethnic term
@@ -1647,7 +1805,7 @@ class TestG1SilentBodyNameRule(unittest.TestCase):
         self.assertIn("silent body", flag)
 
     def test_silent_body_islamic_org_stays_general(self):
-        """Exclusion (Plan.md step 5): religion-only silent-body name
+        """Exclusion: religion-only silent-body name
         ('Islamic') stays General + a targeted note, not a guessed ethnicity."""
         e1, e2, e3, flag = classify_row(
             row(name="Islamic Relief Foundation"),
@@ -1668,17 +1826,20 @@ class TestG1SilentBodyNameRule(unittest.TestCase):
 
 
 class TestG1EchoDemotionAndServedRescue(unittest.TestCase):
-    """Ethnic axis — org-name echo demotion (steps 1/4) vs served-frame
-    rescue (step 2). Regression guards for the real gold row 54525 shape
-    (org self-intro + historical framing -> General) and the over-broad
-    name-word-echo bug this work order caught and fixed (a body mention
-    that merely shares a word with the org's name, but is a genuine served
-    claim in ordinary prose, must NOT be demoted)."""
+    """Ethnic axis — org-name echo as SELF-IDENTIFICATION vs served-frame
+    rescue (step 2), plus the over-broad name-word-echo bug this work order
+    caught and fixed (a body mention that merely shares a word with the org's
+    name, but is a genuine served claim in ordinary prose, must NOT be
+    demoted)."""
 
-    def test_org_self_intro_plus_historical_focus_demotes_to_general(self):
-        """Real gold row 54525 shape: the org restates its own name AND
-        separately describes Black as its HISTORICAL focus ('beyond its
-        original focus on') with no served frame anywhere -> General."""
+    def test_org_self_intro_plus_historical_focus_is_self_identification(self):
+        """An identity-named org restates its own name AND describes Black as
+        its HISTORICAL focus ('beyond its original focus on').
+
+        This previously asserted General. The hand-audit marked that WRONG --
+        gold is Black. An ethnicity-named org naming its own ethnicity is
+        evidence of who it serves, not a non-claim, so the echo now reads as
+        self-identification, fixing the row and regressing nothing."""
         e1, e2, e3, flag = classify_row(
             row(
                 name="Black Advocates in Action",
@@ -1691,8 +1852,102 @@ class TestG1EchoDemotionAndServedRescue(unittest.TestCase):
             ),
             TAXONOMY_S2,
         )
+        self.assertEqual(e1, "Other Ethnic and Cultural Origins")
+
+    def test_indigenous_language_named_org_self_identifies(self):
+        """An org whose NAME carries no identity word (e.g. an
+        Indigenous-language name) can never match a name-string echo test, so
+        its self-description used to be demoted by the generic '<Ethnicity>
+        Centre' org-name pattern -> General. Gold says Indigenous. The copula
+        self-identification frame catches it."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Ociciwan Contemporary Art Collective Society",
+                desc=(
+                    "Ociciwan Contemporary Art Collective is the only "
+                    "Indigenous Artist-Run Centre based in Edmonton. The "
+                    "collective is seeking funding to support staff capacity."
+                ),
+            ),
+            TAXONOMY,
+        )
+        self.assertEqual(e1, "North American Indigenous Origins")
+
+    def test_negation_note_is_not_duplicated(self):
+        """Negation is detected by two deliberately different checks that emit
+        byte-identical text: build_context_notes()'s whole-text phrase scan
+        (embedded in the flag by resolve()) and has_non_prefixed_negation()'s
+        per-keyword "non-<ethnicity>" check (appended by extra_annotation_notes).
+
+        A row tripping BOTH printed the sentence twice. No row in the 448 of
+        AUDITED_FR_GOLD.xlsx does, so the 2025 corpus cannot catch this -- but
+        the 2023-2024 engine output contained one. Hence a synthetic case."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Test Society",
+                desc=(
+                    "The program serves Somali youth, and is not limited to "
+                    "non-Somali residents; we do not exclude anyone."
+                ),
+            ),
+            TAXONOMY,
+        )
+        self.assertEqual(flag.count("near a negation word"), 1)
+
+    def test_self_identification_only_is_flagged(self):
+        """A row that classifies ONLY because the org named itself must stay
+        flagged. Before this guard, making self-identification a served signal
+        routed these rows around classify_from_raw_name -- which had always
+        attached SILENT_NAME_FLAG -- so five rows kept a correct label and
+        silently lost their review flag. A confident classification a reviewer
+        cannot see is worse than a flagged uncertain one."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Black Advocates in Action",
+                desc=(
+                    "Black Advocates in Action (BAA) is undertaking a "
+                    "rebranding initiative to strengthen its operations."
+                ),
+            ),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "Other Ethnic and Cultural Origins")
+        self.assertIn("self-description", flag)
+
+    def test_explicit_served_statement_is_not_self_id_flagged(self):
+        """The flag above must NOT fire when the text actually STATES who is
+        served -- otherwise it degrades into blanket noise on every
+        ethnicity-named org. One ordinary served mention is enough to clear it,
+        because the claim is then stated rather than inferred."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Black Advocates in Action",
+                desc=(
+                    "Black Advocates in Action (BAA) delivers after-school "
+                    "tutoring for Black youth across the city."
+                ),
+            ),
+            TAXONOMY_S2,
+        )
+        self.assertEqual(e1, "Other Ethnic and Cultural Origins")
+        self.assertNotIn("self-description", flag)
+
+    def test_third_party_org_name_still_demoted(self):
+        """Guard the other side: a THIRD-PARTY org named in the body (no
+        copula + applicant-name pair) must still demote, so the self-ID rule
+        can't be used to classify from a partner's ethnicity."""
+        e1, e2, e3, flag = classify_row(
+            row(
+                name="Westbrook Arts Society",
+                desc=(
+                    "Westbrook Arts Society will run a season of concerts in "
+                    "partnership with the Edmonton Chinese Philharmonic Choir "
+                    "Association for seniors across the city."
+                ),
+            ),
+            TAXONOMY,
+        )
         self.assertEqual(e1, GENERAL_POP)
-        self.assertIn("not classified as served population", flag)
 
     def test_served_claim_sharing_a_word_with_org_name_is_not_demoted(self):
         """Regression guard: ordinary prose describing the served population
@@ -1730,13 +1985,13 @@ class TestG1EchoDemotionAndServedRescue(unittest.TestCase):
 
 
 class TestG1GenderSexualSilentBodyAndCrossAxisGate(unittest.TestCase):
-    """Gender/Sexual axes — generalizable silent-body name rule (Plan.md
-    step 5) plus the cross-axis 'truly administrative' gate (Plan.md FIX,
+    """Gender/Sexual axes — generalizable silent-body name rule (
+    step 5) plus the cross-axis 'truly administrative' gate (,
     validated against the reviewer 'Correct Sex & Gender' column for real
-    gold rows 51622/54130/54496)."""
+    gold rows //)."""
 
     def test_silent_body_men_org_classifies_men_boys(self):
-        """A truly silent body with a men/boys term in the name (Plan.md
+        """A truly silent body with a men/boys term in the name (
         step 5's GENDER_SILENT_NAME_MEN_PATTERN) classifies Men and/or boys."""
         label, flag = classify_gender(row(name="Fathers Support Circle"))
         self.assertEqual(label, GENDER_MEN_BOYS)
@@ -1744,13 +1999,13 @@ class TestG1GenderSexualSilentBodyAndCrossAxisGate(unittest.TestCase):
 
     def test_silent_body_pride_org_classifies_2slgbtqia(self):
         """A truly silent body with a sexual-identity term in the name
-        (Plan.md step 5's SEXUAL_SILENT_NAME_PATTERN) classifies 2SLGBTQIA+."""
+         classifies 2SLGBTQIA+."""
         label, flag = classify_sexual(row(name="Pride Alliance Network"))
         self.assertEqual(label, SEXUAL_2SLGBTQIA)
         self.assertIn("silent body", flag)
 
     def test_gender_stays_general_when_body_serves_nongendered_population(self):
-        """Real gold row 51622 shape (reviewer 'Correct Sex & Gender' = NO,
+        """Real gold row shape (reviewer 'Correct Sex & Gender' = NO,
         should be General): the body genuinely serves a real population
         ('Haitian youth') that simply isn't gendered -- the cross-axis gate
         must block the gender name rule from borrowing 'Women' off the org
@@ -1763,11 +2018,10 @@ class TestG1GenderSexualSilentBodyAndCrossAxisGate(unittest.TestCase):
         self.assertIn(FLAG_ORG_NAME, flag)
 
     def test_gender_classifies_from_name_when_body_truly_administrative(self):
-        """Real gold row shape (Edmonton Women's Shelter bathroom-vanity
-        replacement / Wardrobe for Women ED-salary continuity -- reviewer
-        'Correct Sex & Gender' = YES): a genuinely administrative body (no
-        population named on any axis) lets the org name drive the gender
-        classification."""
+        """Real gold row shape (a women's-org bathroom-vanity replacement or
+        ED-salary continuity -- reviewer 'Correct Sex & Gender' = YES): a
+        genuinely administrative body (no population named on any axis) lets
+        the org name drive the gender classification."""
         label, flag = classify_gender(row(
             name="Edmonton Women's Shelter Ltd.",
             desc="This project will replace worn-out bathroom vanities to meet health inspection standards.",
@@ -1777,7 +2031,7 @@ class TestG1GenderSexualSilentBodyAndCrossAxisGate(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Chunk G2 — Gender incidental family-context guard (row 54093)
+# Gender incidental family-context guard
 # ---------------------------------------------------------------------------
 
 TAXONOMY_G2 = TAXONOMY + [
@@ -1792,13 +2046,13 @@ TAXONOMY_G2 = TAXONOMY + [
 
 
 class TestG2GenderIncidentalFamilyContextGuard(unittest.TestCase):
-    """Plan.md Chunk G2: a bare relational-male noun (fathers/brothers/sons/
+    """a bare relational-male noun (fathers/brothers/sons/
     dads) that only mentions an absent/left-behind family member is NOT a
     served-gender signal -- mirrors the served-vs-mentioned weak-role
     pattern already used for org-name echoes."""
 
-    def test_row_54093_fathers_left_behind_demotes_to_general_ethnic_unchanged(self):
-        """Real gold row shape (54093): 'their fathers... remain in Ukraine'
+    def test_row_fathers_left_behind_demotes_to_general_ethnic_unchanged(self):
+        """Real gold row shape: 'their fathers... remain in Ukraine'
         is an incidental mention of an absent relative, not the served
         population (Ukrainian youth) -- gender degrades to General
         Population + a transparency note. Ethnic classification (European
@@ -1855,22 +2109,19 @@ class TestG2GenderIncidentalFamilyContextGuard(unittest.TestCase):
 
 
 class TestG3IndigenousPatternPathRoleTiering(unittest.TestCase):
-    """Plan.md Chunk G3: Indigenous PATTERN candidates ('indigenous'/
-    'aboriginal'/etc, matched via PATTERN_RULES) already flowed through
-    infer_role, but a curriculum/topic framing ('Indigenous perspectives'
-    as course content) and a consulted-party framing ('Indigenous
-    knowledge holders' consulted alongside other experts) weren't covered
-    by the existing provider/org_name weak-role frames -- both wrongly
-    classified as served. A new weak 'topic' role demotes them when no
-    served-Indigenous frame rescues the row elsewhere; served mentions,
+    """Indigenous PATTERN candidates ('indigenous'/'aboriginal'/etc, matched
+    via PATTERN_RULES) already flowed through infer_role, but a
+    curriculum/topic framing ('Indigenous perspectives' as course content)
+    and a consulted-party framing ('Indigenous knowledge holders' consulted
+    alongside other experts) weren't covered by the existing
+    provider/org_name weak-role frames -- both wrongly classified as served.
+    A new weak 'topic' role demotes them when no served-Indigenous frame
+    rescues the row elsewhere; served mentions,
     residential-school/Truth-and-Reconciliation/ceremony context, and
-    served-population lists are preserved. Verified over all 448 live
-    Audit Detail rows: exactly 50600 and 51569 flip Indigenous->General
-    (53717 was already General beforehand); 54535/51620/54538/54484/54529
-    stay Indigenous; zero other rows changed."""
+    served-population lists are preserved."""
 
-    def test_row_50600_curriculum_topic_list_demotes_to_general(self):
-        """Real gold row shape (ACEE 50600): 'Indigenous perspectives' is
+    def test_row_curriculum_topic_list_demotes_to_general(self):
+        """Real gold row shape: 'Indigenous perspectives' is
         one item in a list of curriculum content taught to educators
         ('eco-action strategies, and Indigenous perspectives') -- a topic
         being taught, not the served population (educators/students).
@@ -1887,8 +2138,8 @@ class TestG3IndigenousPatternPathRoleTiering(unittest.TestCase):
         self.assertEqual(e1, GENERAL_POP)
         self.assertIn("topic context only", flag)
 
-    def test_row_51569_consulted_knowledge_holders_demotes_to_general(self):
-        """Real gold row shape (Exposed Wildlife Conservancy 51569):
+    def test_row_consulted_knowledge_holders_demotes_to_general(self):
+        """Real gold row shape:
         'Indigenous knowledge holders' are consulted as advisors alongside
         wildlife biologists and conservation experts -- a consulted-party
         mention, not the served population (municipalities/general
@@ -1907,8 +2158,8 @@ class TestG3IndigenousPatternPathRoleTiering(unittest.TestCase):
         self.assertEqual(e1, GENERAL_POP)
         self.assertIn("topic context only", flag)
 
-    def test_row_53717_no_indigenous_signal_stays_general(self):
-        """Real gold row shape (Chronos Music Society of Alberta 53717): a
+    def test_row_no_indigenous_signal_stays_general(self):
+        """Real gold row shape: a
         touring music ensemble's capacity-building request carries no
         Indigenous (or other ethnic) signal at all -- plain General,
         unaffected by the G3 role-tiering change (this row was already
@@ -1924,8 +2175,8 @@ class TestG3IndigenousPatternPathRoleTiering(unittest.TestCase):
         )
         self.assertEqual(e1, GENERAL_POP)
 
-    def test_row_54535_intersectional_served_list_stays_indigenous(self):
-        """Real gold row shape (Edmonton Association of the Deaf 54535):
+    def test_row_intersectional_served_list_stays_indigenous(self):
+        """Real gold row shape:
         an explicit list of populations continuing to use a renovated
         space -- 'seniors, disabled people, youth, families, Indigenous
         peoples, and LGBTQ community members' -- is a served-population
@@ -1940,10 +2191,9 @@ class TestG3IndigenousPatternPathRoleTiering(unittest.TestCase):
         )
         self.assertEqual(e1, "North American Indigenous Origins")
 
-    def test_row_51620_residential_school_context_rescues_training_topic(self):
-        """Real gold row shape (Boyle McCauley Health Centre/Radius
-        51620): every Indigenous mention in the body is staff-training/
-        topic framing ('Indigenous Awareness Training', 'Indigenous
+    def test_row_residential_school_context_rescues_training_topic(self):
+        """Real gold row shape: every Indigenous mention in the body is
+        staff-training/topic framing ('Indigenous Awareness Training', 'Indigenous
         Perspectives workshops') with no explicit 'for Indigenous X'
         served phrase -- but the body also references residential schools
         and Truth and Reconciliation, which rescues the row (the training
@@ -1962,8 +2212,8 @@ class TestG3IndigenousPatternPathRoleTiering(unittest.TestCase):
         )
         self.assertEqual(e1, "North American Indigenous Origins")
 
-    def test_row_54538_explicit_served_frame_survivors_stays_indigenous(self):
-        """Real gold row shape (HERizon Healing Society 54538): 'justice
+    def test_row_explicit_served_frame_survivors_stays_indigenous(self):
+        """Real gold row shape: 'justice
         navigation services for Indigenous Survivors of exploitation' is
         an explicit served-frame mention ('services for Indigenous X').
         Must stay Indigenous."""
@@ -1978,9 +2228,8 @@ class TestG3IndigenousPatternPathRoleTiering(unittest.TestCase):
         )
         self.assertEqual(e1, "North American Indigenous Origins")
 
-    def test_row_54484_served_youth_and_ceremony_stays_indigenous(self):
-        """Real gold row shape (Mountain Plains Family Service Society
-        54484): 'unique needs of Indigenous youth' is a served-population
+    def test_row_served_youth_and_ceremony_stays_indigenous(self):
+        """Real gold row shape: 'unique needs of Indigenous youth' is a served-population
         mention, and the body also references ceremony (drumming,
         storytelling) -- both preserve the classification. Must stay
         Indigenous."""
@@ -1996,11 +2245,10 @@ class TestG3IndigenousPatternPathRoleTiering(unittest.TestCase):
         )
         self.assertEqual(e1, "North American Indigenous Origins")
 
-    def test_row_54529_provider_mention_rescued_by_served_list(self):
-        """Real gold row shape (Canadian Digestive Health Foundation
-        54529): 'Sharon Swampy, Indigenous Nutritionist' is a
-        provider-role mention (demoted on its own), and 'Esquao Institute
-        for the Advancement of Aboriginal Women' is a partner org name --
+    def test_row_provider_mention_rescued_by_served_list(self):
+        """Real gold row shape: a named 'Indigenous Nutritionist' is a
+        provider-role mention (demoted on its own), and a partner institute
+        'for the Advancement of Aboriginal Women' is a partner org name --
         but the body elsewhere explicitly names Indigenous residents as a
         served population ('to serve Edmonton's Indigenous ...
         populations'), which rescues the group per the existing
@@ -2041,7 +2289,7 @@ class TestBipocGrantNameAndNorthAmericanKeyword(unittest.TestCase):
             "the bipoc grant funds workshops led by bipoc artists"))
 
     def test_bipoc_grant_with_specific_group_classifies_that_group(self):
-        # Real gold row Edmonton Philippine Centre 51591: "The BIPOC Grant"
+        # Real gold row Edmonton Philippine Centre: "The BIPOC Grant"
         # names the funding; the served population is Filipino families ->
         # Asian/Filipino, not Multiple.
         e1, e2, e3, flag = classify_row(
@@ -2056,7 +2304,7 @@ class TestBipocGrantNameAndNorthAmericanKeyword(unittest.TestCase):
         self.assertEqual(e3, "Filipino")
 
     def test_north_american_keyword_is_dropped(self):
-        # Real gold row Black Health Initiative 51615: "North American context"
+        # Real gold row Black Health Initiative: "North American context"
         # must not match a taxonomy keyword (it did, forcing Multiple).
         import pandas as pd
         from ethnic_taggerv3 import build_taxonomy, TAXONOMY_ALL_TERMS
@@ -2072,7 +2320,7 @@ class TestBipocGrantNameAndNorthAmericanKeyword(unittest.TestCase):
 
 
 class TestG6IndigenousTopicPartnerDemotion(unittest.TestCase):
-    """Plan.md Chunk G6 (hybrid policy): splits the non-served Indigenous
+    """(hybrid policy): splits the non-served Indigenous
     pattern-path mentions G3 lumped into one weak "topic" role into two
     outcomes. DEMOTE to General: a provider/consultant role noun
     (consultant/advisor/liaison), or an aspirational "hopes to/wants to
@@ -2084,17 +2332,17 @@ class TestG6IndigenousTopicPartnerDemotion(unittest.TestCase):
     but not clearly non-served either, so classification is unaffected and
     only a review flag is added.
 
-    Verified over all 448 live Audit Detail rows: exactly 54491 (Skills
-    Society) and 50691 (WILDNorth) flip Indigenous->General; 50616 (Canadian
-    Wildlife Federation) and 50671 (Sierra Club) stay Indigenous and gain
-    FLAG_INDIGENOUS_TOPIC_VERIFY; every must-keep row (54535, 51620, 54538,
-    54484, 54529, 50606, 54681, 50621, 50673, 51589, 51581, 52473, 54544,
-    51624, 54694, 51613, 50328, 54686, 49327, 50607, 54685, 51625, 50681,
-    54528) and the already-General 50600/51569 are unchanged; zero other
+    Verified over all 448 live Audit Detail rows: exactly (Skills
+    Society) and (WILDNorth) flip Indigenous->General; (Canadian
+    Wildlife Federation) and (Sierra Club) stay Indigenous and gain
+    FLAG_INDIGENOUS_TOPIC_VERIFY; every must-keep row (,,,
+    ,,,,,,,,,,
+    ,,,,,,,,,,
+    ) and the already-General / are unchanged; zero other
     rows changed."""
 
-    def test_row_54491_consultant_to_integrate_demotes_to_general(self):
-        """Real gold row shape (Skills Society 54491): an "Indigenous
+    def test_row_consultant_to_integrate_demotes_to_general(self):
+        """Real gold row shape: an "Indigenous
         consultant to integrate Indigenous knowledge and practices" is
         hired expertise applied to the org's OWN internal model, not a
         claim about who the org serves. Both Indigenous mentions in this
@@ -2112,8 +2360,8 @@ class TestG6IndigenousTopicPartnerDemotion(unittest.TestCase):
         self.assertEqual(e1, GENERAL_POP)
         self.assertIn("provider context only", flag)
 
-    def test_row_50691_wants_to_include_more_demotes_to_general(self):
-        """Real gold row shape (WILDNorth 50691): "wants to expand ...
+    def test_row_wants_to_include_more_demotes_to_general(self):
+        """Real gold row shape: "wants to expand...
         include more indigenous and marginalized communities, hoping to
         double its reach" is an aspirational-reach claim about a FUTURE
         audience, not the population currently served. Demotes to
@@ -2137,8 +2385,8 @@ class TestG6IndigenousTopicPartnerDemotion(unittest.TestCase):
         self.assertEqual(e1, GENERAL_POP)
         self.assertIn("aspirational context only", flag)
 
-    def test_row_50616_indigenous_wisdom_as_content_stays_indigenous_and_flags(self):
-        """Real gold row shape (Canadian Wildlife Federation 50616):
+    def test_row_indigenous_wisdom_as_content_stays_indigenous_and_flags(self):
+        """Real gold row shape:
         "integrate science-based knowledge and Indigenous wisdom" and
         "partnerships with schools, NGOs and Indigenous communities" are
         both topic-content/partnership framings -- ambiguous, so the
@@ -2156,8 +2404,8 @@ class TestG6IndigenousTopicPartnerDemotion(unittest.TestCase):
         self.assertEqual(e1, "North American Indigenous Origins")
         self.assertIn("Indigenous topic/partnership mention", flag)
 
-    def test_row_50671_partnership_with_indigenous_nations_stays_indigenous_and_flags(self):
-        """Real gold row shape (Sierra Club 50671): "Indigenous Nations
+    def test_row_partnership_with_indigenous_nations_stays_indigenous_and_flags(self):
+        """Real gold row shape: "Indigenous Nations
         engagement/consultations" and "seek partnerships and collaboration
         with Indigenous Peoples" are both partnership framings -- stays
         Indigenous, gains FLAG_INDIGENOUS_TOPIC_VERIFY."""
@@ -2183,8 +2431,8 @@ class TestG6IndigenousTopicPartnerDemotion(unittest.TestCase):
         )
         self.assertEqual(e1, GENERAL_POP)
 
-    def test_row_54681_engagement_toward_launching_program_stays_indigenous_no_flag(self):
-        """Real gold row shape (Ben Calf Robe Society 54681): "community
+    def test_row_engagement_toward_launching_program_stays_indigenous_no_flag(self):
+        """Real gold row shape: "community
         engagement toward launching an Indigenous Head Start/early
         learning program for children aged 3-5" is an explicit
         served-population program description -- the bare word
@@ -2204,7 +2452,7 @@ class TestG6IndigenousTopicPartnerDemotion(unittest.TestCase):
 
 
 class TestG7FictionalSettingAndSpuriousTokenCollisions(unittest.TestCase):
-    """Plan.md Chunk G7: an ethnic/national term that names the SETTING of
+    """an ethnic/national term that names the SETTING of
     a story/myth/themed event (not a real served population), or that
     collides with an unrelated common word sharing the same spelling
     ("polish" as in "final polish"), must not classify. The story-setting
@@ -2215,10 +2463,10 @@ class TestG7FictionalSettingAndSpuriousTokenCollisions(unittest.TestCase):
     Festival" -- is a genuine served-identity claim, not a themed setting;
     see extract_compound_candidates in extractors.py).
 
-    Verified over all 448 live Audit Detail rows: exactly 51022/54504
-    (Theatre Prospero), 54622 (Arts On The Ave), 51570 (Garneau), and
-    54505 (Thousand Faces) flip/improve; zero other rows changed (in
-    particular 54137 Ukrainian Cheremosh Dance Ensemble, whose "Ukrainian
+    Verified over all 448 live Audit Detail rows: exactly /
+    (Theatre Prospero), (Arts On The Ave), (Garneau), and
+     (Thousand Faces) flip/improve; zero other rows changed (in
+    particular Ukrainian Cheremosh Dance Ensemble, whose "Ukrainian
     Dance Festival" mention must NOT be caught by the byzantine-specific
     festival guard, stays unchanged)."""
 
@@ -2230,8 +2478,8 @@ class TestG7FictionalSettingAndSpuriousTokenCollisions(unittest.TestCase):
         "depth": 3,
     }]
 
-    def test_row_51022_egyptian_story_setting_demotes_to_general(self):
-        """Real gold row shape (Theatre Prospero 51022): "an Egyptian
+    def test_row_egyptian_story_setting_demotes_to_general(self):
+        """Real gold row shape: "an Egyptian
         story about a Prince doomed at birth" names the SETTING of a
         devised play, not a served population. The story/myth noun
         trails the term here ("Egyptian story about"), exercising the
@@ -2247,8 +2495,8 @@ class TestG7FictionalSettingAndSpuriousTokenCollisions(unittest.TestCase):
         self.assertEqual(e1, GENERAL_POP)
         self.assertIn("topic context only", flag)
 
-    def test_row_54504_egyptian_myth_demotes_but_treaty6_children_stays_indigenous(self):
-        """Real gold row shape (Theatre Prospero 54504): TWO Egyptian
+    def test_row_egyptian_myth_demotes_but_treaty6_children_stays_indigenous(self):
+        """Real gold row shape: TWO Egyptian
         mentions ("based on the incomplete tale of an Egyptian prince";
         "based on an Egyptian myth about a Prince") both demote via the
         BEFORE setting-frame guard ("based on"), but "Treaty 6 children"
@@ -2274,7 +2522,7 @@ class TestG7FictionalSettingAndSpuriousTokenCollisions(unittest.TestCase):
         self.assertEqual(e1, "North American Indigenous Origins")
 
     def test_byzantine_winter_festival_setting_demotes_to_general(self):
-        """Real gold row shape (Arts On The Ave 54622): "Deep Freeze: A
+        """Real gold row shape: "Deep Freeze: A
         Byzantine Winter Festival" names a themed/branded winter festival,
         not an actual Byzantine-heritage population. Demotes to General
         (was previously Multiple via the ALWAYS_MULTIPLE_COMPOUNDS entry)."""
@@ -2302,7 +2550,7 @@ class TestG7FictionalSettingAndSpuriousTokenCollisions(unittest.TestCase):
     def test_ukrainian_dance_festival_not_caught_by_byzantine_festival_guard(self):
         """Regression guard (caught during G7 verification): a REAL
         ethnocultural org's own "[Ethnicity] Dance Festival" (Ukrainian
-        Cheremosh Dance Ensemble Society 54137's "Cheremosh Ukrainian
+        Cheremosh Dance Ensemble Society 's "Cheremosh Ukrainian
         Dance Festival") must NOT be demoted -- the "a [X] festival"
         setting frame is scoped to the byzantine compound only, not applied
         generically to every group's own festival name."""
@@ -2317,7 +2565,7 @@ class TestG7FictionalSettingAndSpuriousTokenCollisions(unittest.TestCase):
         self.assertEqual(e3, "Ukrainian")
 
     def test_final_polish_does_not_classify_as_polish(self):
-        """Real gold row shape (Garneau Community League 51570): "final
+        """Real gold row shape: "final
         polish for public release" is a post-production editing term, not
         the Polish people. This occurrence must be skipped entirely (not
         even a weak candidate) -- General with no ethnic flag at all."""
@@ -2342,14 +2590,13 @@ class TestG7FictionalSettingAndSpuriousTokenCollisions(unittest.TestCase):
         self.assertEqual(e1, "European Origins")
         self.assertEqual(e3, "Polish")
 
-    def test_row_54505_partner_org_name_council_of_india_societies_stays_general(self):
-        """Real gold row shape (Thousand Faces Festival 54505): "in-kind
-        community support from Council of India Societies" names a THIRD-
-        PARTY partner organization, not the Thousand Faces Festival's own
-        served population. The org-name-after guard now also matches the
-        plural "Societies" (previously only singular "Society"), so this
-        occurrence is tagged org_name (weak) instead of defaulting to
-        served. Demotes to General."""
+    def test_row_third_party_partner_org_plural_societies_stays_general(self):
+        """Real gold row shape: an "in-kind community support from
+        <Ethnicity> Societies" phrase names a THIRD-PARTY partner
+        organization, not the applicant's own served population. The
+        org-name-after guard now also matches the plural "Societies"
+        (previously only singular "Society"), so this occurrence is tagged
+        org_name (weak) instead of defaulting to served. Demotes to General."""
         e1, e2, e3, flag = classify_row(
             row(desc=(
                 "ECF's investment leverages annual support from TD Bank "
@@ -2364,18 +2611,18 @@ class TestG7FictionalSettingAndSpuriousTokenCollisions(unittest.TestCase):
 
 
 class TestG8GazaPalestinianMapping(unittest.TestCase):
-    """Plan.md Chunk G8: "Gazan"/"Gaza" are demonyms for Gaza that aren't a
+    """"Gazan"/"Gaza" are demonyms for Gaza that aren't a
     taxonomy keyword on their own (only "Palestinian" is the real L3 term),
     so a row that only ever says "Gazan" fell through to General with no
     ethnic signal at all. Added to COUNTRY_REGION_MAP -> Asian Origins /
     West and Central Asian and Middle Eastern Origins / Palestinian, same
-    L1/L2/L3 as the existing Canada-Palestine row (50613).
+    L1/L2/L3 as the existing Canada-Palestine row.
 
     Verified over all 448 live Audit Detail rows: exactly one row changes
-    (54545 Penny Appeal Canada, General -> Palestinian); zero regressions."""
+    (Penny Appeal Canada, General -> Palestinian); zero regressions."""
 
-    def test_row_54545_gazan_newcomers_maps_to_palestinian(self):
-        """Real gold row shape (Penny Appeal Canada 54545): "help Gazan
+    def test_row_gazan_newcomers_maps_to_palestinian(self):
+        """Real gold row shape: "help Gazan
         newcomers build stability" / "support Gazan newcomers through
         trauma-informed mental health services" -- a genuine served-
         population claim, previously unmapped and falling to General."""
@@ -2416,7 +2663,7 @@ class TestG8GazaPalestinianMapping(unittest.TestCase):
 
 
 class TestG9FlagTextCleanup(unittest.TestCase):
-    """Plan.md Chunk G9: reporting-quality-only flag text fixes; neither
+    """reporting-quality-only flag text fixes; neither
     changes any classification outcome.
 
     1. The "pattern" source flag ("Pattern rule match (Directional Region,
@@ -2426,7 +2673,7 @@ class TestG9FlagTextCleanup(unittest.TestCase):
        its own flag text, keyed on level1 in source_flag().
     2. The Step 2b "Review: multiple distinct groups detected..." flag on
        the is_black and (is_african|is_caribbean) branch is dropped as pure
-       noise, matching Step 3's existing Fix 4 treatment (rows 120, 164,
+       noise, matching Step 3's existing treatment (rows 120, 164,
        229, 358 in the live Audit Detail sheet).
 
     Verified over all 448 live Audit Detail rows: 42 flag-text-only flips
@@ -2461,7 +2708,7 @@ class TestG9FlagTextCleanup(unittest.TestCase):
 
 
 class TestG11AllyshipDemotion(unittest.TestCase):
-    """Plan.md Task 4 (G11): a general-community request that merely frames
+    """(G11): a general-community request that merely frames
     itself as an "ally to indigenous people" / expresses support for
     "reconciliation" was classified North American Indigenous Origins with
     full confidence and NO review flag -- an allyship/reconciliation

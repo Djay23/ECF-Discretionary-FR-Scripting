@@ -214,7 +214,7 @@ FAMILY_LEFT_BEHIND_AFTER_PATTERNS = [
 # ---------------------------------------------------------------------------
 GENDER_SILENT_NAME_WOMEN_PATTERN = r"\b(women|woman|girls?|mothers?|sisters?|femmes?)\b"
 GENDER_SILENT_NAME_MEN_PATTERN   = r"\b(men|man|boys?|fathers?|brothers?|hommes?)\b"
-SEXUAL_SILENT_NAME_PATTERN       = r"\b(pride|queer|trans\w*|2slgbtq\w*|lgbt\w*|rainbow)\b"
+SEXUAL_SILENT_NAME_PATTERN       = r"\b(pride|queer|trans\w*|2slgbtq\w*|lgbt\w*)\b"
 
 # ---------------------------------------------------------------------------
 # Ambiguous coded terms — flag without classifying (femme/masc/butch are
@@ -266,7 +266,7 @@ SEXUAL_GENDER_DIVERSE_PATTERNS = (
     + [BARE_TRANS_PATTERN]
 )
 
-# Plan.md Chunk G10 item 2 — of the SEXUAL_GENDER_DIVERSE_KEYS umbrella, only
+# Of the SEXUAL_GENDER_DIVERSE_KEYS umbrella, only
 # the "gender_diverse" key itself (bare "gender-diverse") is ambiguous enough
 # to warrant SFLAG_GENDER_TERM. The other keys (trans/non-binary/two-spirit/
 # agender/gender-fluid/gender-neutral/genderqueer) unambiguously belong under

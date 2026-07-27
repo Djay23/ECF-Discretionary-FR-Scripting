@@ -1,425 +1,252 @@
-# Purpose:
-Create an automation for a spreadsheet of funding requests, filling out the 'Ethnic' Sectors based on specified keywords pulled from 'Taxonomy-Definitions.xlsx'
-
------------------------------
-
-## Currently
-- Configuration of Taxonomy definitions book and ethnic & cultural Origins sheet
-- Configuration of Discretionary reports excel book
-- Configuration of output to ethnic columns in FR sheet
-- Taxonomy mapping created for keywords from 'Taxonomy - Definitions.xlsx'
-- Ranking system based on longer matches favoured first (eg. 'Southern African' matches before 'African')
-- Ranking and tie breaking system implemented to now 'accurately' map the correct ethnic groups to funding requests.
-
-#### TO DO:
-- Fix mapping net to handle cases discussed by rob & Bianca. More flagging
-- More descriptive language for flagging
-- Flag BIPOC --> Some 'BIPOC' Language might be used loosely, as well as: Marginalized, multicultural, grassroots, etc.
-
-### Some changes:
-- Black Canadian/African Canadian --> Other, Black
-- Flag:
-    - Ethnocultural, Multicultural, Racialized, Indigenous, Marginalized, grassroots
-    Typically grouped within **Multiple Ethnic Groups**
-- Black Francophones --> Other, Black
-- Flag treaty 6, 7, 8. 
-- If two groups are within the same general level 2, can be grouped in the same level 3: like Ukrainian & Eastern European mentioned. What about a case where it is 'Filipino' & 'West and Central Asian and Middle Eastern Origins', or 'Filipino' and 'Syrian'
-    - Group with its most common sector if they have a sector level in common.
-- African Canadian ignored and grouped with --> Other, Black (flag)??
-
------------------------------
-
-<!-- ## Cases to Handle:
-- 'South African' should map to 'Southern and East African Origins'.
-    - First check description concatenation for if any words from 'All Terms' column D appear. (eg. 'South African' is in description but not in Taxonomy Definitions excel, so how do we handle possible cases like these)
-- How do we handle a country like Jamaica or trinidad who dont have a specific level 2 or 3 but are grouped in caribbean origins? -->
-
-1. Look for known terms by level (deepest first)
-2. If nothing matches then interpret phrase structure. (For eg. "this funding is for the south african children in elementary schools, teaching them to read and write.")
-
------------------------------
-
-## Case Breakdown (with examples)
-### Case 1, Exact Match (Best Case):
-    Example:
-    - "Somali youth"
-    - "Punjabi community"
-    - "Cree families"
-
-### Case 2, Level 2 Match (Subregion):
-    Example:
-    - "East African Students"
-    - "South Asian Population"
-    
-### Case 3, Level 1 Match (Broad category):
-    Example:
-    - "African Communities"
-    - "Asian Families"
-
-### Case 4, Structured Phrase (Modifier + Children)
-    Example:
-    - "South African"
-    - "West African"
-    - "North African"
-        This is for cases where it is not in taxonomy but follows a predictable pattern
-
-### Case 5, Country/Nationality exists in taxonomy:
-    Example:
-    - "Kenyan"
-    - "Ethiopian"
-    - "Haitian"
-
-### Case 6, Country/Nationality NOT in taxonomy:
-    Example:
-    - "Jamaican"
-    - "Trinidadian"
-    - "Brazilian"
-
-### Case 7, Country Name instead of Nationality:
-    Example: 
-    - "People from Jamaica"
-    - "Youth from India"
-
-### Case 8, Multiple Groups:
-    Example:
-    - "African and Caribbean youth"
-    - "Somali and Ethiopian Families"
-    -  "As families from increasingly diverse cultural backgrounds turn to BCW for support beyond its original focus on Black communities"
-    *How do we handle cases like this where it mentions a specific ethnic group but is actually targetting a more diverse and broader population?
-
-### Case 9, BIPOC and Another group mentioned":
-    Example:
-    - "BIPOC and Asian" 
-    *Anything that includes 'BIPOC' and another ethnic group is automatically BIPOC
-    * This might not be the best way to handle this case because of examples like this:
-    "This project will foster long-term community impact by building sustainable creative practices, supporting emerging Asian Canadian artists, advancing equity in technical stagecraft", but BIPOC is also mentioned in the project purpose and Summary description: "To develop a new performance fostering BIPOC visibility, mentorship, and cultural understanding"
-
-### Case 9, Broad Identity Labels:
-    Example:
-    - "Black youth"
-    - "Arab communities"
-    - "Jewish population"
-
-### Case 10, Bent Arrow mention:
-    Example:
-    - "Bent Arrow Traditional Medicine"
-    This corresponds with 'North American Indigenous Origins'
-    *TO NOTE: This is often in the Account name, and needs to be the final point of lookup --If the current conclusion falls under 'General Population'
-    - 'Treaty 6' as indigenous
-
-### Case 11, Grassroots:
-    - Grassroots can be assembled for environmental or ethnic reasons. (These are two different sectors).
-    - When grassroots exists in our data bank, look for other ethnic keywords, this will indicate ethnic origin. Else, is general.
-
-### Case 12, General/No Specific Group:
-    Example:
-    - "All communities"
-    - "Open to everyone"
-    - OR None of the other cases satisfied, then only then group in General
-
-<!--
-### Solution:
-- Convert rows into hierarchical tree (dictionary) (breadth first search)
-    - Level 1 terms: African, Asian, Carribean, European, etc.
-    - Level 2 terms: East African, West African, etc.
-    - Level 3 terms: Nigerian, Somali, Ethopian
--->
-
-<!-- ## Workflow:
-- Loop through 'Taxonomy - Defintions.xlsx' and create future accessible mapping of Taxonomy definitions using column D 'All Items'. 
-- Once mapping has been created, Concactenate columns "Final_Project_Description" + "Final_Summary_Description" + "Purpose" + "Funding Request Name" before beginning keyword search. 
-    - Priority Listing:
-        - Final Project Description & Final Summary Description
-        - Purpose 
-        - Funding Request Name
-    *These are the orders we will search for keywords first (as a result there might not be a need for contactenation, and instead store as different indices in a list to loop through).
-- Upon keyword search, go through case-by-case analysis and perform ranking to group ethnicities.
-- After ethnicity grouping, go through manually to confirm accuracy, placing emphasis on "General Population" section. -->
-
-## Classification Phrase Expansion:
-> [!NOTE]
-> Include the highlighting of what phrase was targetted in the Classification Flag Notes section.
-> Need to Highlight Black Canadian Women for flagging.
-- **Context Override**: 
-    * Historical Reference Detected (including these phrases): 
-        + Historically; Formerly; Previously; Originally; Used to serve (focus, target, support); Once (Served, Focused, Targeted, Supported); Founded; Established; Created; Was, Were, etc. 
-    * Expansion Phrases (including these phrases): 
-        + Expanding beyond; Expansion; Beyond its...; Regardless of ethnic background; Irrespective of..., etc.
-    > **Note:** See code for more in-depth exploration of Historical Phrases.
-
-- **Ambiguous**: 
-    * Equity Term with no paired ethnic signal (including these phrases):
-        + Marginalized, Grassroots, Ethnocultural, Racialized.
-    * BIPOC mentioned alongside specific groups(s) [Ethnic Origin] (including these phrases):
-        + Bipoc; QTBipoc; Bpoc; People of Colour; Black African + (Another Ethnic Origin). 
-        <!-- needs to be expanded to include Level 2 & 3. `other_groups` currently only selects Level 1 -->
-
-- **BIPOC Target Detected**:
-    * Bipoc; QTBipoc; Bpoc; People of Colour; Black African.
-    > **Note:** Include what indicators led to this classification.
-
-> Implement Semantic similarity matching --> This will go through anything classified as General or other and take a closer look, acting as a tighter knit net for ethnic signals. 
-
-> Layer 1:
-    - Current model of looking at taxonomy definitions to match ethnic group.
-> Layer 2:
-    - Semantic Similarity Searching (Safety Net).
-        - Nearest Neighbour Classification.
-        - Confidence threshold and pick highest confidence match.
-        - Tries to answer "What taxonomy entry is this text most semantically similar to?"
-
-
-## Current Rule Engine Handles:
-* Exact Matches
-* Pattern Rules
-* Country Mappings
-* Negation
-* Historical References
-* Aspirational Language
-* BIPOC Handling
-* Organization lookup
-
-*Layer 2 to handle when text contains implicit ethnic signals that aren't in keyword system.
-
-## Current Flow:
-* Run ethnic tagger script
-* Loads Taxonomy - Definitions.xlsx
-* Loads FR Testing.xlsx
-* Build Taxonomy Entries
-* Load Embedding Model
-* Creates Vectors (Turns text into vectors: "Supporting Newcomers from the horn of africa --> )
-
-> Flag anything that has Cultural Association 
-> Black canadians as just black, african canadians should be classified as african origins
-> Classification for refugee? -> General (we don't have classification for this)
-> Ethnocultural, multicultural, refugee, immigrant without any ethnic signal is usually general, but we flag
-> Flag francophone, immigrant, etc. 
-> Afro-Caribbean - Should be classified as caribbean, was grouped with black, so should be black & caribbean which is multiple ethnic.
-> "Kerala Cultural Association" --> India. Anything with cultural association should be flagged.
-
-## To Note for EMbedding (ENGINE 2):
-- Inspect the gap between the top two matches. we currently only look at the single best score: `best_idx = np.argmax[scores]`; to now: best_score >= threshold && (best_score - second_best_score) >= margin
-
-
-## To run Files:
-
-The scripts do **not** take command-line arguments. They read/write fixed
-locations under the repo root:
-- Taxonomy: `Taxonomy/Taxonomy - Definitions.xlsx`
-- Data:     `Data Sheets/FR testing.xlsx` (sheet `Discretionary Funding Requests`)
-
-Place `FR testing.xlsx` in a `Data Sheets/` folder at the repo root before running.
-
-- **Full pipeline (recommended)** — writes ethnic, gender, and sexual columns in one pass:
-    + `python Engine_1_and_2/run_all.py`
-
-- Or run the engines individually (both write into `Data Sheets/FR testing.xlsx`):
-    + `python Engine_1_and_2/Pipeline/ethnic_taggerv3.py`  — ethnic + semantic columns
-    + `python Engine_1_and_2/Pipeline/Gender_SexID.py`     — gender + sexual columns
-
-- Diagnostic (optional, run before a full pass to inspect embedding thresholds):
-    + `python Engine_1_and_2/Semantic_Engine/diagnose_semantic_scores.py`
-
-
-
-# Current course of action (2026-06-25)
-### Review General Pop. CLassification:
-Random sample of 50 General pop:
-- Correctly General
-- Missed Ethnic classification
-- Population-specific but outside taxonomy
-- Ambiguous even for a human
-
-### Audit 64 'Ambiguous Equity Term' Rows
-- How many should actually classify?
-- If 50+ truly are General Population, leave the rule
-- If it contains obvious ethnic signals, are we suppressing too aggressively?
-
-### Audit 42 'Multiple Ethnic' rows
-Look at:
-- BIPOC + African
-- BIPOC + Asian
-- BIPOC + Caribbean
-Is this something a human reviewer actually needs to look at?
-
-# Sprints
-## Sprint 1:
-- Add plural normalization
-- Generate diagnostic review workbook
-- Review:
-    - 50 General pop. rows
-    - 64 Ambiguous Equity rows
-    - 42 'Multiple Ethnic' rows
-    
-## Sprint 2:
-- Use findings from real data to decide whether:
-- Reference context rules are needed
-- Additional oranization mappings are needed
-- Semantic Engine thresholds need tuning
-
-
-# 2026-06-30
-- Continued auditing of script classification for correctness. 
-## Sprint 1:
-- 100 General pop. rows sample - Complete -> 100% accuracy
-- 11 Ambiguous equity rows with no paired ethnic signal
-- 55 'Multiple Ethnic' rows - Complete -> Case notes below.
-
-> [!NOTES] 
-> Include a flag that highlights words like "especially" or "particularly", "particularly for", etc. if used with an ethnic term. "BIPOC communities—particularly East African newcomers".
-> Something like this should be grouped as African Origins not multiple ethnic "for African youth from diverse backgrounds including Kenyan, Ghanaian, Zimbabwean, Sierra Leonean, Somali, Ethiopian, Djiboutian, Namibian, Botswanan, Mozambican, South African, etc.". We only group as multiple ethnic if they have different level 1, or level 2 classifications. Otherwise if there is a common level 1 or level 2 classification, group in the respective category. For example: "Serving indian and Pakistani communities" Should be grouped under Asian Origins -> South Asian Origins, Not multiple origins.
-> "Black African" should be grouped as African Origins, instead of: Other Ethnic and Cultural Origins -> Black, not otherwise specified. Previously had it under BIPOC.
-> Have engine 2 look at our country mapping for possible country aliases? Like Namibia vs. Namibian.
-> We can group the "BIPOC signal detected" flag as low priority as these were classified properly from our sample.
-> How do we handle cases where it mentions african Canadian, and then later specifies Nigerian for example? Currently we view african canadian as black, so adding nigerian would group it as multiple ethnic with distinct groups present. We should group African Canadian as black unless there is a specificied African country mentioned or Africa as a region mentioned later, then we go with the grouping for the specified african country/region. Or should we just change the grouping of 'African Canadian' to African?
-> Need to double check the flag: multiple sub-groups within same origin. if they are within the same origin, they should be classified under the same origin and not as multiple ethnic.
-> french-speaking, francophone, french canadian should be treated as a language accomodation and not an ethnic group. Review 50 examples with "French", "French canadian", "francophone", "french-speaking" and if it is ambiguous/language accomodation or is actually a cultural/ethnic identity. French-speaking/Francophone can also be referring to African countries that speak french, like cameroon, or just anyone who speaks french. How should we handle this as this is different from European french people.
-    Keep as ethnic signal:
-    - French Canadian Association
-    - Francophone Cultural Society
-    - French heritage community
-    - French cultural programming
-### High priority flags (resulting in incorrect classification)
-- Ambiguous: BIPOC mentioned alongside specific group(s)
-> Need to fix how we handle "African Canadian", "Black Canadian", etc. right now if we get an example like: "Advancement of African Canadians", we first see 'African Canadians' which we collapse into 'Black -> Other Ethnic and Cultural Origins'. We then see the 'African' In 'African Canadians' and group that under African origins, so a sentence like "Advancement of African Canadians" gets grouped as Multiple ethnic origins and flagged as multiple distinct groups detected.
-> Similar issue, if we see African Canadian, and then black later, it is treated as two distinct groups even though we currently have African Canadian to be black (this should probably change so African canadian is just african). 
-> What about in cases where it says African Canadian and is for something like black History month, or something like 'for the advancement of black students in STEM'. How should we handle classification/flagging?
-> Case where classified as multiple and flagged as distinct because Somali and Black mentioned. Should actually be classified as Somali. We need to flag when  we see anything with Black, and African/Caribbean origins because they could be using Black as the umbrella and then specify, or vice versa. For example: "Hate crimes targeting Black Muslims—especially young Somali Canadians" or "Somali project aims to strengthen cultural pride, foster inclusion, and create safe spaces for Black Muslim communities".
-> Correctly grouped as multiple ethnic: "Our program services are available in multiple languages, including French, Somali, and Urdu", however based on the current proposed changes, this would have probably been flagged as languages and maybe incorrectly grouped. we can ignore an example like this as because these are languages corresponding to specific countries we can assume they are targetting multiple ethnic groups, especially after manually reviewing it.
-> We need to flag when hindu is present because Hindu can imply indian, but not always. 
-> Black and Indigenous should be classified as BIPOC. Currently treated as two different Ethnic categories when present together.
-> Flag anything with "official-language minority" or "French" because it could be referring to the ethnic group or just the language. Tricky though because of this example: "It aims to increase the diversity of content on Wikimedia projects, improving the visibility of notable Canadian figures and underrepresented groups, including Indigenous communities, gender minorities, and official-language minority communities.";  "will engage approximately 120 participants, including the general public, students, educators, volunteers, and cultural organizations, in both French and English". Upon changing the classification of French, this would have been grouped as indigenous although it was for multiple ethnic groups.
-
-# 2026-07-02
-## Sprint 1 (Continued)
-- 100 General pop. rows sample - Complete -> 100% Accuracy.
-- 11 Ambiguous equity rows with no paired ethnic signal - Complete -> 100% Accuracy.
-- 55 'Multiple Ethnic' rows - Complete -> Case notes Above.
-
-- Hook up old pipeline to new refactored version.
-- Compare new review report with previous pipeline version.
-- Use python library for country matching instead of built out dictionary
-
-# 2026-07-02
-## Sprint 3 - Classifcation of Sexual ID and Gender ID (Sprint 2 Complete)
-### To Date:
-- Classification of Ethnic and Cultural Origins - Complete
-- In depth Flagging of common ambiguities - Complete
-- Engine 2 (Semantic Engine) - Implemented but not currently utilized
-- Classification of Gender Identity - 
-- Classification of Sexual Identity -
-
-### Method of Attack:
-- Random sample of 100 'General Population' Classification generated alongside classification flags (Most error prone section).
-- Sample audited to target weak points in classification logic and highlight Ambiguity/Nuanced Language.
-- Fine-tuning with second most recent pass Yielding 98% Accuracy and Recent pass yielding 100% Accuracy.
-- All Ambiguous Equity Flagged rows pulled and audited - 100% classification accuracy and flag changed to Low Priority review.
-- All 'Multiple Ethnic and Cultural Origins' Audited - 100% classification accuracy - Flags audited as well (Black/African being the cause for majority of flags. Or Asian used as well as BIPOC, but only referring to Asians as BIPOC) - Resulted in all rows being flagged (Fix Priority Hiearchy)
-
-### Points of Contact:
-- African Canadian Changed from 'Black' to 'African Origins', and then further ethnic signal is searched for.
-- Afro-Caribbean, Afro-Latino --> maps to Multiple ethnic.
-- Taxonomy now more in depth (classifies down to 3rd level for countries not listed in taxonomy) but returns Level2 classification if not in Taxonomy sheet. `(Go deeper into level 3)`
-- Is Gender interchangeable with sex. For example: Female --> Women/Woman; Male --> Man/Men (Biological connotation implies difference, may differ from how we use it).
-- How should standalone 'Queer' be classified as compared to 'Genderqueer'/ 'Gender queer'
-- YWCA should be classified as Women or Multiple gender Identities (look for Gender specification) --> Should not be explicitly searched for.
-
-### To Do:
-- Using Python Library `Country_Converter` to pull extensive dictionary of country mappings instead of hardcoding. 
-- Use Python Library to pull extensive dictionary of People Groups.
-- Column in Review sheet of Classification Frequency - Flag frequency for each Ethnic grouping
-- Low priority section for low priority flags.
-- Gazan/Gaza should be handled (not sure if this is handled)
-- Classifcation of ECF Focus Areas.
-- Classification of Sectors. (Dave -> flagging accuracy) 
-
-### Report:
-- What to explore based on gathered data.
-- Present data in a format that means something.
-
-## TO NOTE: Gender & Sex Identity Classification:
-- Flag HERizon mentions - should default to Multiple identities for gender and General for sex, unless something under the umbrella of 2SLGBTQIA+
-- Aspirational language should not be flagged for gender & sex.
-- 
-
-# 2026-07-06
-## Sprint 3 - Auditing - Classification of Sexual & Gender Identity
-- Audit Gender and Sex. ID classification for missed edge cases.
-- Construct review report audit document for this process.
-- Once final Gold standard document produced post-audit, make necessary adjustments.
-
-# 2026-07-07
-- Audit newly compiled 'Audit_gold_prefilled_xlsx' for where the engine matched human classification.
-- Re-check classification flags and note which are ambiguous either for re-vamping/removal.
-- Add Flag evidence as well 
-- Appears current Ethnic Classification flagging is outdated.
-
-## Current area of focus:
-- Classification flags:
-    - Negation detected
-
-# 2026-07-08
-## Sprint 3 - Auditing - Classification of Sexual & Gender Identity
-- Continued implementation and bug fixes from Plan.md
-- Implement Machine Learning using vectors to locally train to improve classification accuracy from 95% to 99%, reducing number of irrelevant flags as a result.
-
-### To Do:
-- ECF Focus areas classification --> Using ML for quicker mapping.
-- Using country python library.
-- Sector Classification (By Hand)
-
-# 2026-07-09
-## Sprint 3 - Auditing Ethnic, Sex & Gender identity
-- Auditing of current classification pipeline and ML implementation
-- Org maps for organizations that might have an ethnic/Gender/Sex implication
-- ECF focus areas classification
-
-# 2027-07-09
-## Sprint 3
-- Continued ML implementation --> Changed Organization map to be 'general' to apply org mapping for previous year data. 
-- Logic fine tuning with deepseek --> Understanding where gaps exist in the way current engine runs for classification, and how it can be fixed/made better.
-- Hand classifying ECF Focus areas until better classification engine brainstormed for Early Childhood Education (ECD) & Affordable Housing (AH)
-
-### Current:
-- Indigenous misfire in cases that should be general: 50616, 50671, 51, 78, 96, 196, 344, 347, 387, 418, 428, 427 --> higher risk. 
-
-# 2026-07-13
-### Sprint 3 - Continued auditing
-- Affordable Housing & Early Childhood Development audit completed.
-- How can we generalize our engine for this classification? Gaps present? What keywords to look for. 
-- Current Classification pipeline blueprint into Deepseek for auditing on how semantic matching or case handling can improve. 
-- Implementation with the AH & ECD classifications.
-- Can this be migrated to Sector classification?
-
-### Currently:
-- Manual Classification of Sector levels as they are too ambiguous for deterministic Engine (23/64 columns completed).
-- Ethnic, Gender and Sex ID engine refactoring for knowledge gaps.
-- ECD and AH engine classification to be built (Manual classification completed, train local ML based on present data).
-
-
-# 2026-07-14
-### Sprint 3- Continued auditing
-- Auditing of pipeline blueprint for gap fixes.
-- Manual Classification of Sector Levels --> Complete
-- Gender/Sex and Ethnic classification/Flagging --> complete.
-- Affordable Housing/ECD --> complete (by hand).
-
-### TO DO:
-- What flags don't we need to reduce Reviewer fatigue.
-- Strengthening of pipeline through ML hookup?
-- Account name -> Sector -> limited information for classification for organization.
-
-
-# 2026-07-15
-### Impact Assessment
-- How many of each Ethnic Group were served.
-- Number of Served population for each subgroup in Gender and Sex.
-- For each specific sector, what ethnic groups were served, and how many of those were Approved vs. Declined.
-- How many flags generated.
-- Of the generated flags, what ethnic/Gender and Sex did they fall under --> Which are necessary?
-- Should BIPOC mention without any ethnic signal just be grouped as general? Or should BIPOC mention without ethnic signal be treated as Multiple Ethnic Origins. --> And if we choose to group BIPOC mention without ethnic body signal, do we look at Org. Name
-
-# 2027-07-16
-- Flag auditing and highlight necessary vs. Not important
-- Improving on flags highlighting the cause for flagging
+# Technical Project Report & Developer Documentation: Automated Ethnic, Gender & Sexual Identity Classification Pipeline
 
+---
+
+## 1. Executive Summary & Intent
+
+### Project Overview
+This project is an automated data pipeline that parses, analyzes, and classifies funding request (FR) data. By extracting narrative indicators from grant descriptions, the system populates three classification axes against the standardized frameworks in `Taxonomy - Definitions.xlsx`:
+
+1. **Ethnic & Cultural Origins** (`Ethnic 1/2/3 - FR6/7/8`)
+2. **Gender Identity** (`Gender Id - FR9`)
+3. **Sexual Identity** (`Sexual Id - FR10`)
+
+Every classification is accompanied by a **Classification Flag** column that preserves the evidence and any review notes for human auditors.
+
+### Developer Intent & Philosophy
+The codebase is built for **modularity**, **determinism**, and **auditability**. It eliminates manual classification variance while staying flexible enough to adjust rules as community demographic landscapes evolve.
+
+The central design decision is a **strict separation between signal detection and decision-making**. Extractors are "dumb sensors" that surface every possible match; a single deterministic **state-machine resolver** makes every classification decision. No probabilistic model is in the shipping path — machine-learning components exist in the tree but are **hibernated / advisory-only** (see ->6). This keeps the engine fully reproducible and testable: the same row always produces the same label, and every decision can be traced to a rule.
+
+---
+
+## 2. Core Architecture & Process Flow
+
+The ethnic engine is a **three-layer deterministic pipeline**. Each layer has one job and does not reach into the others:
+
+```mermaid
+graph TD
+A[Row: 4 text columns] --> B[Split: Body text vs. Name text]
+B --> C[Layer 1 — extractors.py<br/>Signal extraction + evidence-role tagging]
+C --> D[Layer 2 — ethnic_taggerv3.py<br/>Role inference + context annotation]
+D --> E[Layer 3 — resolver.py<br/>Deterministic state machine]
+E --> F[Ethnic 1/2/3 + Classification Flag]
+
+style E fill:#d4edda,stroke:#28a745,stroke-width:2px
+```
+
+Orchestration lives in `classify_pipeline.py`, which contains **no classification logic** — it only wires the layers together. All ethnic-origin decisions live in `resolver.py`.
+
+### Step 1 — Ingestion & Text Prioritization
+The pipeline reads the active dataset's workbook (see ->7 — dataset switching) and builds a hierarchical taxonomy dictionary from `Taxonomy - Definitions.xlsx`, parsing column D **"All Terms"** (Level 1 + Level 2 + Level 3 concatenated with the literal word `Origins` as delimiter), falling back to the individual Level 1/2/3 columns if that cell is blank. Entries are sorted **deepest-first, then longest-keyword-first** so that "Southern and East African" is captured before the broader "African".
+
+The four input columns are split into two groups:
+
+| Group | Columns | Role |
+| :--- | :--- | :--- |
+| **Body** (served-population evidence) | `Final_Project_Description`, `Final_Summary_Description`, `Purpose` | A signal here can classify a row. |
+| **Name** (organization / request title) | `Funding Request Name` | Consulted only for a curated known-org lookup and to decide whether a *name-only* signal should be flagged. |
+
+**Corroboration rule:** a signal must appear in the **body** to classify. A signal that appears **only in the name** degrades to `General Population` with an explanatory flag — unless a curated known-org lookup or the silent-body name rule applies (see ->4).
+
+### Step 2 — Layer 1: Signal Extraction (`extractors.py`)
+Six extractor functions scan the text and emit **one candidate per occurrence** of a match. They perform **no filtering, no negation guards, and no suppression** — every match becomes a candidate:
+
+- `extract_taxonomy_candidates` — direct taxonomy keyword hits (Cases 1–3)
+- `extract_pattern_candidates` — structured/directional phrases, e.g. "North African", "South Asian", plus Indigenous terms (Case 4)
+- `extract_country_candidates` — demonyms and "from &lt;country&gt;" phrasing via the supplementary country map (Cases 6–7)
+- `extract_compound_candidates` — dual-identity phrases like "Afro-Caribbean" (expands into two group candidates)
+- `extract_broad_identity_candidates` — broad labels like "multiracial", "mixed heritage" (Case 9b)
+- `extract_org_candidates` — curated known-organization lookup (Case 10, name-only, last resort)
+
+Each candidate carries `{level1, level2, level3, depth, source, role, self_id, span, context}`.
+
+### Step 3 — Layer 2: Evidence-Role Inference & Context Annotation (`ethnic_taggerv3.py`)
+This is the heart of the current engine. Every extracted match is assigned an **evidence role** based on the words immediately surrounding it (`infer_role`). The role decides whether a match counts as real evidence of who is served:
+
+| Role | Meaning | Counts as served? |
+| :--- | :--- | :--- |
+| `served` | Default — the group is stated as the served population. | ✅ Yes |
+| `served_self_id` | Group counts as served only because the org named/described **itself** (org-name echo or copula self-description, e.g. "…is the only Indigenous Artist-Run Centre"). Normalized back to `served` but tracked via `self_id=True` so the row is still flagged. | ✅ Yes (flagged) |
+| `topic_keep` | *(Indigenous-only)* Indigenous knowledge/art/practice used as program content, or an Indigenous nation named as an active partner. Kept as served, but adds a verify flag when no plain-served mention also exists. | ✅ Yes (flagged) |
+| `org_name` | The term is a **third-party** organization's name ("in partnership with the &lt;Ethnicity&gt; Council"). | ❌ Weak |
+| `provider` | The group is named as the service **provider**, not the recipient. | ❌ Weak |
+| `example` | Mentioned as an example ("such as…", "including…"). | ❌ Weak |
+| `aspirational` | Future/aspirational reach ("hoping to expand to…"). | ❌ Weak |
+| `topic` | A curriculum topic, a story/festival setting, or an allyship/reconciliation frame — not a served population. | ❌ Weak |
+
+**Key architectural invariant:** negation and historical/expansion framing are **NOT roles** — they never suppress a candidate. They are surfaced as *annotation flags only*, so a reviewer can judge them. This keeps classification decisions independent of soft discourse signals.
+
+This layer also computes context signals (`extract_context_signals` → `build_context_notes`; production emits negation only), BIPOC detection (`is_bipoc_real_target`), identity-phrase rewrites (e.g. "African Canadian" → "black"), the silent-body name rule, and the Case 13 ethnocultural-org-name safety net.
+
+### Step 4 — Layer 3: The Resolver State Machine (`resolver.py`)
+A single deterministic function, `resolve(states, context_flags, bipoc_present)`, makes **every** ethnic decision. Its constraints are strict: context flags may only be **appended** to the output flag string — they **never** influence which branch fires. Decision order:
+
+1. **BIPOC present** → `Multiple Ethnic and Cultural Origins` (unless exactly one specific group is also named, in which case it classifies *as that group* with a low-priority verify note).
+2. **No served candidates** → org-lookup fallback, else name a weak-only mention in a transparency note, else `General Population`.
+3. **Black + Indigenous co-present** → BIPOC / `Multiple`; **Black + African** or **Black + Caribbean** → `Multiple`.
+4. **Two or more distinct Level 1 groups** → `Multiple`.
+5. **Single Level 1 group** → resolve to the **deepest level all candidates agree on** (L3 → L2 → L1), dropping bare-umbrella entries when a specific sub-group exists. Indigenous umbrella + two-or-more distinct sub-groups rolls up to L1 with a review flag.
+
+A crucial helper, `dedup()`, collapses candidates that resolve to the same (L1, L2, L3) and performs **evidence-role rescue**: if *any* occurrence of a group was `served`, that group counts as served even if other occurrences were weak.
+
+---
+
+## 3. Granular Case Analysis
+
+The business logic handles these structural scenarios discovered in the funding-request data:
+
+| Case | Category | Analytical Approach | Operational Example |
+| :--- | :--- | :--- | :--- |
+| **Case 1** | **Exact Match** | Direct keyword alignment with deepest taxonomy terms (Level 3). | "Somali youth", "Punjabi community", "Cree families" |
+| **Case 2** | **Level 2 Match** | Text aligns with a subregional classification. | "East African students", "South Asian population" |
+| **Case 3** | **Level 1 Match** | Text aligns only with a broad continental category. | "African communities", "Asian families" |
+| **Case 4** | **Structured Phrase** | "Modifier + Parent" directional patterns missing from taxonomy text. | "South African", "West African", "North African" |
+| **Case 5** | **Taxonomy Country** | Country/nationality demonyms present in the taxonomy. | "Kenyan", "Ethiopian", "Haitian" |
+| **Case 6** | **Non-Taxonomy Country** | Valid demonyms absent from the taxonomy, resolved via the country map. | "Jamaican", "Trinidadian", "Brazilian" |
+| **Case 7** | **Country Structure** | Explicit country names inside narrative phrases. | "People from Jamaica", "Youth from India" |
+| **Case 8** | **Multiple Groups** | Distinct L1 (or tied L2) cohorts → `Multiple`. Same-L1 groups collapse to the shared level. | "African and Caribbean youth" → Multiple; "Indian and Pakistani" → South Asian |
+| **Case 9** | **BIPOC (context-aware)** | BIPOC alone → Multiple; BIPOC + one group → that group (flagged). | "BIPOC and Asian" |
+| **Case 9b** | **Broad Identity Labels** | Overarching social/cultural descriptors → Other Ethnic and Cultural Origins. | "multiracial", "mixed heritage" |
+| **Case 10** | **Organization Lookup** | Curated known-org name → inferred identity; last resort, name-only. | Curated Indigenous-serving org → North American Indigenous Origins |
+| **Case 11** | **Ambiguous Equity Markers** | "Grassroots"/"marginalized"/"racialized"/"multicultural" never classify alone; caller flags either way. | "grassroots" + ethnic keyword vs. bare "grassroots" |
+| **Case 12** | **General / Catch-all** | Fallback when no served ethnic signal exists. | "All communities", "Open to everyone" |
+| **Case 13** | **Ethnocultural Org Name (safety net)** | Low-recall, high-precision: only fires when a row would otherwise be General with zero candidates; flags a possible ethnocultural org name in the title. **Never classifies** — review flag only. | An unrecognized "&lt;Group&gt; Cultural Society" in the title |
+
+---
+
+## 4. Advanced Governance & Audit Flagging
+
+### Name-vs-Body Corroboration & the Silent-Body Name Rule
+Because a signal must be corroborated in the body, a row whose **body carries no served signal** is handled specially:
+
+- **Known org** in the name → curated lookup classifies it.
+- Otherwise, the **silent-body name rule** (`classify_from_raw_name`) reads identity terms from the raw account name — but only when the body genuinely names no population on *any* axis (`body_names_a_population` guard) and no identity-expansion disclaimer is present. Religion-only or language-only names ("Islamic Missionary Association", "French Canadian Association") resolve to General with a targeted note rather than guessing an ethnicity.
+- A name-derived classification is **always flagged** (`SILENT_NAME_FLAG` / `SELF_ID_FLAG`) so a reviewer knows the label was inferred from the org's identity, not stated.
+
+### Self-Identification
+An ethnicity-named org naming its **own** ethnicity is treated as evidence of who it serves (`served_self_id`), including orgs named in an Indigenous language that describe themselves ("…is the only Indigenous Artist-Run Centre"). Third-party org names ("in partnership with the &lt;Ethnicity&gt; Council") are still demoted.
+
+### Context Override (Historical vs. Active Targets)
+The engine detects historical anchors (`Historically`, `Formerly`, `Previously`, `Originally`, `Founded`, `Established`, `Was/Were`, …) and scope-expansion signals (`Expanding beyond`, `Regardless of ethnic background`, `Irrespective of…`). These are **annotation-only** — they surface a flag but, per the architectural invariant, never suppress a candidate on their own. They demote a match only indirectly, when they coincide with an org-name echo.
+
+### French / Language-Accommodation Filter
+When text signals language accommodation ("french-speaking", "in French and English", "official-language minority", "francophone") **and** does not match an ethnic keep-pattern ("French Canadian Association", "Francophone Cultural Society"), French/European ethnic candidates are dropped and a verify note is added — preventing spurious `Multiple` when language access co-occurs with a real ethnic group.
+
+### High-Priority Audit Flags
+
+> [!IMPORTANT]
+> **Transparency Rule:** Whenever a flag is triggered, the system preserves the targeted phrase/evidence and writes it into the **Classification Flag** column for human review.
+
+- **BIPOC & Intersections:** `BIPOC`, `QTBIPOC`, `BPOC`, `People of Colour` are context-checked (example/negation/"the BIPOC Grant" program-name uses are skipped). BIPOC alongside exactly one specific group classifies as that group with a low-priority note.
+- **Ethnocultural Normalization (identity-phrase rewrites):** `Black Canadian` / `African Canadian` → normalized so downstream matching handles them consistently; `Afro-Caribbean` → `Multiple` (Black + Caribbean); `Cultural Association` mentions are flagged ("verify named group manually").
+- **Implicit General Signals:** `Marginalized`, `Multicultural`, `Ethnocultural`, `Racialized`, `Grassroots`, `Immigrant`, `Refugee` without a specific ethnic qualifier default to `General Population` but trigger an audit flag.
+- **Indigenous:** general Indigenous terms and Treaty 6/7/8 markers route to `North American Indigenous Origins`. The engine deliberately **over-flags** Indigenous mentions (topic_keep, umbrella-vs-sub-group ambiguity) rather than risk a silent miss.
+- **Emphasis & Religion cues:** "especially"/"particularly" near a matched group, and "Hindu" (may imply South Asian/Indian), are surfaced as verify notes on non-General rows.
+
+---
+
+## 5. The Gender & Sexual Identity Engines
+
+`Gender_SexID.py` adds two more axes, reusing the same body/name split and text helpers from `ethnic_taggerv3.py`:
+
+- **Gender Identity** (`Gender Id - FR9` + `Gender Classification Flag`): extracts gender terms from the body; `0` keys → General, `1` → that group (Women/Girls, Men/Boys, Two-Spirit, Other), `2+` → Multiple Gender Identities. A name-only signal degrades to General + org-name flag.
+- **Sexual Identity** (`Sexual Id - FR10` + `Sexual Classification Flag`): any guarded body signal → `2SLGBTQIA+`, else General.
+
+Both share the silent-body name rule and family-context guards (so an incidental "fathers"/"sons" mention doesn't misclassify). All labels, patterns, and flag strings live in `gender_constants.py`.
+
+---
+
+## 6. Machine Learning: Hibernated / Advisory-Only
+
+> [!WARNING]
+> **The ML layers are NOT in the shipping classification path.** The deterministic rule engine is the sole authority on every label.
+
+Two ML/semantic components exist but do not decide classifications:
+
+1. **Semantic taxonomy suggestion** (`Semantic_Engine/semantic_fallback.py`): a local sentence-embedding model (MiniLM) that, **only for rows the deterministic engine resolved to `General Population`**, suggests the nearest taxonomy entry above a similarity+margin threshold. It never overrides or auto-writes an `Ethnic 1/2/3` result, because embeddings don't understand negation or context override. This only runs when the optional `sentence-transformers` dependency is installed (excluded from the lean default install), so it is effectively dormant in production.
+
+    > **Column note:** the review column this originally populated (`OUTPUT_SEMANTIC = "Semantic Suggestion (REVIEW)"` in code) was manually repurposed in the workbook into a human-review/correction column titled **"Classification Accuracy (Corrected in Different Areas)"**. The engine now *reads* that same column as its **stakeholder-reviewed gate** (`STAKEHOLDER_REVIEWED_COL`): any row a human has marked there is skipped by the NLI role arbiter so it can never second-guess a human-confirmed decision. Note the code constant `OUTPUT_SEMANTIC` still carries the old header string and has not been reconciled with the rename.
+
+2. **NLI role arbiter** (`Semantic_Engine/ml_arbiter.py`, wired in `classify_pipeline.apply_ml_role_arbiter`): a vendored cross-encoder that can offer a second opinion on `served` role frames. It is **off by default** (`USE_ML_ROLE_ARBITER=1` to A/B test), is **advisory-only** (attaches a verify note, never changes `role` or any label), and skips stakeholder-reviewed rows entirely.
+
+The ML training/calibration scripts have been archived (`Auditing/archive/`). Requirements for the ML layer are isolated in `requirements-ml.txt`; the default `requirements.txt` excludes them to keep the install lean.
+
+---
+
+## 7. Codebase Architecture & Extensibility Guide
+
+### Module Map
+```
+Engine_1_and_2/
+├── run_all.py                 # Single entry point — runs all engines in order
+├── bootstrap.py               # sys.path setup, dataset resolution, UTF-8 stdout
+├── dataset_config.py          # Which dataset the engine runs on (see below)
+├── Pipeline/
+│   ├── classify_pipeline.py   # Orchestration only — wires the 3 layers
+│   ├── extractors.py          # Layer 1 — signal extraction + role tagging
+│   ├── ethnic_taggerv3.py     # Layer 2 — role inference, context, I/O, main()
+│   ├── resolver.py            # Layer 3 — deterministic state machine (all decisions)
+│   └── Gender_SexID.py        # Gender + sexual identity engines
+├── Constants/
+│   ├── constants.py           # Ethnic patterns, country map, org map, phrase lists
+│   └── gender_constants.py    # Gender/sexual labels, patterns, flags
+├── Semantic_Engine/           # Advisory/hibernated ML (see ->6)
+└── Auditing/                  # Regression, review reports, stakeholder dashboard
+```
+
+### Dataset Switching
+`dataset_config.py` is the single source of truth for which workbook the engine runs on. Change `ACTIVE_DATASET`, or set the `ECF_DATASET` environment variable for a one-off run. Each dataset entry defines its raw/output workbooks, data sheet, and taxonomy sheet. Current datasets: `2025` (default) and `2023_24`.
+
+### How to Extend
+
+**1. Add or modify a rule (Layer 1 data).** Most rules are data, not code: edit the relevant list/map in `Constants/constants.py` (`PATTERN_RULES`, `COUNTRY_REGION_MAP`, `ORG_NAME_ETHNICITY_MAP`, `BROAD_IDENTITY_KEYWORDS`, the role-frame phrase lists, etc.). The extractors pick these up automatically.
+
+**2. Change a classification decision (Layer 3).** All decision logic is in `resolver.py`. Because context flags may never influence which branch fires, decisions stay deterministic and unit-testable in isolation (`test_classify_pipeline.py`).
+
+**3. Add or refine an evidence role (Layer 2).** Roles are inferred in `ethnic_taggerv3.infer_role` from the surrounding-text phrase lists. Add a new frame by extending the matching `ROLE_*` pattern list; scope group-specific frames (like the Indigenous `topic_keep`) at the extractor call site where `level1` is known, to avoid cross-group collisions.
+
+**4. Adjust flag verbosity.** Production notes are intentionally minimal to reduce reviewer fatigue (negation is the only context signal surfaced by default; the rest are available via `build_debug_context_notes`). Flag text is assembled in `resolver.build_output` / `source_flag` and in `classify_pipeline.classify_row`.
+
+> [!IMPORTANT]
+> **Regression discipline:** any engine change should be re-run against the full audited dataset and its output compared against the gold standard before it ships. See `Auditing/regression_audited_rows.py` and `regression_baseline.json`.
+
+---
+
+## 8. Technical Execution Guide
+
+The scripts take **no command-line arguments** — they read/write the fixed paths defined by the active dataset in `dataset_config.py`. Place the data workbook under `Data Sheets/` and the taxonomy under `Taxonomy/` at the repo root before running.
+
+### Recommended: Full Pipeline
+Runs ethnic → gender → sexual in order and writes all columns into the active dataset's workbook:
+
+```powershell
+$env:PYTHONIOENCODING="utf-8"; $env:HF_HUB_OFFLINE="1"; python Engine_1_and_2/run_all.py
+```
+
+(`bootstrap.py` already reconfigures stdout to UTF-8, so `PYTHONIOENCODING` is a belt-and-suspenders safeguard on older shells. `HF_HUB_OFFLINE=1` keeps any model loading offline.)
+
+### Run an Engine Individually
+```powershell
+python Engine_1_and_2/Pipeline/ethnic_taggerv3.py   # ethnic columns (+ optional semantic suggestions if installed)
+python Engine_1_and_2/Pipeline/Gender_SexID.py      # gender + sexual columns
+```
+
+> Note: running only `ethnic_taggerv3.py` leaves the gender/sexual columns (`Gender Id - FR9`, `Sexual Id - FR10`, and their flags) unpopulated. Use `run_all.py` for a complete output.
+
+### One-off Dataset Override
+```powershell
+$env:ECF_DATASET="2023_24"; python Engine_1_and_2/run_all.py
+```
+
+### Optional Diagnostic (embedding thresholds)
+```powershell
+python Engine_1_and_2/Semantic_Engine/diagnose_semantic_scores.py
+```
+
+### Output Columns Written
+| Axis | Columns |
+| :--- | :--- |
+| Ethnic | `Ethnic 1 - FR6`, `Ethnic 2 - FR7`, `Ethnic 3 - FR8`, `Classification Flag` |
+| Gender | `Gender Id - FR9`, `Gender Classification Flag` |
+| Sexual | `Sexual Id - FR10`, `Sexual Classification Flag` |

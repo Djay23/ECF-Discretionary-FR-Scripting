@@ -214,7 +214,7 @@ FAMILY_LEFT_BEHIND_AFTER_PATTERNS = [
 # ---------------------------------------------------------------------------
 GENDER_SILENT_NAME_WOMEN_PATTERN = r"\b(women|woman|girls?|mothers?|sisters?|femmes?)\b"
 GENDER_SILENT_NAME_MEN_PATTERN   = r"\b(men|man|boys?|fathers?|brothers?|hommes?)\b"
-SEXUAL_SILENT_NAME_PATTERN       = r"\b(pride|queer|trans\w*|2slgbtq\w*|lgbt\w*|rainbow)\b"
+SEXUAL_SILENT_NAME_PATTERN       = r"\b(pride|queer|trans\w*|2slgbtq\w*|lgbt\w*)\b"
 
 # ---------------------------------------------------------------------------
 # Ambiguous coded terms — flag without classifying (femme/masc/butch are

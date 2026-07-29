@@ -34,7 +34,7 @@ from gender_constants import (
     BARE_QUEER_PATTERN, BARE_TRANS_PATTERN, GENDER_QUEER_CONTEXT,
     UMBRELLA_ACRONYM_PATTERN,
     # Gender flags
-    FLAG_ASPIRATIONAL, FLAG_TWO_SPIRIT_INDIG, FLAG_NEGATION,
+    FLAG_ASPIRATIONAL, FLAG_NEGATION,
     FLAG_ORG_NAME,
     # Org-name data
     ORG_NAME_CONTEXT_PATTERNS,
@@ -43,7 +43,12 @@ from gender_constants import (
     SEXUAL_SILENT_NAME_PATTERN,
     # Incidental family-context guard
     RELATIONAL_MALE_GUARD_PATTERNS,
+    RELATIONAL_MALE_SERVED_AFTER_PATTERNS, RELATIONAL_MALE_SERVED_BEFORE_PATTERNS,
     FAMILY_LEFT_BEHIND_BEFORE_PATTERNS, FAMILY_LEFT_BEHIND_AFTER_PATTERNS,
+    # Gender-neutral org names (Boys & Girls Club / Big Brothers Big Sisters)
+    GENDER_NEUTRAL_ORG_PATTERNS,
+    # Curated known gender-serving org names (last-resort lookup)
+    GENDER_ORG_NAME_MAP,
     # Sexual identity labels
     SEXUAL_2SLGBTQIA, SEXUAL_GENERAL_POP,
     # Sexual output columns
@@ -123,6 +128,31 @@ def _is_family_left_behind_mention(text, start, end, window=60):
         or matches_any(FAMILY_LEFT_BEHIND_AFTER_PATTERNS, after)
     )
 
+def gender_org_lookup(*texts):
+    """Last-resort curated known-org lookup (see GENDER_ORG_NAME_MAP). Returns
+    the mapped gender label if any curated org name appears in the given
+    text(s), else None. Consulted only when the body carries no served gender
+    signal, mirroring the ethnic ORG_NAME_ETHNICITY_MAP fallback."""
+    blob = " ".join(t for t in texts if t)
+    for org_name, label in GENDER_ORG_NAME_MAP.items():
+        if re.search(r"\b" + re.escape(org_name) + r"\b", blob, re.IGNORECASE):
+            return label
+    return None
+
+def _relational_male_in_served_frame(text, start, end, window=40):
+    """True when a relational-male noun (father/dad/brother/son) at
+    text[start:end] is framed as the SERVED population -- immediately followed
+    by a service noun ("a fathers group") or preceded by a serve verb ("for
+    fathers", "supporting dads"). Only such framed occurrences count as served;
+    a bare/incidental relational mention ("their fathers were not allowed to
+    leave", "dad time", "her little brother kenny") does not."""
+    before = text[max(0, start - window):start]
+    after = text[end:end + window]
+    return (
+        matches_any(RELATIONAL_MALE_SERVED_BEFORE_PATTERNS, before)
+        or matches_any(RELATIONAL_MALE_SERVED_AFTER_PATTERNS, after)
+    )
+
 def classify_gender_from_raw_name(raw_name):
     """
     Generalizable silent-body name rule — gender
@@ -171,10 +201,12 @@ def extract_gender_candidates(text, name_text=""):
     org_echo_keys: set[str]  — subset of keys whose match merely echoes the
         org's own name inside the body (e.g. an org restating its own name
         in its description) rather than describing a served population.
-    family_context_keys: set[str]  — subset of keys whose match is only an
-        incidental family-context mention of an absent/left-behind relative
-        (e.g. "...their fathers... remain in Ukraine") rather than the
-        served population. Disjoint from org_echo_keys.
+    family_context_keys: set[str]  — subset of keys whose match is only a
+        relational male noun (father/dad/brother/son) with no corroborating
+        direct male term (man/men/boy/male) in the body — an incidental
+        family mention (e.g. "...their fathers... remain in Ukraine", or a
+        volunteer who is a father) rather than the served population.
+        Disjoint from org_echo_keys.
     flags_out: set[str]  — annotation flag strings triggered by this text
     any_negated : bool — True if any negation encountered (→ FLAG_NEGATION)
     """
@@ -183,6 +215,17 @@ def extract_gender_candidates(text, name_text=""):
     keys_with_org_echo_occurrence = set()
     flags_out = set()
     any_negated = False
+
+    # Guard 2 — gender-neutral org names. Spans of "Boys & Girls Club" /
+    # "Big Brothers Big Sisters" in the body: gender words inside these name
+    # spans identify the organization, not a served population, and are
+    # skipped below (a genuine served mention elsewhere in the body is
+    # unaffected).
+    neutral_org_spans = [
+        (m.start(), m.end())
+        for pat in GENDER_NEUTRAL_ORG_PATTERNS
+        for m in re.finditer(pat, text, re.IGNORECASE)
+    ]
 
     # Standard (unambiguous) patterns.
     # Scan ALL occurrences (not just the first) so that when a term appears
@@ -194,6 +237,11 @@ def extract_gender_candidates(text, name_text=""):
     for pattern, identity_key, extra_flag_key in GENDER_TERM_PATTERNS:
         for m in re.finditer(pattern, text, re.IGNORECASE):
             term = m.group(0)
+            # Guard 2: a gender word inside a gender-neutral org name
+            # ("Boys & Girls Club", "Big Brothers Big Sisters") names the
+            # organization, not who is served -- skip this occurrence.
+            if any(s <= m.start() and m.end() <= e for s, e in neutral_org_spans):
+                continue
             if is_negated(term, text):
                 any_negated = True
                 continue
@@ -201,21 +249,27 @@ def extract_gender_candidates(text, name_text=""):
                 continue
             keys.add(identity_key)
             is_org_echo = bool(name_text) and _echoes_org_name(text, m.start(), m.end(), name_text)
-            is_family_incidental = (
-                not is_org_echo
-                and pattern in RELATIONAL_MALE_GUARD_PATTERNS
-                and _is_family_left_behind_mention(text, m.start(), m.end())
-            )
+            # Guard 1: a bare relational male noun (father/dad/brother/son) is
+            # not a served signal on its own. It counts as served ONLY if a
+            # direct male term (man/men/boy/male/...) also occurs in the body
+            # -- that direct occurrence lands the key in
+            # keys_with_served_occurrence via the else branch. A relational
+            # occurrence with no such corroboration adds the key but no served
+            # evidence, so it falls into the family-context weak bucket below.
+            # (This subsumes the older left-behind-frame-only demotion; the
+            # narrow FAMILY_LEFT_BEHIND check is no longer needed here.)
+            is_relational_male = pattern in RELATIONAL_MALE_GUARD_PATTERNS
             if is_org_echo:
                 keys_with_org_echo_occurrence.add(identity_key)
-            elif not is_family_incidental:
+            elif is_relational_male and not _relational_male_in_served_frame(text, m.start(), m.end()):
+                pass  # weak: relational male outside a served frame
+            else:
                 keys_with_served_occurrence.add(identity_key)
-            # else: a family-incidental-only occurrence contributes to
-            # neither served nor org-echo -- falls into the weak bucket
-            # below unless a later occurrence rescues it.
 
     weak_keys = keys - keys_with_served_occurrence
     org_echo_keys = weak_keys & keys_with_org_echo_occurrence
+    # Remaining weak keys (relational-male-only, not an org echo) → family
+    # context: present but not confirmed as the served population.
     family_context_keys = weak_keys - org_echo_keys
 
     # Bare "queer" — ambiguity check
@@ -281,8 +335,6 @@ def resolve_gender(keys, flags_set, any_negated, aspirational):
 
     if any_negated:
         flag_parts.append(FLAG_NEGATION)
-    if "two_spirit" in keys:
-        flag_parts.append(FLAG_TWO_SPIRIT_INDIG)
 
     if not keys:
         return GENDER_GENERAL_POP, "; ".join(flag_parts)
@@ -346,6 +398,11 @@ def classify_gender(row):
     # ambiguous-term/negation annotation) — only then does a name-only,
     # org-echo-only, or family-context-only signal matter.
     if not served_keys and not flags_set and not any_negated:
+        # Last-resort curated known-org lookup: a specific org whose served gender is known from
+        # outside the FR text, named in the body/name without a served signal.
+        org_label = gender_org_lookup(body, name)
+        if org_label is not None:
+            return org_label, "Classified from a known organization name - verify served population"
         # Org-echo-only body: the org's own gender-named identity is restated
         # in an otherwise administrative body (e.g. a gender-named org whose
         # body only covers a server replacement). Per the org-name ladder this
@@ -374,7 +431,8 @@ def classify_gender(row):
             groups = sorted(IDENTITY_KEY_SHORT_LABEL[k] for k in family_context_keys)
             notes.append(
                 "Note (low priority): " + ", ".join(groups)
-                + " mentioned only in incidental family context (e.g. relatives left behind) "
+                + " mentioned only in incidental family context (e.g. a relative left "
+                "behind, or a relational term like father/brother outside a served frame) "
                 "- not the served population; verify"
             )
         if notes:

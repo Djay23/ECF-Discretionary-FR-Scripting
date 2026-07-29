@@ -146,7 +146,7 @@ class TestClassifyPipeline(unittest.TestCase):
         self.assertEqual(e1, "Caribbean Origins")
         self.assertEqual(e2, "")
         self.assertEqual(e3, "")
-        self.assertIn("supplementary list", flag)
+        self.assertNotIn("supplementary list", flag)
 
     # ------------------------------------------------------------------
     # 4. Pattern rule case
@@ -426,7 +426,7 @@ class TestClassifyPipeline(unittest.TestCase):
         self.assertEqual(e1, "African Origins")
         self.assertEqual(e2, "Southern and East African Origins")
         self.assertEqual(e3, "Somali")
-        self.assertIn("silent body", flag)
+        self.assertEqual(flag, "")  # ethnic name-inference flag removed (0-error noise)
 
     # ------------------------------------------------------------------
     # 17. Guard clause: Case 13 skips when classification already exists
@@ -755,7 +755,7 @@ class TestSprint2Fixes(unittest.TestCase):
         )
         self.assertEqual(e1, "African Origins")
         self.assertEqual(e2, "Southern and East African Origins")
-        self.assertIn("supplementary list", flag)
+        self.assertNotIn("supplementary list", flag)
 
     # ------------------------------------------------------------------
     # S10. "French Canadian Association" → ethnic kept (not language flag)
@@ -988,7 +988,7 @@ class TestBlueprint2Fixes(unittest.TestCase):
         )
         self.assertEqual(e1, "African Origins")
         self.assertEqual(e2, "Southern and East African Origins")
-        self.assertTrue(flag, "a name-only classification must still be flagged")
+        self.assertEqual(flag, "")  # ethnic name-inference flag removed (0-error noise)
 
     def test_unknown_ethnonym_still_hits_case13_safety_net(self):
         """
@@ -1080,7 +1080,7 @@ class TestNameBodySplit(unittest.TestCase):
         )
         self.assertEqual(e1, "Other Ethnic and Cultural Origins")
         self.assertEqual(e2, "Black, not otherwise specified")
-        self.assertIn("silent body", flag)
+        self.assertEqual(flag, "")  # ethnic name-inference flag removed (0-error noise)
 
     def test_org_echo_ethnic_body_classifies_from_org_name(self):
         """G5: an org-name echo is the body's ONLY ethnic mention ("The Somali
@@ -1098,7 +1098,7 @@ class TestNameBodySplit(unittest.TestCase):
         )
         self.assertEqual(e1, "African Origins")
         self.assertEqual(e3, "Somali")
-        self.assertIn("silent body", flag)
+        self.assertEqual(flag, "")  # ethnic name-inference flag removed (0-error noise)
 
     def test_known_org_in_name_still_classifies(self):
         """A curated known-org name classifies from the name alone even with
@@ -1783,7 +1783,7 @@ class TestG1SilentBodyNameRule(unittest.TestCase):
         )
         self.assertEqual(e1, "African Origins")
         self.assertEqual(e2, "")
-        self.assertIn("silent body", flag)
+        self.assertEqual(flag, "")  # ethnic name-inference flag removed (0-error noise)
 
     def test_silent_body_two_distinct_groups_produces_multiple(self):
         """Two distinct L1 identity terms in a silent-body name -> Multiple."""
@@ -1792,7 +1792,7 @@ class TestG1SilentBodyNameRule(unittest.TestCase):
             TAXONOMY,
         )
         self.assertEqual(e1, MULTIPLE_ETHNIC)
-        self.assertIn("silent body", flag)
+        self.assertEqual(flag, "")  # ethnic name-inference flag removed (0-error noise)
 
     def test_silent_body_bipoc_name_produces_multiple(self):
         """A BIPOC-only silent-body name -> Multiple, same umbrella treatment
@@ -1802,17 +1802,18 @@ class TestG1SilentBodyNameRule(unittest.TestCase):
             TAXONOMY,
         )
         self.assertEqual(e1, MULTIPLE_ETHNIC)
-        self.assertIn("silent body", flag)
+        self.assertEqual(flag, "")  # ethnic name-inference flag removed (0-error noise)
 
     def test_silent_body_islamic_org_stays_general(self):
-        """Exclusion: religion-only silent-body name
-        ('Islamic') stays General + a targeted note, not a guessed ethnicity."""
+        """Exclusion: religion-only silent-body name ('Islamic') stays General,
+        not a guessed ethnicity. No flag -- religion->General was correct on
+        every audited row (21 fires, 0 errors), so flagging it was pure fatigue."""
         e1, e2, e3, flag = classify_row(
             row(name="Islamic Relief Foundation"),
             TAXONOMY,
         )
         self.assertEqual(e1, GENERAL_POP)
-        self.assertIn("not an ethnic signal", flag)
+        self.assertEqual(flag, "")
 
     def test_silent_body_francophone_org_stays_general(self):
         """Exclusion: language-only silent-body name ('Francophone') stays
@@ -2495,14 +2496,15 @@ class TestG7FictionalSettingAndSpuriousTokenCollisions(unittest.TestCase):
         self.assertEqual(e1, GENERAL_POP)
         self.assertIn("topic context only", flag)
 
-    def test_row_egyptian_myth_demotes_but_treaty6_children_stays_indigenous(self):
+    def test_row_egyptian_myth_and_treaty6_geographic_resolve_general(self):
         """Real gold row shape: TWO Egyptian
         mentions ("based on the incomplete tale of an Egyptian prince";
         "based on an Egyptian myth about a Prince") both demote via the
-        BEFORE setting-frame guard ("based on"), but "Treaty 6 children"
-        elsewhere in the same row is a genuine geographic/served reference
-        to real children, not a setting -- must stay Indigenous, not
-        Multiple and not General."""
+        BEFORE setting-frame guard ("based on"). "Treaty 6 children" is a
+        geographic land reference (children in the Treaty 6 region), NOT a
+        served-Indigenous signal -- Treaty 6 no longer classifies on its own
+        (stakeholder ruling) -- so with the Egyptian mentions demoted the row
+        resolves to General, matching gold."""
         e1, e2, e3, flag = classify_row(
             row(
                 desc=(
@@ -2519,7 +2521,7 @@ class TestG7FictionalSettingAndSpuriousTokenCollisions(unittest.TestCase):
             ),
             TAXONOMY,
         )
-        self.assertEqual(e1, "North American Indigenous Origins")
+        self.assertEqual(e1, GENERAL_POP)
 
     def test_byzantine_winter_festival_setting_demotes_to_general(self):
         """Real gold row shape: "Deep Freeze: A

@@ -53,7 +53,12 @@ PATTERN_RULES = [
     (r"\bindiginous\b", "North American Indigenous Origins", "", ""),
     (r"\bindigenious\b", "North American Indigenous Origins", "", ""),
     (r"\bindingeous\b", "North American Indigenous Origins", "", ""),
-    (r"\btreaty 6\b", "North American Indigenous Origins", "", ""),
+    # "Treaty 6" intentionally NOT a pattern rule: "on Treaty 6 territory" is a
+    # boilerplate land acknowledgment, not a served-population signal, so it
+    # must not classify Indigenous on its own (stakeholder ruling). Treaty-6
+    # rows that genuinely serve Indigenous people carry another signal
+    # (indigenous/métis/first nations) that classifies them. A "Treaty 6" in
+    # the org NAME is still caught by the name-only ORG_NAME_ETHNICITY_MAP entry.
     (r"\bnorthern european\b", "European Origins", "Northern European Origins", ""),
     (r"\bsouthern european\b", "European Origins", "Southern European Origins", ""),
     (r"\beast(ern)? european\b", "European Origins", "Eastern European Origins", ""),
@@ -288,8 +293,8 @@ ORG_NAME_ETHNICITY_MAP = {
     # district's residents and businesses generally, and correctly stays
     # General). Keying the full org name gets this row right without making the
     # place name a trigger anywhere else.
-    "edmonton chinatown multicultural centre": (
-        "Asian Origins", "East and Southeast Asian Origins", "Chinese"),
+    "edmonton chinatown multicultural centre": ("Asian Origins", "East and Southeast Asian Origins", "Chinese"),
+    "the shaama centre for seniors and women": ("Asian Origins", "South Asian Origins", ""),
 }
 
 # ============================================================

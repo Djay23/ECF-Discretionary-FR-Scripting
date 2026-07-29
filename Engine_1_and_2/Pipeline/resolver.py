@@ -77,8 +77,6 @@ def source_flag(source: str, level1: str = "") -> str:
     return {
         "pattern": ("Regional phrase matched (e.g. \"North African\", \"South Asian\") "
                     "- resolves to a sub-region, not a specific country or group"),
-        "country": ("Country/nationality recognized via a supplementary list, not the "
-                    "taxonomy sheet - confirm the assigned region is correct"),
         "compound": "Matched a known dual-identity phrase (e.g. \"Afro-Caribbean\") as a single component",
         "broad_identity": ("Broad, non-specific identity term matched (e.g. \"multiracial\", "
                            "\"mixed heritage\") - no specific ethnic group named in the text"),

@@ -187,6 +187,21 @@ RELATIONAL_MALE_GUARD_PATTERNS = [
     r"\bsons?\b",
 ]
 
+# A relational-male noun is the SERVED population (not an incidental family
+# mention) when it sits in an explicit served frame -- immediately followed by
+# a service noun ("a fathers GROUP", "dads PROGRAM") or preceded by a serve
+# verb ("FOR fathers", "SUPPORTING dads"). Without such a frame (e.g. "their
+# fathers were not allowed to leave", "dad time", "her little brother kenny")
+# the mention is weak/incidental. Checked per-occurrence in
+# extract_gender_candidates.
+RELATIONAL_MALE_SERVED_AFTER_PATTERNS = [
+    r"^\s*(?:group|groups|program|programme|club|circle|mentorship|network|drop[\s-]*in)\b",
+]
+RELATIONAL_MALE_SERVED_BEFORE_PATTERNS = [
+    r"\b(?:for|serving|serves?|support|supports?|supporting|empowers?|empowering|"
+    r"mentor(?:s|ing)?|helps?|helping)\s+(?:the\s+|new\s+|young\s+|our\s+)?$",
+]
+
 FAMILY_LEFT_BEHIND_BEFORE_PATTERNS = [
     r"\bseparated\s+from\s*(?:their|his|her)?\s*$",
     r"\bwithout\s+(?:their|his|her)\s*$",
@@ -203,6 +218,35 @@ FAMILY_LEFT_BEHIND_AFTER_PATTERNS = [
     r"^\s*(?:\w+\s+){0,6}still\s+(?:in|living|residing)\b",
     r"^\s*(?:\w+\s+){0,6}unable\s+to\s+(?:join|leave|come)\b",
 ]
+
+# ---------------------------------------------------------------------------
+# Gender-neutral organization names.
+# A handful of well-known org names contain gender words but serve the
+# GENERAL population: "Boys & Girls Club" (youth), "Big Brothers Big Sisters"
+# (mentorship). A gender term (boys/girls/brothers/sisters) matched INSIDE
+# one of these name spans is part of the organization's name, not a
+# served-population signal, so extract_gender_candidates skips that exact
+# occurrence. (normalize_text strips '&' to a space: "Boys & Girls" ->
+# "boys girls"; the explicit "and" is optional in the patterns.)
+# ---------------------------------------------------------------------------
+GENDER_NEUTRAL_ORG_PATTERNS = [
+    r"\bbig\s+brothers?\s+big\s+sisters?\b",
+    r"\bbig\s+brothers?\b",
+    r"\bbig\s+sisters?\b",
+    r"\bboys?\s+(?:and\s+)?girls?\s+clubs?\b",
+    r"\bgirls?\s+(?:and\s+)?boys?\s+clubs?\b",
+]
+
+# Curated known gender-serving org names -- consulted as a LAST RESORT (only
+# when the body carries no served gender signal), mirroring the ethnic
+# ORG_NAME_ETHNICITY_MAP. These are specific orgs whose served gender is known
+# from outside the FR text: e.g. "E Town Brothers Basketball" runs young-men's
+# and Men's competitive leagues, so a row that only names it as a partner would
+# otherwise miss (its "brothers" is a partner org name, not a served signal).
+# Keyed on a distinctive span of the org name.
+GENDER_ORG_NAME_MAP = {
+    "e town brothers basketball": GENDER_MEN_BOYS,
+}
 
 # ---------------------------------------------------------------------------
 # Generalizable silent-body name rule — when the

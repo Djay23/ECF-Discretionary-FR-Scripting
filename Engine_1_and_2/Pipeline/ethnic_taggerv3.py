@@ -56,12 +56,9 @@ Also handles:
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Engine 1 and 2
 import bootstrap 
 
-# Semantic-similarity fallback (see semantic_fallback.py).
-try:
-    import semantic_fallback
-    SEMANTIC_AVAILABLE = True
-except ImportError:
-    SEMANTIC_AVAILABLE = False
+# Semantic/ML suggestion layer ARCHIVED 2026-07-29: the deterministic engine is
+# the sole classification path. semantic_fallback.py / ml_arbiter.py remain under
+# Semantic_Engine/ but are no longer imported or run in production.
 
 from constants import (
     MULTIPLE_ETHNIC, OTHER_ETHNIC, GENERAL_POP,
@@ -124,7 +121,6 @@ OUTPUT_ETHNIC1 = "Ethnic 1 - FR6"
 OUTPUT_ETHNIC2 = "Ethnic 2 - FR7"
 OUTPUT_ETHNIC3 = "Ethnic 3 - FR8"
 OUTPUT_FLAG = "Classification Flag"
-OUTPUT_SEMANTIC = "Semantic Suggestion (REVIEW)"
 
 
 # =======
@@ -1034,20 +1030,7 @@ def main():
     taxonomy_entries = build_taxonomy(tax_df)
     print(f"Taxonomy entries parsed: {len(taxonomy_entries)}")
 
-    # Semantic Fallback - Level 2 Engine
-    semantic_entries = None
-    semantic_embeddings = None
-
-    if SEMANTIC_AVAILABLE:
-        scope_notes = semantic_fallback.build_scope_note_map(
-            tax_df, TAXONOMY_ENTRY1, TAXONOMY_SCOPE_NOTES, safe_display)
-        semantic_entries, semantic_texts = semantic_fallback.build_candidate_texts(
-            taxonomy_entries, scope_notes)
-        semantic_embeddings = semantic_fallback.get_taxonomy_embeddings(semantic_texts)
-    else:
-        print("semantic_fallback not available (sentence-transformers not installed) — skipping semantic suggestions.")
- 
-    for col in [OUTPUT_ETHNIC1, OUTPUT_ETHNIC2, OUTPUT_ETHNIC3, OUTPUT_FLAG, OUTPUT_SEMANTIC]:
+    for col in [OUTPUT_ETHNIC1, OUTPUT_ETHNIC2, OUTPUT_ETHNIC3, OUTPUT_FLAG]:
         if col not in data_df.columns:
             data_df[col] = ""
     # Count how many rows fall into each outcome bucket, for summary stats at the end. Note that these are not mutually exclusive categories (e.g. a row with a pattern match that's also flagged for aspirational language would count in both "pattern" and "flagged"), but they give a general sense of how many hits came from each detection method and how many were flagged for review.
@@ -1058,7 +1041,7 @@ def main():
     # (the unit tests exercise classify_row directly and never hit this path).
     stats = defaultdict(int, {"-Ethnic → 3-level": 0, "-Ethnic → 2-level": 0, "-Ethnic → 1-level": 0, "-Ethnic → Multiple": 0,
               "-Ethnic → Other": 0, "-Ethnic → General": 0, "-Flagged → Ethnic": 0, "-Pattern → Ethnic": 0,
-              "-Country → Ethnic": 0, "-Organization Name → Ethnic": 0, "-Grassroots Filtered → Ethnic": 0, "-Semantic Suggested → Ethnic": 0})
+              "-Country → Ethnic": 0, "-Organization Name → Ethnic": 0, "-Grassroots Filtered → Ethnic": 0})
     
     print(f"\n --- Classification Categories ---\n")
     
@@ -1070,17 +1053,6 @@ def main():
         data_df.at[idx, OUTPUT_ETHNIC3] = e3
         data_df.at[idx, OUTPUT_FLAG] = flag
 
-        # Engine 2 - This is our Semantic fallback layer, which only triggers if Engine 1 returns General Population (i.e. no
-        if SEMANTIC_AVAILABLE and e1 == GENERAL_POP:
-            combined_text = " ".join(t for t in get_column_texts(row) if t.strip())
-            suggestion = semantic_fallback.find_semantic_suggestion(
-                combined_text, semantic_entries, semantic_embeddings)
-            if suggestion:
-                sl1, sl2, sl3, score, margin = suggestion
-                parts = [p for p in [sl1, sl2, sl3] if p]
-                data_df.at[idx, OUTPUT_SEMANTIC] = f"{' / '.join(parts)} (similarity: {score:.2f}, margin: {margin:.2f})"
-                stats["semantic_suggested"] += 1
- 
         if e1 == MULTIPLE_ETHNIC:
             stats["-Ethnic → Multiple"] += 1
         elif e1 == OTHER_ETHNIC:
@@ -1109,7 +1081,7 @@ def main():
     ws = wb[DATA_SHEET]
     headers = {cell.value: cell.column for cell in ws[1]}
 
-    for col_name in [OUTPUT_ETHNIC1, OUTPUT_ETHNIC2, OUTPUT_ETHNIC3, OUTPUT_FLAG, OUTPUT_SEMANTIC]:
+    for col_name in [OUTPUT_ETHNIC1, OUTPUT_ETHNIC2, OUTPUT_ETHNIC3, OUTPUT_FLAG]:
         if col_name not in headers:
             new_col = ws.max_column + 1
             ws.cell(row=1, column=new_col, value=col_name)
@@ -1120,7 +1092,6 @@ def main():
         ws.cell(row=i, column=headers[OUTPUT_ETHNIC2], value=data_df.at[idx, OUTPUT_ETHNIC2])
         ws.cell(row=i, column=headers[OUTPUT_ETHNIC3], value=data_df.at[idx, OUTPUT_ETHNIC3])
         ws.cell(row=i, column=headers[OUTPUT_FLAG],    value=data_df.at[idx, OUTPUT_FLAG])
-        ws.cell(row=i, column=headers[OUTPUT_SEMANTIC], value=data_df.at[idx, OUTPUT_SEMANTIC]) # Writes "" for every row that didn't receive a suggestion (General pop.)
     wb.save(ds.output_file)
 
     print("\nResults:")

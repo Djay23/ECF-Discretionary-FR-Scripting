@@ -462,5 +462,6 @@ Is this something a human reviewer actually needs to look at?
 
 # 2027-07-29
 - Consolidated excel sheet with review column showing why something was flagged, evidence, and where it is found.
-- Filling in amount section for funding requests without info
-- 
+## Next Steps:
+    - Impact Assessment 
+    - Amount column to be filled in for empty rows (after review?)

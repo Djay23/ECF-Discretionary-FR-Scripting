@@ -441,7 +441,32 @@ Is this something a human reviewer actually needs to look at?
     - Nationalities: Formerly Eritrean/Congolese/Oromian unrecognized; Now recognized & Chinatown Centre mapped to Chinese Ethnic group.
     - Flagged classification rows of
 
-# 2027-07-24
+# 2027-07-24 - 2027-07-27
 - Code cleanup
 - Comment cleanup
-- Refactoring bootstrap, Audit files and classify_pipeline
+- Refactoring bootstrap, Audit files and classify_pipeline -> omitted bootstrap & classify_pipeline
+- 2023-2025 -> Final audit of most common problem areas: 
+    - Flagged rows
+    - Ethnic Rows: Indigenous, Multiple
+    - Gender rows: Men, Women, Other
+
+# 2027-07-28
+- Add review details column to 2023/24 and 2025 funding request sheets, showing:
+    - Flag evidence
+    - Reason for flagging
+    - Proposed Classification
+- Review outside of flags: 
+    - Gender: Multiple
+    - Ethnic: Multiple, Indigenous
+- Finish sector classification
+
+# 2027-07-29
+- Consolidated excel sheet with review column showing why something was flagged, evidence, and where it is found.
+## Next Steps:
+    - Impact Assessment 
+    - Amount column to be filled in for empty rows (after review?)
+
+# 2027-07-31
+- Final Review completed with Stakeholders
+- Importing back into SalesForce and exporting to get corrected Amount fields
+- Impact assessment with Power BI or other tool

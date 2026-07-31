@@ -5,8 +5,7 @@ Single entry point for a full classification pass over the active dataset
 (see dataset_config.py -- ACTIVE_DATASET or the ECF_DATASET env var).
 
 Runs, in order, against that dataset's workbook:
-    1. ethnic_taggerv3.main()  -> Ethnic 1/2/3 - FR6/7/8, Classification Flag,
-                                  Semantic Suggestion (REVIEW)
+    1. ethnic_taggerv3.main()  -> Ethnic 1/2/3 - FR6/7/8, Classification Flag
     2. Gender_SexID.main()     -> Gender Id - FR9, Gender Classification Flag,
                                   Sexual Id - FR10, Sexual Classification Flag
 
@@ -19,7 +18,7 @@ gender/sex columns blank. Use this script (or run both engines) for a complete
 output.
 
 To Run:
-    $env:PYTHONIOENCODING="utf-8"; $env:HF_HUB_OFFLINE="1"; python Engine_1_and_2/run_all.py
+    python Engine_1_and_2/run_all.py
 """
 
 import sys

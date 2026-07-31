@@ -164,9 +164,9 @@ Both share the silent-body name rule and family-context guards (so an incidental
 
 Two ML/semantic components exist but do not decide classifications:
 
-1. **Semantic taxonomy suggestion** (`Semantic_Engine/semantic_fallback.py`): a local sentence-embedding model (MiniLM) that, **only for rows the deterministic engine resolved to `General Population`**, suggests the nearest taxonomy entry above a similarity+margin threshold. It never overrides or auto-writes an `Ethnic 1/2/3` result, because embeddings don't understand negation or context override. This only runs when the optional `sentence-transformers` dependency is installed (excluded from the lean default install), so it is effectively dormant in production.
+1. **Semantic taxonomy suggestion** (`Semantic_Engine/semantic_fallback.py`): a local sentence-embedding model (MiniLM) that, **only for rows the deterministic engine resolved to `General Population`**, suggests the nearest taxonomy entry above a similarity+margin threshold. It never overrides or auto-writes an `Ethnic 1/2/3` result, because embeddings don't understand negation or context override. **Archived 2026-07-29:** this path is no longer imported or run by the pipeline — `ethnic_taggerv3` no longer wires it in and writes no semantic column; `semantic_fallback.py` remains under `Semantic_Engine/` for reference only.
 
-    > **Column note:** the review column this originally populated (`OUTPUT_SEMANTIC = "Semantic Suggestion (REVIEW)"` in code) was manually repurposed in the workbook into a human-review/correction column titled **"Classification Accuracy (Corrected in Different Areas)"**. The engine now *reads* that same column as its **stakeholder-reviewed gate** (`STAKEHOLDER_REVIEWED_COL`): any row a human has marked there is skipped by the NLI role arbiter so it can never second-guess a human-confirmed decision. Note the code constant `OUTPUT_SEMANTIC` still carries the old header string and has not been reconciled with the rename.
+    > **Column note:** the review column this originally populated (`OUTPUT_SEMANTIC = "Semantic Suggestion (REVIEW)"` in code) was manually repurposed in the workbook into a human-review/correction column titled **"Classification Accuracy (Corrected in Different Areas)"**. The engine now *reads* that same column as its **stakeholder-reviewed gate** (`STAKEHOLDER_REVIEWED_COL`): any row a human has marked there is skipped by the NLI role arbiter so it can never second-guess a human-confirmed decision. (The old `OUTPUT_SEMANTIC` constant and its column-write were removed when the semantic path was archived, so nothing re-creates the old header anymore.)
 
 2. **NLI role arbiter** (`Semantic_Engine/ml_arbiter.py`, wired in `classify_pipeline.apply_ml_role_arbiter`): a vendored cross-encoder that can offer a second opinion on `served` role frames. It is **off by default** (`USE_ML_ROLE_ARBITER=1` to A/B test), is **advisory-only** (attaches a verify note, never changes `role` or any label), and skips stakeholder-reviewed rows entirely.
 
@@ -221,14 +221,14 @@ The scripts take **no command-line arguments** — they read/write the fixed pat
 Runs ethnic → gender → sexual in order and writes all columns into the active dataset's workbook:
 
 ```powershell
-$env:PYTHONIOENCODING="utf-8"; $env:HF_HUB_OFFLINE="1"; python Engine_1_and_2/run_all.py
+python Engine_1_and_2/run_all.py
 ```
 
-(`bootstrap.py` already reconfigures stdout to UTF-8, so `PYTHONIOENCODING` is a belt-and-suspenders safeguard on older shells. `HF_HUB_OFFLINE=1` keeps any model loading offline.)
+(`bootstrap.py` reconfigures stdout to UTF-8, so no env vars are needed. No ML models load — the pipeline is fully deterministic.)
 
 ### Run an Engine Individually
 ```powershell
-python Engine_1_and_2/Pipeline/ethnic_taggerv3.py   # ethnic columns (+ optional semantic suggestions if installed)
+python Engine_1_and_2/Pipeline/ethnic_taggerv3.py   # ethnic columns
 python Engine_1_and_2/Pipeline/Gender_SexID.py      # gender + sexual columns
 ```
 

@@ -13,7 +13,7 @@ DATASETS = {
     "2025": {
         "raw_file": "Data Sheets/FR testing.xlsx",
         "output_file": "Data Sheets/FR testing.xlsx",
-        "gold_file": "Taxonomy/AUDITED_FR_GOLD.xlsx",
+        "gold_file": "Taxonomy/FR - 2025 (GOLD-AUDIT).xlsx",
         "data_sheet": "Discretionary Funding Requests",
         "taxonomy_file": "Taxonomy/Taxonomy - Definitions.xlsx",
         "taxonomy_sheet": "Ethnic and Cultural Origins",
@@ -21,13 +21,12 @@ DATASETS = {
     "2023_24": {
         "raw_file": "Data Sheets/FR_Engine - 2023-2024.xlsx",
         "output_file": "Data Sheets/FR_Engine - 2023-2024 (engine output).xlsx",
-        "gold_file": None,
+        "gold_file": "Taxonomy/FR - 2023-2024 (GOLD-AUDIT).xlsx",
         "data_sheet": "Discretionary Funding Requests",
         "taxonomy_file": "Taxonomy/Taxonomy - Definitions.xlsx",
         "taxonomy_sheet": "Ethnic and Cultural Origins",
     },
 }
-
 
 def active_config():
     """Return (name, config_dict) for the active dataset. Reads the env var at

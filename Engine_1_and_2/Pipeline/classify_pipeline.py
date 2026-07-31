@@ -178,7 +178,12 @@ def filter_french_language_accommodation(candidates, combined):
 # Generalizable silent-body name rule
 # ---------------------------------------------------------------------------
 
-SILENT_NAME_FLAG = "Classified from organization name (silent body) - verify served population"
+# Removed 2026-07-28: this ETHNIC name-inference flag fired 37x with 0 errors
+# across both gold sheets -- pure reviewer fatigue. Emptied so the returns below
+# produce no flag; the classification from the org name is unchanged. The GENDER
+# axis keeps its own SILENT_NAME_FLAG_TEXT (30 fires, 5 real catches -- the
+# org-name Women/Girls safety net), so this removal is ethnic-only.
+SILENT_NAME_FLAG = ""
 
 # Emitted when a row's ONLY served evidence is the organization naming itself
 # (an org-name echo, or a copula self-description like "X is the only Indigenous
@@ -233,8 +238,10 @@ def classify_from_raw_name(raw_name, taxonomy_entries):
         return None
 
     if matches_any([SILENT_NAME_RELIGION_PATTERN], org_norm):
-        return (GENERAL_POP, "", "",
-                "Religious organization name only - not an ethnic signal; verify served population")
+        # Religion -> General (never guess ethnicity from a religious marker).
+        # No flag: across both gold sheets this fired 21x with 0 errors -- the
+        # call was always correct, so the flag was pure reviewer fatigue.
+        return (GENERAL_POP, "", "", "")
     if matches_any([SILENT_NAME_LANGUAGE_PATTERN], org_norm):
         return (GENERAL_POP, "", "",
                 "Francophone/language organization name only - not an ethnic signal; verify served population")

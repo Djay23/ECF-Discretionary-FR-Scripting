@@ -1,0 +1,38 @@
+# Keep the build context small and the image free of data.
+.git/
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+
+# Workbooks are bind-mounted at runtime, never baked in.
+*.xlsx
+*.xls
+Data Sheets/
+Taxonomy/
+Post Review/
+
+# Caches and local artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.semantic_cache/
+.ml_cache/
+Engine_1_and_2/Semantic_Engine/models/
+Engine_1_and_2/Auditing/regression_baseline.json
+
+# Editor / OS
+.vscode/
+.idea/
+.claude/
+.cursorignore
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docs and planning material aren't needed to run
+Plan Files/
+Documentation/
+*.md
+RUN.bat

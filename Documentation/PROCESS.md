@@ -465,3 +465,8 @@ Is this something a human reviewer actually needs to look at?
 ## Next Steps:
     - Impact Assessment 
     - Amount column to be filled in for empty rows (after review?)
+
+# 2027-07-31
+- Final Review completed with Stakeholders
+- Importing back into SalesForce and exporting to get corrected Amount fields
+- Impact assessment with Power BI or other tool

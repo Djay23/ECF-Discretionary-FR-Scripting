@@ -16,7 +16,7 @@ Moves the corrections you made in the review workbook into the POST REVIEW
 copies (never the authoritative gold).
 
 Flow:
-    1. You + your manager edit Classification Review.xlsx (the mirror of the
+    1. Manual correction of Classification Review.xlsx (the mirror of the
        gold, one sheet per dataset).
     2. This script diffs each review sheet against the matching Post Review
        copy, matched by SF_18_ID_Funding_Request__c (never row position), and
@@ -35,8 +35,8 @@ REVIEW_FILE = bootstrap.PROJECT_ROOT / "Data Sheets" / "Classification Review.xl
 
 # Post Review copies to write to (NOT the authoritative gold).
 POST_REVIEW = {
-    "2025":    bootstrap.PROJECT_ROOT / "Post Review" / "FR - 2025 (GOLD) post review.xlsx",
-    "2023_24": bootstrap.PROJECT_ROOT / "Post Review" / "FR - 2023-2024 (GOLD) post review.xlsx",
+    "2025":    bootstrap.PROJECT_ROOT / "Post Review" / "Discretionary FR - 2025 (GOLD) Final review.xlsx",
+    "2023_24": bootstrap.PROJECT_ROOT / "Post Review" / "Discretionary FR - 2023-2024 (GOLD) Final review.xlsx",
 }
 
 DATA_SHEET = "Discretionary Funding Requests"
@@ -75,20 +75,34 @@ def _s(v):
     return "" if v is None else str(v).strip()
 
 
+class ReviewSyncError(Exception):
+    """A setup problem that must stop the run (missing file, missing sheet).
+    Reported as a plain message, never a traceback."""
+
+
 def diff_dataset(name):
-    """Return (list of changes, review_sheet_name) for one dataset, or None if
-    the review sheet or Post Review copy is missing. A change is
-    (id, request_name, column, old, new)."""
+    """Return (list of changes, review_sheet_name) for one dataset. A change is
+    (id, request_name, column, old, new). Raises ReviewSyncError if the review
+    sheet or the Post Review copy is missing — a missing target is a setup
+    error, never a silent skip."""
     sheet = name.replace("_", "-")
     pr_path = POST_REVIEW.get(name)
-    if pr_path is None or not pr_path.exists():
-        print(f"[{name}] Post Review copy not found ({pr_path}) — skipped.")
-        return None
+    if pr_path is None:
+        raise ReviewSyncError(
+            f"[{name}] no Post Review copy configured. Add an entry for '{name}' "
+            f"to POST_REVIEW in {Path(__file__).name}.")
+    if not pr_path.exists():
+        raise ReviewSyncError(
+            f"[{name}] Post Review copy not found:\n"
+            f"           {pr_path}\n"
+            f"           Check the filename in POST_REVIEW matches the file on disk "
+            f"(it changes when the workbook is renamed).")
     try:
         review = _read_safe(REVIEW_FILE, sheet_name=sheet, dtype=str).fillna("")
     except ValueError:
-        print(f"[{name}] review sheet '{sheet}' not found in {REVIEW_FILE.name} — skipped.")
-        return None
+        raise ReviewSyncError(
+            f"[{name}] review sheet '{sheet}' not found in {REVIEW_FILE.name}. "
+            f"Each dataset needs a sheet named after it with '_' as '-'.")
     pr = _read_safe(pr_path, sheet_name=DATA_SHEET, dtype=str).fillna("")
 
     pr_by_id = {_s(r[ID_COL]): r for _, r in pr.iterrows()}
@@ -135,22 +149,43 @@ def main():
     args = ap.parse_args()
 
     if not REVIEW_FILE.exists():
-        print(f"Review file not found: {REVIEW_FILE}")
+        print(f"ERROR: review file not found:\n           {REVIEW_FILE}")
         return 1
 
+    # Phase 1 — diff every dataset before writing anything, so a missing file or
+    # sheet stops the whole run instead of silently syncing only some datasets.
+    diffs, problems = {}, []
+    for name in DATASETS:
+        try:
+            diffs[name] = diff_dataset(name)
+        except ReviewSyncError as e:
+            problems.append(str(e))
+
+    if problems:
+        print(f"\nABORTED — {len(problems)} dataset(s) could not be synced. "
+              f"Nothing was written.\n")
+        for p in problems:
+            print(f"  ERROR: {p}")
+        print(f"\nFix the above and re-run. Datasets that were fine "
+              f"({', '.join(n for n in diffs) or 'none'}) were left untouched.")
+        return 1
+
+    # Phase 2 — everything resolved; report and (optionally) write.
     total = 0
     for name in DATASETS:
-        result = diff_dataset(name)
-        if result is None:
-            continue
-        changes, sheet = result
+        changes, sheet = diffs[name]
         print(f"\n=== {name} (review sheet '{sheet}' -> {POST_REVIEW[name].name}) ===")
         print(f"  {len(changes)} cell change(s):")
         for rid, nm, col, old, new in changes:
             print(f"    {nm:47} {col:52} {old[:24]!r} -> {new[:24]!r}")
         total += len(changes)
         if args.apply and changes:
-            n = apply_changes(name, changes)
+            try:
+                n = apply_changes(name, changes)
+            except PermissionError:
+                print(f"  ERROR: {POST_REVIEW[name].name} is locked (open in Excel?). "
+                      f"Close it and re-run — nothing was written for {name}.")
+                return 1
             print(f"  applied {n} change(s) to {POST_REVIEW[name].name}")
 
     if not args.apply:

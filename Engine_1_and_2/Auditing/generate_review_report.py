@@ -8,6 +8,8 @@ import bootstrap
 
 import ethnic_taggerv3 as et
 import audit_evidence as ae
+from classify_pipeline import classify_row
+from Gender_SexID import classify_gender, classify_sexual
 from dataset_config import DATASETS
 
 """
@@ -16,8 +18,8 @@ generate_review_report.py
 Builds ONE review workbook that MIRRORS the gold sheets. Read-only: never
 writes back to any gold or funding-requests file.
 
-One sheet per dataset (e.g. "2023-24", "2025"), each a copy of that dataset's
-gold sheet -- the SAME columns the gold carries (classification, flags,
+One sheet per dataset (e.g. "2023-24", "2025"), each the FLAGGED rows of that
+dataset's gold sheet -- the SAME columns the gold carries (classification, flags,
 sector/ECD/AH, source text, the accuracy column, ...) -- with only three
 columns dropped (Account Name, Status, Amount) and ONE column added:
 
@@ -43,13 +45,9 @@ OMIT_COLS = {"Account Name", "Status", "Amount"}
 
 EVIDENCE_COL = "Flag Explanation (why + evidence)"
 
-# Gold flag columns -> axis label + evidence function. The "why" is read from
-# the gold sheet's own flag column so the report tracks the gold, not a re-run.
-FLAG_AXES = [
-    ("ETHNIC", "Classification Flag",        "ethnic"),
-    ("GENDER", "Gender Classification Flag", "gender"),
-    ("SEXUAL", "Sexual Classification Flag", "sexual"),
-]
+# The three flag columns are re-computed LIVE from the current engine (not read
+# from the gold snapshot), so flags removed from the engine never resurface. The
+# classification columns still come straight from the gold (your corrections).
 
 
 def _read_excel_safe(path, **kwargs):
@@ -78,21 +76,21 @@ def _cell(value):
     return "" if text.lower() == "nan" else text
 
 
-def build_evidence_cell(row, taxonomy_entries):
-    """"why + evidence" text for the axes that carry a flag in the GOLD row: the
-    gold's own flag column explains WHY, audit_evidence re-scans the text for
-    WHICH term matched, in WHICH field, + snippet. '' when nothing is flagged."""
-    evidence_fn = {
-        "ethnic": lambda r: ae.ethnic_evidence(r, taxonomy_entries),
-        "gender": ae.gender_evidence,
-        "sexual": ae.sexual_evidence,
-    }
+def build_evidence_cell(row, taxonomy_entries, eth_flag, gen_flag, sex_flag):
+    """"why + evidence" per flagged axis, using the CURRENT engine's live flag as
+    WHY (so removed flags never appear) and audit_evidence for WHERE (which term
+    matched, in which field, + snippet). '' when nothing is flagged."""
+    axes = (
+        ("ETHNIC", eth_flag, lambda r: ae.ethnic_evidence(r, taxonomy_entries)),
+        ("GENDER", gen_flag, ae.gender_evidence),
+        ("SEXUAL", sex_flag, ae.sexual_evidence),
+    )
     blocks = []
-    for label, flag_col, axis in FLAG_AXES:
-        flag = _cell(row.get(flag_col, ""))
+    for label, flag, evidence_fn in axes:
+        flag = _cell(flag)
         if not flag:
             continue
-        evidence = evidence_fn[axis](row).strip() or "(no matching term re-scanned in the text)"
+        evidence = evidence_fn(row).strip() or "(no matching term re-scanned in the text)"
         blocks.append(f"{label} - why: {flag}  |  evidence: {evidence}")
     return "\n".join(blocks)
 
@@ -111,7 +109,24 @@ def build_sheet(name, cfg):
     taxonomy_entries = et.build_taxonomy(tax_df)
 
     df = _read_excel_safe(gold_path, sheet_name=cfg["data_sheet"], dtype=str).fillna("")
-    df[EVIDENCE_COL] = [build_evidence_cell(r, taxonomy_entries) for _, r in df.iterrows()]
+
+    # Live flags + evidence from the current engine. Classification columns stay
+    # as the gold has them; only the three flag columns are overwritten.
+    eth_f, gen_f, sex_f, evidence = [], [], [], []
+    for _, r in df.iterrows():
+        ef = classify_row(r, taxonomy_entries)[3]
+        gf = classify_gender(r)[1]
+        sf = classify_sexual(r)[1]
+        eth_f.append(ef); gen_f.append(gf); sex_f.append(sf)
+        evidence.append(build_evidence_cell(r, taxonomy_entries, ef, gf, sf))
+    df["Classification Flag"] = eth_f
+    df["Gender Classification Flag"] = gen_f
+    df["Sexual Classification Flag"] = sex_f
+    df[EVIDENCE_COL] = evidence
+
+    # Review sheet = flagged rows only (any axis flag from the current engine).
+    df = df[[bool(_cell(e) or _cell(g) or _cell(s))
+             for e, g, s in zip(eth_f, gen_f, sex_f)]]
 
     keep = [c for c in df.columns if c not in OMIT_COLS]
     sheet_name = name.replace("_", "-")[:31]  # Excel sheet-name limit / no '/'

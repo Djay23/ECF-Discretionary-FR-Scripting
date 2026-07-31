@@ -210,6 +210,21 @@ def _load_gold(ds):
     fp = ds.gold_file
     df = pd.read_excel(fp, dtype=str).fillna("")
 
+    # Flag columns are recomputed LIVE from the current engine so flags removed
+    # from the engine don't resurface from the gold's stored snapshot. The
+    # classification/accuracy columns below still come from the gold (human-
+    # corrected in place).
+    import ethnic_taggerv3 as _et
+    from classify_pipeline import classify_row as _classify_row
+    import Gender_SexID as _gs
+    _entries = _et.build_taxonomy(
+        pd.read_excel(ds.taxonomy_file, sheet_name=_et.TAXONOMY_SHEET, dtype=str))
+    live_eflag, live_gflag, live_sflag = [], [], []
+    for _, r in df.iterrows():
+        live_eflag.append(_classify_row(r, _entries)[3])
+        live_gflag.append(_gs.classify_gender(r)[1])
+        live_sflag.append(_gs.classify_sexual(r)[1])
+
     # Column names below are AUDITED_FR_GOLD.xlsx's. The previous mapping used
     # the older audit_gold_audited.xlsx schema ("Ethnic 1 (engine)",
     # "Classification Flag (engine)", "Correct Ethnic 1"), none of which exist
@@ -250,9 +265,9 @@ def _load_gold(ds):
         COL["ethnic3"]:        df.get(GOLD_ETHNIC3, ""),
         COL["gender"]:         df[GOLD_GENDER],
         COL["sexual"]:         df.get(GOLD_SEXUAL, ""),
-        COL["ethnic_flag"]:    df[GOLD_ETHNIC_FLAG],
-        COL["gender_flag"]:    df.get(GOLD_GENDER_FLAG, ""),
-        COL["sexual_flag"]:    df.get(GOLD_SEXUAL_FLAG, ""),
+        COL["ethnic_flag"]:    live_eflag,
+        COL["gender_flag"]:    live_gflag,
+        COL["sexual_flag"]:    live_sflag,
         COL["correct_ethnic"]: _correct("ethnic", GOLD_ETHNIC1),
         COL["correct_gender"]: _correct("gender", GOLD_GENDER),
         COL["correct_sexual"]: _correct("sexual", GOLD_SEXUAL),

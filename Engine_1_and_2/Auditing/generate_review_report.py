@@ -145,7 +145,8 @@ def main():
         print("No gold sheets available -- nothing written.")
         return 1
 
-    out_path = bootstrap.PROJECT_ROOT / "Data Sheets" / "Classification Review.xlsx"
+    import paths
+    out_path = paths.REVIEW_FILE
     with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
         for sheet_name, df in sheets:
             df.to_excel(writer, sheet_name=sheet_name, index=False)

@@ -18,18 +18,24 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ENGINE = PROJECT_ROOT / "Engine_1_and_2"
 AUDIT = ENGINE / "Auditing"
 
-DATASETS = {
-    "1": ("2025", "2025"),
-    "2": ("2023_24", "2023-2024"),
-}
+sys.path.insert(0, str(ENGINE))
+import paths  # noqa: E402  (needs ENGINE on sys.path first)
 
-# Files that the user commonly leaves open in Excel, which blocks writing.
-LOCKABLE = [
-    PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx",
-    PROJECT_ROOT / "Data Sheets" / "Classification Review.xlsx",
-    PROJECT_ROOT / "Post Review" / "Discretionary FR - 2025 (GOLD) Final review.xlsx",
-    PROJECT_ROOT / "Post Review" / "Discretionary FR - 2023-2024 (GOLD) Final review.xlsx",
-]
+
+def datasets():
+    """Every dataset found in the Data Sheets folder, newest last.
+    Nothing here is hardcoded: drop a workbook in the folder and it appears."""
+    return list(paths.discover().values())
+
+
+def lockable():
+    """Files a user commonly leaves open in Excel, which blocks writing."""
+    files = [paths.REVIEW_FILE]
+    for d in datasets():
+        files.append(d.source)
+        if d.final_review:
+            files.append(d.final_review)
+    return files
 
 BAR = "=" * 62
 
@@ -38,8 +44,20 @@ def clear():
     os.system("cls" if os.name == "nt" else "clear")
 
 
+def ask(prompt_text=""):
+    """input() that cannot crash the tool. A closed or redirected stdin (which
+    happens when this is launched by something other than a console window)
+    reads as EOF. Returns None in that case -- distinct from "", so the menu
+    can stop instead of spinning forever on an input it will never get."""
+    try:
+        return input(prompt_text)
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return None
+
+
 def pause():
-    input("\nPress Enter to return to the menu...")
+    ask("\nPress Enter to return to the menu...")
 
 
 def is_locked(path):
@@ -55,9 +73,9 @@ def is_locked(path):
         return False
 
 
-def warn_if_locked(paths):
+def warn_if_locked(files):
     """Return True if it's safe to continue."""
-    locked = [p for p in paths if is_locked(p)]
+    locked = [p for p in files if is_locked(p)]
     if not locked:
         return True
     print("\n  These files are open in Excel and cannot be updated:\n")
@@ -94,9 +112,9 @@ def do_classify(dataset, label):
     print(f"{BAR}\n  RUN CLASSIFICATION  --  {label}\n{BAR}")
     print("\n  This reads the funding-request workbook and fills in the ethnic,")
     print("  gender and sexual-identity columns. It can take a few minutes.\n")
-    if input("  Type Y to start, or press Enter to cancel: ").strip().lower() != "y":
+    if (ask("  Type Y to start, or press Enter to cancel: ") or "").strip().lower() != "y":
         return
-    if not warn_if_locked(LOCKABLE):
+    if not warn_if_locked(lockable()):
         return pause()
     print()
     if run(ENGINE / "run_all.py", dataset=dataset) == 0:
@@ -110,7 +128,7 @@ def do_review_report():
     print("\n  Creates 'Data Sheets/Classification Review.xlsx' -- the file you")
     print("  type your corrections into. It covers every dataset at once and")
     print("  does not change any gold file.\n")
-    if not warn_if_locked([PROJECT_ROOT / "Data Sheets" / "Classification Review.xlsx"]):
+    if not warn_if_locked([paths.REVIEW_FILE]):
         return pause()
     print()
     if run(AUDIT / "generate_review_report.py") == 0:
@@ -129,17 +147,17 @@ def do_apply():
         return pause()
 
     print(f"\n{BAR}")
-    print("  Step 2 of 2: write these changes into the Post Review files?")
+    print("  Step 2 of 2: write these changes into the Final Review files?")
     print("  (The list above shows every cell that would change.)")
     print(BAR)
-    if input("\n  Type YES to write them, or press Enter to cancel: ").strip() != "YES":
+    if (ask("\n  Type YES to write them, or press Enter to cancel: ") or "").strip() != "YES":
         print("\n  Cancelled. Nothing was written.")
         return pause()
-    if not warn_if_locked(LOCKABLE):
+    if not warn_if_locked(lockable()):
         return pause()
     print()
     if run(AUDIT / "apply_review_corrections.py", ["--apply"]) == 0:
-        print("\n  Done. Your corrections are in the Post Review files.")
+        print("\n  Done. Your corrections are in the Final Review files.")
     pause()
 
 
@@ -165,22 +183,40 @@ def do_healthcheck():
             print(f"     MISSING  {mod}")
             ok = False
 
-    print("\n  Required files:")
-    needed = [
-        PROJECT_ROOT / "Taxonomy" / "Taxonomy - Definitions.xlsx",
-        PROJECT_ROOT / "Data Sheets" / "FR testing.xlsx",
-        PROJECT_ROOT / "Data Sheets" / "FR_Engine - 2023-2024.xlsx",
-    ] + LOCKABLE[2:]
-    for p in needed:
-        if p.exists():
-            print(f"     OK       {p.name}")
+    print(f"\n  Working folders are in:\n     {paths.WORKSPACE}")
+
+    print("\n  Folders:")
+    for folder in (paths.DATA_DIR, paths.TAXONOMY_DIR, paths.FINAL_REVIEW_DIR):
+        if folder.exists():
+            print(f"     OK       {folder.name}")
         else:
-            print(f"     MISSING  {p.name}")
-            print(f"                (expected in '{p.parent.name}')")
+            print(f"     MISSING  {folder.name}   -- create this folder")
             ok = False
 
+    tax = paths.taxonomy_file()
+    print("\n  Taxonomy definitions:")
+    if tax:
+        print(f"     OK       {tax.name}")
+    else:
+        print(f"     MISSING  no definitions workbook in '{paths.TAXONOMY_DIR.name}'")
+        ok = False
+
+    print("\n  Datasets found:")
+    found = datasets()
+    if not found:
+        print(f"     NONE     put a funding-request workbook in "
+              f"'{paths.DATA_DIR.name}',")
+        print( "                named with its year, e.g. 'FR 2026.xlsx'")
+        ok = False
+    for d in found:
+        print(f"     {d.name}")
+        print(f"        source        {d.source.name}")
+        print(f"        gold          {d.gold.name if d.gold else '(none yet)'}")
+        print(f"        final review  "
+              f"{d.final_review.name if d.final_review else '(none yet)'}")
+
     print("\n  Files currently open in Excel:")
-    locked = [p for p in LOCKABLE if is_locked(p)]
+    locked = [p for p in lockable() if is_locked(p)]
     if locked:
         for p in locked:
             print(f"     LOCKED   {p.name}  -- close it before running anything")
@@ -195,10 +231,57 @@ def do_healthcheck():
     pause()
 
 
+def first_run_setup():
+    """Create the working folders (and their READMEs) if they aren't there yet,
+    and tell the user where they are. Does nothing on later runs."""
+    try:
+        created = paths.ensure_workspace()
+    except OSError as e:
+        clear()
+        print(f"{BAR}\n  COULD NOT CREATE THE WORKING FOLDERS\n{BAR}\n")
+        print(f"  Tried to create them in:\n      {paths.WORKSPACE}\n")
+        print(f"  Windows said: {e}\n")
+        print( "  This is usually a permissions problem, or OneDrive still")
+        print( "  syncing. Wait for OneDrive to finish, then try again.")
+        ask("\nPress Enter to close...")
+        return False
+
+    if created:
+        clear()
+        print(f"{BAR}\n  FOLDERS CREATED\n{BAR}\n")
+        print( "  Your working folders have been set up here:\n")
+        print(f"      {paths.WORKSPACE}\n")
+        for folder in created:
+            print(f"      {folder.name}")
+        print("\n  Each one contains a README.txt explaining exactly what")
+        print( "  files belong in it and what the tool does with them.")
+        print( "  There is also a START HERE.txt in the main folder.\n")
+        print( "  Put your workbooks in those folders, then run this again.")
+        ask("\nPress Enter to close...")
+        return False
+    return True
+
+
 def menu():
-    choice_ds = "1"
+    if not first_run_setup():
+        return 0
+
+    found = datasets()
+    if not found:
+        clear()
+        print(f"{BAR}\n  NO DATA FOUND\n{BAR}\n")
+        print( "  There are no funding-request workbooks in:\n")
+        print(f"      {paths.DATA_DIR}\n")
+        print( "  Put at least one .xlsx there, named with its year, e.g.")
+        print( "      Discretionary Funding Requests - 2026.xlsx\n")
+        print( "  The README.txt in that folder explains what is expected.")
+        ask("\nPress Enter to close...")
+        return 1
+
+    idx = 0
     while True:
-        dataset, label = DATASETS[choice_ds]
+        d = found[idx]
+        dataset = label = d.name
         clear()
         print(f"""
 {BAR}
@@ -212,11 +295,14 @@ def menu():
   3.  Apply my review corrections
   4.  Build stakeholder dashboard
 
-  D.  Switch dataset (currently {label})
+  D.  Switch dataset  ({idx + 1} of {len(found)}: {", ".join(x.name for x in found)})
   C.  Check everything is set up
   0.  Exit
 """)
-        c = input("  Choose an option: ").strip().lower()
+        c = ask("  Choose an option: ")
+        if c is None:          # stdin closed -- stop rather than loop forever
+            return 0
+        c = c.strip().lower()
 
         if c == "1":
             do_classify(dataset, label)
@@ -227,7 +313,7 @@ def menu():
         elif c == "4":
             do_dashboard(dataset, label)
         elif c == "d":
-            choice_ds = "2" if choice_ds == "1" else "1"
+            idx = (idx + 1) % len(found)
         elif c == "c":
             do_healthcheck()
         elif c == "0":
@@ -247,7 +333,7 @@ def main():
         print(f"  Details: {type(e).__name__}: {e}")
         print("  Send this message to whoever maintains the tool.")
         print(BAR)
-        input("\nPress Enter to close...")
+        ask("\nPress Enter to close...")
         return 1
 
 

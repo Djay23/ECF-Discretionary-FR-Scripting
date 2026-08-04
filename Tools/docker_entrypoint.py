@@ -22,7 +22,7 @@ COMMANDS = {
     "preview":   (AUDIT / "apply_review_corrections.py",    [],
                   "Show which corrections would be applied (writes nothing)"),
     "apply":     (AUDIT / "apply_review_corrections.py",    ["--apply"],
-                  "Write the corrections into the Post Review files"),
+                  "Write the corrections into the Final Review files"),
     "dashboard": (AUDIT / "generate_stakeholder_dashboard.py", [],
                   "Build the stakeholder dashboard for ECF_DATASET"),
 }

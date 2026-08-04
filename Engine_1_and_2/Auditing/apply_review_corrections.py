@@ -6,40 +6,44 @@ import pandas as pd
 from openpyxl import load_workbook
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Engine 1 and 2
-import bootstrap
+import bootstrap  # noqa: F401  (imported for effect: sys.path + UTF-8 stdout,
+                  # which the em-dashes in this script's output depend on)
 from dataset_config import DATASETS
 
 """
 apply_review_corrections.py
 ---------------------------
-Moves the corrections you made in the review workbook into the POST REVIEW
+Moves the corrections you made in the review workbook into the FINAL REVIEW
 copies (never the authoritative gold).
 
 Flow:
     1. Manual correction of Classification Review.xlsx (the mirror of the
        gold, one sheet per dataset).
-    2. This script diffs each review sheet against the matching Post Review
+    2. This script diffs each review sheet against the matching Final Review
        copy, matched by SF_18_ID_Funding_Request__c (never row position), and
        reports every cell you changed in the classification/audit columns.
-    3. With --apply, it writes ONLY those changed cells into the Post Review
+    3. With --apply, it writes ONLY those changed cells into the Final Review
        copy. Source text, IDs, and everything outside SYNC_COLS are untouched.
 
 Default is a DRY RUN: it prints every pending change and writes nothing.
-Add --apply to actually write to the Post Review copies.
+Add --apply to actually write to the Final Review copies.
 
     python Engine_1_and_2/Auditing/apply_review_corrections.py           # dry run
     python Engine_1_and_2/Auditing/apply_review_corrections.py --apply   # write
 """
 
-REVIEW_FILE = bootstrap.PROJECT_ROOT / "Data Sheets" / "Classification Review.xlsx"
+import paths
 
-# Post Review copies to write to (NOT the authoritative gold).
-POST_REVIEW = {
-    "2025":    bootstrap.PROJECT_ROOT / "Post Review" / "Discretionary FR - 2025 (GOLD) Final review.xlsx",
-    "2023_24": bootstrap.PROJECT_ROOT / "Post Review" / "Discretionary FR - 2023-2024 (GOLD) Final review.xlsx",
-}
+REVIEW_FILE = paths.REVIEW_FILE
 
-DATA_SHEET = "Discretionary Funding Requests"
+# Final Review copies to write to (NOT the authoritative gold). Discovered by
+# matching the dataset year in the filename -- renaming a workbook no longer
+# requires editing this file.
+POST_REVIEW = {name: d.final_review
+               for name, d in paths.discover().items()
+               if d.final_review}
+
+DATA_SHEET = paths.DATA_SHEET
 ID_COL = "SF_18_ID_Funding_Request__c"
 
 # Only these columns are ever compared/written. Source text, IDs, and the
@@ -83,20 +87,21 @@ class ReviewSyncError(Exception):
 def diff_dataset(name):
     """Return (list of changes, review_sheet_name) for one dataset. A change is
     (id, request_name, column, old, new). Raises ReviewSyncError if the review
-    sheet or the Post Review copy is missing — a missing target is a setup
+    sheet or the Final Review copy is missing — a missing target is a setup
     error, never a silent skip."""
     sheet = name.replace("_", "-")
     pr_path = POST_REVIEW.get(name)
     if pr_path is None:
         raise ReviewSyncError(
-            f"[{name}] no Post Review copy configured. Add an entry for '{name}' "
-            f"to POST_REVIEW in {Path(__file__).name}.")
+            f"[{name}] no Final Review copy found for dataset '{name}'.\n"
+            f"           Put one in: {paths.FINAL_REVIEW_DIR}\n"
+            f"           Its filename must contain the same year, e.g. "
+            f"'Discretionary Funding Requests - {name} (GOLD) Final review.xlsx'.")
     if not pr_path.exists():
         raise ReviewSyncError(
-            f"[{name}] Post Review copy not found:\n"
+            f"[{name}] Final Review copy has gone missing since it was found:\n"
             f"           {pr_path}\n"
-            f"           Check the filename in POST_REVIEW matches the file on disk "
-            f"(it changes when the workbook is renamed).")
+            f"           It was probably renamed, moved, or is still syncing.")
     try:
         review = _read_safe(REVIEW_FILE, sheet_name=sheet, dtype=str).fillna("")
     except ValueError:
@@ -122,7 +127,7 @@ def diff_dataset(name):
 
 
 def apply_changes(name, changes):
-    """Write the changed cells into the Post Review copy (matched by ID)."""
+    """Write the changed cells into the Final Review copy (matched by ID)."""
     pr_path = POST_REVIEW[name]
     wb = load_workbook(pr_path)
     ws = wb[DATA_SHEET]
@@ -145,7 +150,7 @@ def apply_changes(name, changes):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true",
-                    help="write the changes into the Post Review copies (default: dry run)")
+                    help="write the changes into the Final Review copies (default: dry run)")
     args = ap.parse_args()
 
     if not REVIEW_FILE.exists():
@@ -190,9 +195,9 @@ def main():
 
     if not args.apply:
         print(f"\nDRY RUN — {total} change(s) pending. Re-run with --apply to write them "
-              f"to the Post Review copies.")
+              f"to the Final Review copies.")
     else:
-        print(f"\nDONE — {total} change(s) written to the Post Review copies "
+        print(f"\nDONE — {total} change(s) written to the Final Review copies "
               f"(authoritative gold untouched).")
     return 0
 

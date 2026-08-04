@@ -1,0 +1,28 @@
+ECF DISCRETIONARY FUNDING REQUESTS - CLASSIFICATION
+===================================================
+
+This folder holds the files the classification tool reads and writes.
+There are three folders, and each one has a README.txt explaining exactly
+what belongs in it. Open those if you are unsure.
+
+    Data Sheets     the funding request workbooks to be classified
+    Taxonomy        the taxonomy definitions, and audited GOLD copies
+    Final Review    the audited copies your corrections are written into
+
+THE ONE RULE
+------------
+Name each funding request workbook with its year:
+
+    Discretionary Funding Requests - 2026.xlsx
+
+The tool reads the year from the filename. That is how it knows which files
+belong together. Everything else is automatic.
+
+TO RUN THE TOOL
+---------------
+Double-click RUN.bat in the tool folder, then choose an option from the menu.
+Press C on that menu at any time to see what the tool has found and what is
+still missing.
+
+Close any workbook in Excel before running the tool. Excel locks files it has
+open, and the tool cannot write to a locked file. It will tell you which one.

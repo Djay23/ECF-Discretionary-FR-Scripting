@@ -231,7 +231,8 @@ def drift_report(src_data_path):
         from classify_pipeline import classify_row as pipeline_classify_row
         import Gender_SexID as gs
 
-        tax_path = bootstrap.PROJECT_ROOT / "Taxonomy" / "Taxonomy - Definitions.xlsx"
+        import paths
+        tax_path = paths.taxonomy_file()
         tax_df = pd.read_excel(tax_path, sheet_name=et.TAXONOMY_SHEET, dtype=str)
         taxonomy_entries = et.build_taxonomy(tax_df)
         # Read via a temp copy so a live Excel/OneDrive lock on the workbook

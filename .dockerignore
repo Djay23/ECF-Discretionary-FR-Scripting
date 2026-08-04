@@ -11,7 +11,7 @@ __pycache__/
 *.xls
 Data Sheets/
 Taxonomy/
-Post Review/
+Final Review/
 
 # Caches and local artifacts
 .pytest_cache/

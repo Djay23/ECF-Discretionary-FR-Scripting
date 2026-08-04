@@ -24,4 +24,4 @@ services:
       # the .venv.
       - "./Data Sheets:/work/Data Sheets"
       - "./Taxonomy:/work/Taxonomy"
-      - "./Post Review:/work/Post Review"
+      - "./Final Review:/work/Final Review"

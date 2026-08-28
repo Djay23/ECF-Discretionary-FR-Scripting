@@ -55,6 +55,8 @@ Also handles:
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Engine 1 and 2
 import bootstrap 
+import safe_save
+
 
 # Semantic/ML suggestion layer ARCHIVED 2026-07-29: the deterministic engine is
 # the sole classification path. semantic_fallback.py / ml_arbiter.py remain under
@@ -1092,7 +1094,7 @@ def main():
         ws.cell(row=i, column=headers[OUTPUT_ETHNIC2], value=data_df.at[idx, OUTPUT_ETHNIC2])
         ws.cell(row=i, column=headers[OUTPUT_ETHNIC3], value=data_df.at[idx, OUTPUT_ETHNIC3])
         ws.cell(row=i, column=headers[OUTPUT_FLAG],    value=data_df.at[idx, OUTPUT_FLAG])
-    wb.save(ds.output_file)
+    safe_save.save_workbook(wb, ds.output_file)
 
     print("\nResults:")
     for k, v in stats.items():

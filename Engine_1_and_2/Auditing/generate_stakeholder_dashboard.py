@@ -19,10 +19,12 @@ the board. It tells two clearly-separated stories:
 READ-ONLY: never runs the engine's write-back, never modifies FR testing.xlsx.
 
 Two data-source modes (set MODE below):
-  "gold"  (default) — Taxonomy/audit_gold_audited.xlsx (448 rows). Already carries
-                      engine output + human "Correct ..." columns, so accuracy is
-                      reportable and no live classification is needed.
-  "live"            — Data Sheets/FR testing.xlsx. Classifies every row live by
+  "gold"  (default) — the dataset's Final Review copy: engine output with the
+                      reviewer's corrections already applied (what menu option 3
+                      writes). Falls back to the gold snapshot in Taxonomy/ if a
+                      dataset has no Final Review copy yet. Accuracy is reportable
+                      straight from the file, so no live classification is needed.
+  "live"            — the dataset's source workbook. Classifies every row live by
                       reusing the same per-row loop as generate_review_report.py,
                       and picks up the pending Sector / Affordable Housing (AH) /
                       Early Childhood Development (ECD) columns once they are
@@ -45,6 +47,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Engine_1_and_2
 import bootstrap  # noqa: F401  (sets sys.path + UTF-8 stdout, defines PROJECT_ROOT)
+import paths  # noqa: E402  (resolves the workspace -- may be outside PROJECT_ROOT)
 
 import pandas as pd
 
@@ -60,7 +63,7 @@ TOP_FLAGS = 12                     # rows in the top-flags table
 GENERAL_VARIANTS = {ETHNIC_GENERAL_POP, GENDER_GENERAL_POP, SEXUAL_GENERAL_POP}
 LOW_PRIORITY_PREFIX = "note (low priority)"
 
-# --- AUDITED_FR_GOLD.xlsx column names -------------------------------------
+# --- Column names, shared by the gold and Final Review copies -------------------------------------
 GOLD_ETHNIC1     = "Ethnic 1 - FR6"
 GOLD_ETHNIC2     = "Ethnic 2 - FR7"
 GOLD_ETHNIC3     = "Ethnic 3 - FR8"
@@ -201,13 +204,34 @@ def load_records(ds):
     raise ValueError(f"Unknown MODE {MODE!r}")
 
 
+def _reviewed_source(ds):
+    """The workbook that represents the FINISHED state of a dataset: engine
+    classification with the reviewer's corrections applied on top.
+
+    That is the Final Review copy -- the file apply_review_corrections.py
+    writes into (menu option 3). The gold copy in Taxonomy/ is the audited
+    snapshot BEFORE those corrections, so reporting from it understates the
+    work: at the time of writing the 2025 Final Review copy carried 18
+    corrected classification cells the gold copy did not, and 2023_24 carried
+    23. Gold is still the fallback for a dataset whose corrections have not
+    been applied yet."""
+    fr = getattr(ds, "final_review_file", None)
+    if fr is not None and fr.exists():
+        return fr, "Final Review (corrections applied)"
+    if ds.gold_file is not None:
+        return ds.gold_file, "gold snapshot (no Final Review copy yet)"
+    return None, None
+
+
 def _load_gold(ds):
-    if ds.gold_file is None:
+    fp, which = _reviewed_source(ds)
+    if fp is None:
         raise SystemExit(
-            f"Dataset '{ds.name}' has no gold file; MODE=\"gold\" is not available "
-            f"for this dataset. Use MODE=\"live\" instead."
+            f"Dataset '{ds.name}' has neither a Final Review copy nor a gold "
+            f"file; MODE=\"gold\" is not available for this dataset. "
+            f"Use MODE=\"live\" instead."
         )
-    fp = ds.gold_file
+    print(f"[dashboard] reading {which}: {fp.name}")
     df = pd.read_excel(fp, dtype=str).fillna("")
 
     # Flag columns are recomputed LIVE from the current engine so flags removed
@@ -231,13 +255,22 @@ def _load_gold(ds):
     # here -- and because df.get() returns a default instead of raising, every
     # label and flag silently came back blank. The dashboard rendered 448
     # records with 0 flags and empty equity charts rather than failing.
-    missing = [c for c in (GOLD_ETHNIC1, GOLD_GENDER, GOLD_ETHNIC_FLAG, GOLD_VERDICT)
+    missing = [c for c in (GOLD_ETHNIC1, GOLD_GENDER, GOLD_ETHNIC_FLAG)
                if c not in df.columns]
     if missing:
         raise SystemExit(
             f"{fp.name} is missing expected column(s): {missing}\n"
             f"Found: {[c for c in df.columns if not str(c).startswith('Unnamed')]}"
         )
+
+    if GOLD_VERDICT not in df.columns:
+        # A dataset reviewed for the first time has no human verdicts yet --
+        # that column only appears once somebody has audited rows. Treat it as
+        # empty rather than refusing to build: the equity and flag lenses come
+        # from the classification columns and are perfectly valid without it,
+        # and accuracy() already reports "0 of N audited" when there are none.
+        df = df.copy()
+        df[GOLD_VERDICT] = ""
 
     verdicts = df[GOLD_VERDICT].map(parse_audit_verdict)
 
@@ -909,7 +942,10 @@ def main():
 
     report_name = ("stakeholder_dashboard.html" if ds.name == "2025"
                     else f"stakeholder_dashboard_{ds.name}.html")
-    output_file = bootstrap.PROJECT_ROOT / "Data Sheets" / report_name
+    # Write into the ACTIVE workspace's Data Sheets folder, not the repo's --
+    # they differ whenever ECF_WORKSPACE points at a Desktop folder or a
+    # Docker bind mount.
+    output_file = paths.DATA_DIR / report_name
 
     df, meta = load_records(ds)
     total = len(df)

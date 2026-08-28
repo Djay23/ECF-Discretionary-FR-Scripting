@@ -170,18 +170,40 @@ Two ML/semantic components exist but do not decide classifications:
 
 2. **NLI role arbiter** (`Semantic_Engine/ml_arbiter.py`, wired in `classify_pipeline.apply_ml_role_arbiter`): a vendored cross-encoder that can offer a second opinion on `served` role frames. It is **off by default** (`USE_ML_ROLE_ARBITER=1` to A/B test), is **advisory-only** (attaches a verify note, never changes `role` or any label), and skips stakeholder-reviewed rows entirely.
 
-The ML training/calibration scripts have been archived (`Auditing/archive/`). Requirements for the ML layer are isolated in `requirements-ml.txt`; the default `requirements.txt` excludes them to keep the install lean.
+The ML training/calibration scripts have been archived (`Auditing/archive/`). Requirements for the ML layer are isolated in `Maintainer/requirements-ml.txt`; the default `Maintainer/requirements.txt` excludes them to keep the install lean.
 
 ---
 
 ## 7. Codebase Architecture & Extensibility Guide
 
+### Top-Level Layout
+The repo root was reorganized so a non-technical staff member never has to look past the top:
+```
+ECF Classification.exe      # what staff double-click (built by Maintainer/build-exe.bat)
+START HERE.txt              # first-run orientation, auto-created in the workspace
+HOW TO RUN.md               # staff-facing run instructions
+Data Sheets/                # funding-request workbooks to classify (see "How Files Are Found" below)
+Taxonomy/                   # taxonomy definitions + GOLD snapshots
+Final Review/                # hand-audited copies corrections are written into
+Engine_1_and_2/              # the classification engine (this section)
+Documentation/, Plan Files/  # project notes, unrelated to runtime
+Maintainer/                  # build/deploy tooling — not needed to just run the tool
+```
+`Maintainer/` holds the `Dockerfile`, `docker-compose.yml`, `build-exe.bat`, the PyInstaller
+`ECF Classification.spec`, `RUN.bat`, the `RUN (Docker).bat` / `run-docker.sh` launchers,
+`Tools/` (the actual entry-point scripts the launchers invoke), and the `requirements*.txt`
+files.
+
 ### Module Map
 ```
 Engine_1_and_2/
-├── run_all.py                 # Single entry point — runs all engines in order
-├── bootstrap.py               # sys.path setup, dataset resolution, UTF-8 stdout
-├── dataset_config.py          # Which dataset the engine runs on (see below)
+├── run_all.py                       # Single entry point — runs all engines in order
+├── bootstrap.py                     # sys.path setup, dataset resolution, UTF-8 stdout
+├── paths.py                         # File-discovery convention (see "How Files Are Found" below)
+├── safe_save.py                     # Atomic workbook save (temp file + os.replace) so an
+│                                     # interrupted write can never truncate the target workbook
+├── dataset_config.py                # Reshapes paths.discover() into the config dict engines read
+├── test_classify_pipeline.py        # Unit tests for the resolver/pipeline decision logic
 ├── Pipeline/
 │   ├── classify_pipeline.py   # Orchestration only — wires the 3 layers
 │   ├── extractors.py          # Layer 1 — signal extraction + role tagging
@@ -191,12 +213,40 @@ Engine_1_and_2/
 ├── Constants/
 │   ├── constants.py           # Ethnic patterns, country map, org map, phrase lists
 │   └── gender_constants.py    # Gender/sexual labels, patterns, flags
-├── Semantic_Engine/           # Advisory/hibernated ML (see ->6)
-└── Auditing/                  # Regression, review reports, stakeholder dashboard
+├── Semantic_Engine/                  # Hibernated ML — NOT in the live path (see ->6)
+│   ├── semantic_fallback.py         # Embedding-similarity General-Population suggester (archived)
+│   ├── ml_arbiter.py                # NLI role arbiter — advisory-only, off by default
+│   ├── knn_gold.py                  # kNN transfer over the audited gold rows — advisory-only, measured 51.9% LOO accuracy vs. 98.4% for the rule engine, not wired in
+│   ├── vendor_models.py             # One-time offline download/manifest of the two ML models
+│   └── diagnose_semantic_scores.py  # Diagnostic: prints raw embedding similarity scores
+└── Auditing/
+    ├── generate_review_report.py         # Menu option 2. Builds Data Sheets/Classification Review.xlsx — one sheet per dataset, the flagged rows of that dataset's gold sheet plus a computed evidence column. Read-only.
+    ├── apply_review_corrections.py       # Menu option 3. Diffs Classification Review.xlsx against the Final Review copies and writes only the changed classification/audit cells. Dry-run by default; `--apply` writes.
+    ├── generate_stakeholder_dashboard.py # Menu option 4. Builds a self-contained HTML dashboard (equity lens + engine QA lens) into Data Sheets/stakeholder_dashboard.html. Read-only.
+    ├── build_flag_review_column.py       # Not menu-wired. Adds a "Flag Review (keep/drop/merge)" column of KEEP/DROP recommendations to the live workbook. `--dry-run` prints a tally only; `--out` overrides the output path. Backs up the workbook before writing.
+    ├── audit_evidence.py                 # Not menu-wired; imported as a library. Read-only evidence explainer — re-scans a row and reports which terms matched, in which column, and whether a guard suppressed them. Never classifies.
+    ├── regression_audited_rows.py        # Not menu-wired. Regression guard against AUDITED_FR_GOLD.xlsx. `--snapshot` records the current baseline; run with no args to compare against it and gold, non-zero exit on regression.
+    └── archive/                           # Superseded ML calibration/regression scripts, kept for reference only
+
+Maintainer/Tools/
+├── launcher.py                # The numbered menu behind RUN.bat / the .exe — see the menu-option mapping above
+└── docker_entrypoint.py       # Container entry point; maps short commands (classify/review/preview/apply/dashboard) onto the same scripts, or hands off to launcher.py's menu when run interactively
 ```
 
 ### Dataset Switching
-`dataset_config.py` is the single source of truth for which workbook the engine runs on. Change `ACTIVE_DATASET`, or set the `ECF_DATASET` environment variable for a one-off run. Each dataset entry defines its raw/output workbooks, data sheet, and taxonomy sheet. Current datasets: `2025` (default) and `2023_24`.
+`paths.discover()` in `paths.py` is the single source of truth for which workbooks exist — it scans `Data Sheets/`, `Taxonomy/`, and `Final Review/` and matches partners by the year in their filenames (see "How Files Are Found" below). `dataset_config.py` does not discover anything itself; it just reshapes what `paths.discover()` found into the `{name: config_dict}` shape the engines expect, and resolves which one is *active* — `ACTIVE_DATASET` in `dataset_config.py`, or the `ECF_DATASET` environment variable for a one-off run, or the first dataset found alphabetically if neither is set. Datasets are not hardcoded anywhere: drop a new workbook in `Data Sheets/` and it becomes a new dataset with no code change.
+
+### How Files Are Found
+`paths.py` governs where the tool looks for its three working folders — `Data Sheets/`, `Taxonomy/`, `Final Review/` — and how workbooks inside them are matched into a dataset.
+
+**Workspace resolution** (`resolve_workspace()`): checked in order —
+1. the `ECF_WORKSPACE` environment variable, if set;
+2. the tool's own folder (`tool_dir()`), if it already contains a populated `Data Sheets/` — this keeps an existing installation working even if it's moved, since a folder already holding data always wins;
+3. otherwise, `Desktop/ECF Classification` (created on first run by `ensure_workspace()`, along with a `START HERE.txt` and a `README.txt` in each subfolder).
+
+`tool_dir()` normally returns the repo root, but when frozen into the `.exe` (PyInstaller), the unpacked project lives in a throwaway temp extraction dir — so `tool_dir()` instead returns the folder the `.exe` itself is sitting in, which is where a real installation's data actually lives.
+
+**Dataset matching** (`discover()`): every `.xlsx` in `Data Sheets/` (other than `Classification Review.xlsx` and generated artifacts) is a dataset, named from its filename via `dataset_name_from()` — e.g. `"Discretionary Funding Requests - 2026.xlsx"` → `"2026"`, `"FR_Engine - 2023-2024.xlsx"` → `"2023_24"`. Its GOLD copy (in `Taxonomy/`) and Final Review copy (in `Final Review/`) are matched by deriving the same name from their own filenames — no other link between the files is needed. Pre-convention filenames that are deliberately not being renamed are covered by a `LEGACY_NAMES` map (e.g. `"fr testing"` → `"2025"`).
 
 ### How to Extend
 
@@ -215,7 +265,7 @@ Engine_1_and_2/
 
 ## 8. Technical Execution Guide
 
-The scripts take **no command-line arguments** — they read/write the fixed paths defined by the active dataset in `dataset_config.py`. Place the data workbook under `Data Sheets/` and the taxonomy under `Taxonomy/` at the repo root before running.
+The engine scripts (`run_all.py`, `ethnic_taggerv3.py`, `Gender_SexID.py`) take **no command-line arguments** — they read/write the paths resolved by `paths.discover()` for the active dataset. Some of the Auditing scripts do take flags: `apply_review_corrections.py --apply` (default is a dry run) and `build_flag_review_column.py --out <path>` / `--dry-run`. See "How Files Are Found" in ->7 for where the workbooks need to live before running.
 
 ### Recommended: Full Pipeline
 Runs ethnic → gender → sexual in order and writes all columns into the active dataset's workbook:

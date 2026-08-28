@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Engine 1 and 2
 import bootstrap
+import safe_save
 
 from ethnic_taggerv3 import (
     DATA_SHEET,
@@ -660,7 +661,7 @@ def main():
         ws.cell(row=i, column=headers[OUTPUT_SEXUAL],      value=data_df.at[idx, OUTPUT_SEXUAL])
         ws.cell(row=i, column=headers[OUTPUT_SEXUAL_FLAG], value=data_df.at[idx, OUTPUT_SEXUAL_FLAG])
 
-    wb.save(funding_filepath)
+    safe_save.save_workbook(wb, funding_filepath)
 
     print("\nResults:")
     for k, v in stats.items():

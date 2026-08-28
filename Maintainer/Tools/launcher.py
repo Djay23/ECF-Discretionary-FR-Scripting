@@ -10,11 +10,34 @@ do run it directly, as long as the dependencies are installed.)
 """
 
 import os
+import runpy
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# Frozen into a .exe (PyInstaller), the bundled project files are unpacked into
+# a throwaway temp dir at sys._MEIPASS, not sitting next to the .exe itself --
+# that's the only thing that changes here.
+#
+# Unfrozen, this file can be run from two different homes -- Maintainer/Tools/
+# in the checked-out repo, or wherever a maintainer copies just this script --
+# so don't assume a fixed number of parent hops (that broke when this file
+# moved from Tools/ to Maintainer/Tools/, one level deeper). Instead walk up
+# until a folder containing "Engine_1_and_2" is found; that's always the
+# actual project root.
+if getattr(sys, "frozen", False):
+    PROJECT_ROOT = Path(sys._MEIPASS)
+else:
+    PROJECT_ROOT = Path(__file__).resolve().parent
+    while not (PROJECT_ROOT / "Engine_1_and_2").is_dir():
+        parent = PROJECT_ROOT.parent
+        if parent == PROJECT_ROOT:
+            # Reached the filesystem root without finding it -- fall back to
+            # the old assumption rather than looping forever.
+            PROJECT_ROOT = Path(__file__).resolve().parent.parent
+            break
+        PROJECT_ROOT = parent
 ENGINE = PROJECT_ROOT / "Engine_1_and_2"
 AUDIT = ENGINE / "Auditing"
 
@@ -41,7 +64,18 @@ BAR = "=" * 62
 
 
 def clear():
-    os.system("cls" if os.name == "nt" else "clear")
+    if os.name == "nt":
+        os.system("cls")
+        return
+    # The Docker image (python:3.13-slim) has no `clear` binary. Check before
+    # shelling out to it -- os.system("clear") when it's missing would print
+    # "sh: 1: clear: not found" on every screen redraw. Fall back to the raw
+    # ANSI "clear screen, move cursor home" escape, which any real terminal
+    # (including the container's) understands directly.
+    if shutil.which("clear"):
+        os.system("clear")
+    else:
+        print("\033[2J\033[H", end="")
 
 
 def ask(prompt_text=""):
@@ -92,7 +126,14 @@ def run(script, args=(), dataset=None, quiet=False):
     if dataset:
         env["ECF_DATASET"] = dataset
     env["PYTHONIOENCODING"] = "utf-8"
-    cmd = [sys.executable, str(script), *args]
+    if getattr(sys, "frozen", False):
+        # Frozen, sys.executable IS this tool -- a plain [sys.executable, script]
+        # call would just relaunch the menu. --run-script tells the child
+        # process (still this same .exe) to execute `script` instead of
+        # drawing the menu again. See main() for the dispatch.
+        cmd = [sys.executable, "--run-script", str(script), *args]
+    else:
+        cmd = [sys.executable, str(script), *args]
     try:
         proc = subprocess.run(cmd, cwd=str(PROJECT_ROOT), env=env)
     except OSError as e:
@@ -183,7 +224,17 @@ def do_healthcheck():
             print(f"     MISSING  {mod}")
             ok = False
 
-    print(f"\n  Working folders are in:\n     {paths.WORKSPACE}")
+    # Running in the Docker image? Docker itself puts /.dockerenv in every
+    # container, so this stays right even for someone on the host who has set
+    # ECF_WORKSPACE by hand (a documented override -- see paths.py). Worth
+    # showing so a confused user can say exactly where their files are
+    # instead of "it's not working".
+    in_container = Path("/.dockerenv").exists()
+    print(f"\n  Running in the Docker container: {'yes' if in_container else 'no'}")
+    if in_container:
+        print(f"  Your workspace folder is mapped to:\n     {paths.WORKSPACE}")
+    else:
+        print(f"\n  Working folders are in:\n     {paths.WORKSPACE}")
 
     print("\n  Folders:")
     for folder in (paths.DATA_DIR, paths.TAXONOMY_DIR, paths.FINAL_REVIEW_DIR):
@@ -322,6 +373,20 @@ def menu():
 
 
 def main():
+    # Internal plumbing, not a user-facing option: when frozen, run() re-invokes
+    # this same .exe with --run-script so a child process can execute one of the
+    # engine scripts instead of drawing the menu again (see run()). Handled
+    # before the menu draws, and before the try/except below, so the child's
+    # sys.exit() from the script propagates as this process's real exit code.
+    if len(sys.argv) > 1 and sys.argv[1] == "--run-script":
+        script_path = sys.argv[2]
+        sys.argv = [script_path, *sys.argv[3:]]
+        try:
+            runpy.run_path(script_path, run_name="__main__")
+        except SystemExit as e:
+            return e.code
+        return 0
+
     try:
         return menu()
     except KeyboardInterrupt:

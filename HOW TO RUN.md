@@ -4,21 +4,25 @@ You do not need to know anything about code to use this.
 
 ## Starting it
 
-**Double-click `RUN.bat`.**
+**Double-click `ECF Classification.exe`.** That's it — nothing to install, no
+Python, no Docker, no admin rights needed. A window opens with the numbered
+menu described below. Type a number, press Enter.
 
-That's it. A black window opens with a numbered menu. Type a number, press
-Enter.
+> **Windows may warn you first.** Because this is a new, unsigned program,
+> Windows SmartScreen can show a blue box saying "Windows protected your PC".
+> This is expected for a small in-house tool — it isn't a sign anything is
+> wrong. Click **"More info"**, then **"Run anyway"**. You only need to do
+> this once per computer.
 
-The very first time you do this on a new computer it will spend a minute or two
-setting itself up, then create its working folders on your Desktop and tell you
-where they are. That only happens once. If it says Python is not installed,
-follow the instructions it prints — install Python from python.org, and **tick
-"Add python.exe to PATH"** on the installer's first screen.
+That's the whole setup. Everything below — where the files go, the menu, the
+working order — applies exactly the same whether you're running the `.exe` or
+one of the alternatives further down.
 
 ## Where the files go — the tool creates these for you
 
-**The first time you run it, it creates a folder called `ECF Classification` on
-your Desktop**, containing the three folders it needs and a `START HERE.txt`:
+**The first time you run it, it creates a folder called `ECF Classification`
+on your Desktop**, containing the three folders it needs and a
+`START HERE.txt`:
 
 ```
 Desktop/ECF Classification/
@@ -66,8 +70,9 @@ Your READMEs are never overwritten, so any notes you add to them are safe.
 
 ## Before you run anything: close Excel
 
-If a workbook is open in Excel, this tool cannot save to it. The menu checks for
-this and will tell you which file to close. Just close it and try again.
+If a workbook is open in Excel, this tool cannot save to it. This applies no
+matter how you're running the tool. The menu checks for this and will tell
+you which file to close. Just close it and try again.
 
 ## The menu
 
@@ -92,11 +97,15 @@ this and will tell you which file to close. Just close it and try again.
 
 ## If something goes wrong
 
-The window tells you what happened in plain language. The two common causes are:
+The window tells you what happened in plain language.
 
-- **A file is open in Excel.** Close it, try again.
-- **A file was renamed or moved.** The tool prints exactly which file it expected
-  and where. Put it back, or pass the message to whoever maintains the tool.
+| Symptom | What it means | What to do |
+|---|---|---|
+| Blue "Windows protected your PC" screen | SmartScreen warning about a new, unsigned program. Expected. | Click "More info", then "Run anyway". Only needed once per computer. |
+| A file is open in Excel | The tool cannot write to a file Excel has locked. | Close it, try again. |
+| "NO DATA FOUND" | No workbook in `Data Sheets`, or it isn't named with a year. | Put one there, named e.g. `Discretionary Funding Requests - 2026.xlsx`. |
+| A file was renamed or moved | The tool expected an exact file it can't find. | Put it back, or pass the message to whoever maintains the tool. |
+| Antivirus quarantined or deleted the `.exe` | Some antivirus tools are suspicious of new, unsigned, single-file programs. | Restore it from quarantine and add an exception, or ask IT to allow it. Re-download/re-copy the file if it was deleted outright. |
 
 Nothing is written unless a step succeeds completely, and option 3 always shows
 you the full list of changes before it writes anything. If you're unsure, press
@@ -110,9 +119,59 @@ needed to diagnose it.
 
 ## For whoever maintains this (technical)
 
-Day-to-day use is `RUN.bat` → `Tools/launcher.py`. The launcher shells out to the
-existing entry points and sets `ECF_DATASET`; it adds no classification logic of
-its own, so the engines remain independently runnable:
+Everything in this section lives in the **`Maintainer/`** folder — it holds
+the build and container tooling, not anything a non-technical user opens.
+
+Day-to-day use for non-technical staff is **`ECF Classification.exe`** (at
+the top level of the folder, beside `Data Sheets/` etc.), built by
+`Maintainer\build-exe.bat` (PyInstaller, spec file
+`Maintainer\ECF Classification.spec`) straight from
+`Maintainer\Tools\launcher.py`. It's a single onefile executable with
+`Engine_1_and_2/` bundled in as data; PyInstaller extracts it to a temp dir
+(`sys._MEIPASS`) at startup. Frozen, `sys.executable` is the `.exe` itself, so
+`launcher.run()` re-invokes it with an internal `--run-script <path>` flag
+(handled in `main()` via `runpy.run_path`) instead of trying to shell out to a
+Python interpreter that doesn't exist standalone — each engine step still runs
+as its own subprocess, exactly as it does unfrozen. `Engine_1_and_2/paths.py`
+has a matching frozen-mode adjustment: the "does an install already have data
+sitting next to it" check looks at the folder the `.exe` lives in
+(`paths.tool_dir()`), not the temp extraction dir.
+
+To rebuild after a code change: run `Maintainer\build-exe.bat` (needs `.venv`
+already set up — run `Maintainer\RUN.bat` once first if not). It builds from
+the repo root (the .bat `cd`s there first, since `.venv` and `Engine_1_and_2`
+live there) and, on success, copies the result from `dist\ECF Classification.exe`
+to `ECF Classification.exe` at the top level of the folder — overwriting any
+previous copy — ready to hand to staff or drop straight into SharePoint. If a
+rebuilt exe fails at runtime with "No module named X", add X to
+`hiddenimports` in `Maintainer\ECF Classification.spec` and rebuild — the
+engine scripts are loaded at runtime via `runpy`, so PyInstaller can't see
+their imports statically. The ML layer (`torch`, `sentence_transformers`,
+`faiss`, etc.) is deliberately excluded — it was removed from the pipeline
+and is ~1 GB of packages the classification path never uses.
+
+Two other ways to run this remain, for the maintainer:
+
+**Docker** — for reproducible or server-side runs. `Maintainer\RUN (Docker).bat` /
+`Maintainer/run-docker.sh` → `docker run -it --rm -v "<workspace>:/data"
+ecf-discretionary-fr:latest`, which drops straight into
+`Maintainer\Tools\launcher.py` (the same menu the `.exe` gives). Both scripts
+`cd` to the repo root first, so the build context is still the whole project.
+The image separates code from data: code lives at `/app` (`Engine_1_and_2/`
+and `Tools/`, baked in at build time from `Maintainer/Tools/`), and the
+workspace — `Data Sheets/`, `Taxonomy/` and `Final Review/` — is
+bind-mounted at `/data` at run time, with `ECF_WORKSPACE=/data` set so
+`paths.py` resolves straight to the mount. Only `requirements.txt` is
+installed — the ML extras in `requirements-ml.txt` are excluded on purpose.
+
+**`RUN.bat`** — for a maintainer's machine that already has Python. Identical
+menu, no packaging step; the very first run installs the project's own
+`.venv`. If it says Python is not installed, install it from python.org and
+tick "Add python.exe to PATH" on the installer's first screen.
+
+None of these three paths add classification logic of their own — they all
+shell out to the same entry points and set `ECF_DATASET`, so the engines
+remain independently runnable:
 
 ```
 python Engine_1_and_2/run_all.py
@@ -121,20 +180,48 @@ python Engine_1_and_2/Auditing/apply_review_corrections.py [--apply]
 python Engine_1_and_2/Auditing/generate_stakeholder_dashboard.py
 ```
 
-A Docker path exists for reproducible or server-side runs:
+Verb-driven, non-interactive runs still work for scripting or CI, via either
+`docker run` or `docker compose` (run from the repo root, or adjust the `-f`
+path accordingly):
 
 ```
-docker compose build
-docker compose run --rm ecf help
-docker compose run --rm ecf classify
-docker compose run --rm -e ECF_DATASET=2023_24 ecf dashboard
+docker build -t ecf-discretionary-fr -f Maintainer/Dockerfile .
+docker compose -f Maintainer/docker-compose.yml build
+docker compose -f Maintainer/docker-compose.yml run --rm ecf help
+docker compose -f Maintainer/docker-compose.yml run --rm ecf classify
+docker compose -f Maintainer/docker-compose.yml run --rm ecf preview
+docker compose -f Maintainer/docker-compose.yml run --rm -e ECF_DATASET=2023_24 ecf dashboard
 ```
 
-The image carries code and dependencies only. `Data Sheets/`, `Taxonomy/` and
-`Final Review/` are bind-mounted, so the container works on the same files you
-see in Explorer and nothing confidential is baked into an image layer. Only
-`requirements.txt` is installed — the ML extras in `requirements-ml.txt` are
-excluded on purpose (~650 MB of packages plus ~1.1 GB of weights).
+`docker compose` builds with the repo root as context (`context: ..` in
+`Maintainer/docker-compose.yml`, since the file itself lives one level down)
+and mounts `${ECF_WORKSPACE_HOST:-..}` (the repo root, by default) at `/data`
+— set `ECF_WORKSPACE_HOST` to point it at a different workspace.
+`Tools/docker_entrypoint.py` runs with no arguments in two ways: with an
+interactive terminal attached (`docker run -it`, which the host launchers
+use) it hands off to the menu; without one, it prints the help text instead
+of hanging on an `input()` nobody can answer.
 
 Note that Excel's file locks apply to the container too: close the workbooks
 before any command that writes.
+
+### If the `.exe` ever stops being allowed
+
+Distributing this as an `.exe` through SharePoint depends on a Microsoft 365
+tenant policy that can change — most often when IT tightens the rules on
+unsigned executables. Nothing about the tool depends on that policy: the `.exe`
+is a convenience for staff, not the product. Everything needed to run or
+rebuild it ships in this folder.
+
+If staff suddenly cannot download or run `ECF Classification.exe`:
+
+| Fallback | What it costs |
+|---|---|
+| **Get it code-signed** by IT and carry on as before | The most durable fix — blocking policies almost always target *unsigned* executables, and signing also removes the SmartScreen warning for good. Ask whether IT already holds a signing certificate; many do. |
+| **Put the `.exe` on a network share** instead of SharePoint | Nothing changes for staff except where they get the file. Files run from an internal share usually aren't web-marked either, so the SmartScreen warning goes away too. |
+| **Zip it** and upload that | Often permitted where a bare `.exe` isn't. Staff right-click → "Extract All" before double-clicking. |
+| **Skip the `.exe` entirely** — `Maintainer\RUN.bat` | Identical menu, but each machine needs Python installed. Fine for one or two people, poor for a whole team. |
+
+Rebuilding the `.exe` at any time is `Maintainer\build-exe.bat` on a machine
+with the project's `.venv` set up. That is the only step that needs a
+technical person, and it takes about two minutes.

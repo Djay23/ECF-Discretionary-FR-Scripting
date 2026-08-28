@@ -5,6 +5,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Engine 1 and 2
 import bootstrap
+import safe_save
 
 import ethnic_taggerv3 as et
 import audit_evidence as ae
@@ -95,14 +96,35 @@ def build_evidence_cell(row, taxonomy_entries, eth_flag, gen_flag, sex_flag):
     return "\n".join(blocks)
 
 
-def build_sheet(name, cfg):
-    """Return (sheet_name, DataFrame) mirroring one gold sheet: all its columns
-    minus OMIT_COLS, plus the evidence column. None if the gold is missing."""
+def _review_basis(name, cfg):
+    """The workbook whose rows become this dataset's review sheet.
+
+    The gold copy when the dataset has one: it carries the decisions and the
+    "Formerly X" verdicts from earlier audit rounds, which a reviewer wants to
+    see. A dataset being classified for the first time has no gold -- and does
+    not need one, because the classified workbook holds exactly the same
+    columns apart from the verdict column. Reading it here is what lets a new
+    year be reviewed at all; previously the dataset was skipped and the review
+    workbook came out empty.
+    """
     gold_rel = cfg.get("gold_file")
     gold_path = (bootstrap.PROJECT_ROOT / gold_rel) if gold_rel else None
-    if not gold_path or not gold_path.exists():
-        print(f"[{name}] no gold file ({gold_rel}) -- skipped.")
+    if gold_path and gold_path.exists():
+        return gold_path, "gold"
+    raw = bootstrap.PROJECT_ROOT / cfg["raw_file"]
+    if raw.exists():
+        return raw, "classified workbook"
+    return None, None
+
+
+def build_sheet(name, cfg):
+    """Return (sheet_name, DataFrame) mirroring one dataset's workbook: all its
+    columns minus OMIT_COLS, plus the evidence column. None if nothing to read."""
+    gold_path, which = _review_basis(name, cfg)
+    if gold_path is None:
+        print(f"[{name}] no gold copy and no classified workbook -- skipped.")
         return None
+    print(f"[{name}] building from {which}: {gold_path.name}")
 
     tax_df = _read_excel_safe(bootstrap.PROJECT_ROOT / cfg["taxonomy_file"],
                               sheet_name=cfg["taxonomy_sheet"], dtype=str)
@@ -147,10 +169,15 @@ def main():
 
     import paths
     out_path = paths.REVIEW_FILE
-    with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
-        for sheet_name, df in sheets:
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
-            print(f"  sheet '{sheet_name}': {len(df)} rows, {len(df.columns)} columns")
+    def _write(target):
+        with pd.ExcelWriter(target, engine="openpyxl") as writer:
+            for sheet_name, df in sheets:
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
+                print(f"  sheet '{sheet_name}': {len(df)} rows, {len(df.columns)} columns")
+
+    # Built in full beside the target, then swapped in, so an interrupted run
+    # cannot leave a half-written review workbook in its place.
+    safe_save.save_via(out_path, _write)
 
     print(f"\nWritten to: {out_path}")
     print("Read-only mirror of the gold sheets (+ evidence column). No gold file modified.")

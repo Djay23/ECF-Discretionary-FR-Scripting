@@ -21,20 +21,24 @@ ACTIVE_DATASET = None
 
 def _build():
     """{name: cfg} in the shape the rest of the project expects. Paths are
-    relative to PROJECT_ROOT, matching the original hand-written config."""
-    root = paths.PROJECT_ROOT
+    ABSOLUTE, not relative to PROJECT_ROOT: the workspace (Data Sheets/
+    Taxonomy/Final Review) can live outside the repo entirely -- a Desktop
+    folder, or a Docker bind mount -- so there may be no relative path to
+    express. Every consumer joins these as `bootstrap.PROJECT_ROOT / cfg[...]`,
+    and pathlib's "/" returns an absolute right-hand side unchanged, so
+    consumers keep working with no change on either side of the split."""
     out = {}
     for name, d in paths.discover().items():
         out[name] = {
-            "raw_file": str(d.source.relative_to(root)).replace("\\", "/"),
+            "raw_file": str(d.source).replace("\\", "/"),
             # The engines write their columns back into the same workbook.
-            "output_file": str(d.source.relative_to(root)).replace("\\", "/"),
-            "gold_file": (str(d.gold.relative_to(root)).replace("\\", "/")
+            "output_file": str(d.source).replace("\\", "/"),
+            "gold_file": (str(d.gold).replace("\\", "/")
                           if d.gold else None),
-            "final_review_file": (str(d.final_review.relative_to(root)).replace("\\", "/")
+            "final_review_file": (str(d.final_review).replace("\\", "/")
                                   if d.final_review else None),
             "data_sheet": paths.DATA_SHEET,
-            "taxonomy_file": (str(d.taxonomy.relative_to(root)).replace("\\", "/")
+            "taxonomy_file": (str(d.taxonomy).replace("\\", "/")
                               if d.taxonomy else None),
             "taxonomy_sheet": paths.TAXONOMY_SHEET,
         }

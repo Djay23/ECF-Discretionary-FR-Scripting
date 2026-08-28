@@ -20,9 +20,18 @@ belong together. Everything else is automatic.
 
 TO RUN THE TOOL
 ---------------
-Double-click RUN.bat in the tool folder, then choose an option from the menu.
-Press C on that menu at any time to see what the tool has found and what is
-still missing.
+Double-click "ECF Classification.exe". Nothing to install -- no Python, no
+Docker, no admin rights needed. Windows may show a blue "Windows protected
+your PC" warning the first time, since it's a new unsigned program -- click
+"More info", then "Run anyway". Choose an option from the menu. Press C on
+that menu at any time to see what the tool has found and what is still
+missing.
+
+Everything technical -- the Docker files, the build scripts, RUN.bat -- lives
+in the "Maintainer" folder and is not needed to run the tool.
+
+(Maintainers with Docker or Python set up can still use "Maintainer\RUN
+(Docker).bat" or "Maintainer\RUN.bat" -- see HOW TO RUN.md.)
 
 Close any workbook in Excel before running the tool. Excel locks files it has
 open, and the tool cannot write to a locked file. It will tell you which one.

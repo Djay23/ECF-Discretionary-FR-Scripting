@@ -35,4 +35,11 @@ desktop.ini
 Plan Files/
 Documentation/
 *.md
-RUN.bat
+Maintainer/RUN.bat
+Maintainer/RUN (Docker).bat
+Maintainer/run-docker.sh
+
+# Build artefacts -- never bake a stray build into the image.
+dist/
+build/
+ECF Classification.exe

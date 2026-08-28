@@ -47,6 +47,14 @@ desktop.ini
 *.env
 secrets.json
 
+# --- PyInstaller build artefacts (the .spec is checked in; these are not) ---
+build/
+dist/
+Maintainer/build/
+Maintainer/dist/
+# The repo-root copy build-exe.bat produces for staff to double-click.
+/ECF Classification.exe
+
 # --- Plan files ---
 /Plan files/
 **/Plan files/**

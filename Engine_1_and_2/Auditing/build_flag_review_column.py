@@ -12,6 +12,7 @@ from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Engine 1 and 2
 import bootstrap
+import safe_save
 import ethnic_taggerv3 as et
 
 """
@@ -357,7 +358,7 @@ def main():
             # Copy-first safety gate: write to a test file, leave the real
             # workbook untouched, no backup.
             out_path = Path(args.out)
-            wb.save(out_path)
+            safe_save.save_workbook(wb, out_path)
             print(f"\nTEST COPY written (real workbook untouched): {out_path}")
             print("Open this copy in Excel and confirm there is NO recovery prompt "
                   "before applying to the real file.")
@@ -378,7 +379,7 @@ def main():
         shutil.copy2(src, backup)
         print(f"\nBackup written: {backup.name}")
         try:
-            wb.save(src)
+            safe_save.save_workbook(wb, src)
         except PermissionError:
             raise SystemExit(
                 f"\nERROR: could not write {src.name} -- it is open/locked. Close it "

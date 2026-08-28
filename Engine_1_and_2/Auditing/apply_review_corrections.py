@@ -8,6 +8,7 @@ from openpyxl import load_workbook
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # Engine 1 and 2
 import bootstrap  # noqa: F401  (imported for effect: sys.path + UTF-8 stdout,
                   # which the em-dashes in this script's output depend on)
+import safe_save
 from dataset_config import DATASETS
 
 """
@@ -36,12 +37,36 @@ import paths
 
 REVIEW_FILE = paths.REVIEW_FILE
 
-# Final Review copies to write to (NOT the authoritative gold). Discovered by
-# matching the dataset year in the filename -- renaming a workbook no longer
-# requires editing this file.
-POST_REVIEW = {name: d.final_review
-               for name, d in paths.discover().items()
-               if d.final_review}
+# Every dataset and its partner files. Discovered by matching the dataset year
+# in the filename -- renaming a workbook no longer requires editing this file.
+DISCOVERED = paths.discover()
+
+
+def final_review_path(name):
+    """Where this dataset's Final Review copy lives -- whether or not it exists
+    yet. A dataset being reviewed for the first time has none, so the name is
+    derived from its source workbook: that guarantees the year in the filename
+    matches, which is how discovery pairs the two from then on."""
+    d = DISCOVERED.get(name)
+    if d is None:
+        return None
+    if d.final_review:
+        return d.final_review
+    return paths.FINAL_REVIEW_DIR / f"{d.source.stem} (GOLD) Final review.xlsx"
+
+
+def comparison_basis(name):
+    """(workbook to compare the review sheet against, will_be_created).
+
+    Normally the Final Review copy. The first time a dataset is reviewed there
+    isn't one, so the classified workbook stands in -- it is exactly what the
+    copy will be made from, so the diff shown in the preview is the diff that
+    gets written."""
+    d = DISCOVERED.get(name)
+    target = final_review_path(name)
+    if target is not None and target.exists():
+        return target, False
+    return (d.source if d else None), True
 
 DATA_SHEET = paths.DATA_SHEET
 ID_COL = "SF_18_ID_Funding_Request__c"
@@ -90,13 +115,14 @@ def diff_dataset(name):
     sheet or the Final Review copy is missing — a missing target is a setup
     error, never a silent skip."""
     sheet = name.replace("_", "-")
-    pr_path = POST_REVIEW.get(name)
+    pr_path, will_create = comparison_basis(name)
     if pr_path is None:
         raise ReviewSyncError(
-            f"[{name}] no Final Review copy found for dataset '{name}'.\n"
-            f"           Put one in: {paths.FINAL_REVIEW_DIR}\n"
-            f"           Its filename must contain the same year, e.g. "
-            f"'Discretionary Funding Requests - {name} (GOLD) Final review.xlsx'.")
+            f"[{name}] dataset is no longer in {paths.DATA_DIR}. "
+            f"It was probably renamed or moved.")
+    if will_create:
+        print(f"[{name}] no Final Review copy yet -- one will be created from "
+              f"{pr_path.name} when you apply.")
     if not pr_path.exists():
         raise ReviewSyncError(
             f"[{name}] Final Review copy has gone missing since it was found:\n"
@@ -128,7 +154,14 @@ def diff_dataset(name):
 
 def apply_changes(name, changes):
     """Write the changed cells into the Final Review copy (matched by ID)."""
-    pr_path = POST_REVIEW[name]
+    pr_path = final_review_path(name)
+    if not pr_path.exists():
+        # First review of this dataset: the copy is made here, at write time,
+        # so a dry run still creates nothing at all.
+        import shutil
+        pr_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(DISCOVERED[name].source, pr_path)
+        print(f"[{name}] created Final Review copy: {pr_path.name}")
     wb = load_workbook(pr_path)
     ws = wb[DATA_SHEET]
     headers = {cell.value: cell.column for cell in ws[1]}
@@ -143,7 +176,7 @@ def apply_changes(name, changes):
         if er and col in headers:
             ws.cell(er, headers[col], value=new)
             written += 1
-    wb.save(pr_path)
+    safe_save.save_workbook(wb, pr_path)
     return written
 
 
@@ -179,7 +212,7 @@ def main():
     total = 0
     for name in DATASETS:
         changes, sheet = diffs[name]
-        print(f"\n=== {name} (review sheet '{sheet}' -> {POST_REVIEW[name].name}) ===")
+        print(f"\n=== {name} (review sheet '{sheet}' -> {final_review_path(name).name}) ===")
         print(f"  {len(changes)} cell change(s):")
         for rid, nm, col, old, new in changes:
             print(f"    {nm:47} {col:52} {old[:24]!r} -> {new[:24]!r}")
@@ -188,10 +221,10 @@ def main():
             try:
                 n = apply_changes(name, changes)
             except PermissionError:
-                print(f"  ERROR: {POST_REVIEW[name].name} is locked (open in Excel?). "
+                print(f"  ERROR: {final_review_path(name).name} is locked (open in Excel?). "
                       f"Close it and re-run — nothing was written for {name}.")
                 return 1
-            print(f"  applied {n} change(s) to {POST_REVIEW[name].name}")
+            print(f"  applied {n} change(s) to {final_review_path(name).name}")
 
     if not args.apply:
         print(f"\nDRY RUN — {total} change(s) pending. Re-run with --apply to write them "

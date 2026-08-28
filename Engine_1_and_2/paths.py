@@ -30,6 +30,7 @@ this module only reports what it found.
 
 import os
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -38,6 +39,17 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Folder on the Desktop that holds the three working folders for a fresh install.
 WORKSPACE_NAME = "ECF Classification"
+
+
+def tool_dir() -> Path:
+    """Where the running tool actually lives, for the "did someone already put
+    data next to it" check below. Frozen into a .exe (PyInstaller), PROJECT_ROOT
+    points at a throwaway temp extraction dir (sys._MEIPASS) that never has
+    data next to it -- the folder that matters is wherever the .exe itself
+    sits, so use that instead. Unfrozen, this is just PROJECT_ROOT as before."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return PROJECT_ROOT
 
 
 def desktop_dir() -> Path:
@@ -78,8 +90,8 @@ def resolve_workspace() -> Path:
     override = os.environ.get("ECF_WORKSPACE")
     if override:
         return Path(override).expanduser()
-    if _looks_populated(PROJECT_ROOT):
-        return PROJECT_ROOT
+    if _looks_populated(tool_dir()):
+        return tool_dir()
     return desktop_dir() / WORKSPACE_NAME
 
 
@@ -139,9 +151,11 @@ belong together. Everything else is automatic.
 
 TO RUN THE TOOL
 ---------------
-Double-click RUN.bat in the tool folder, then choose an option from the menu.
-Press C on that menu at any time to see what the tool has found and what is
-still missing.
+Double-click "ECF Classification.exe" in the tool folder, then choose an
+option from the menu. Windows may show a "Windows protected your PC" warning
+the first time -- click "More info", then "Run anyway"; that's expected for a
+new unsigned program. Press C on that menu at any time to see what the tool
+has found and what is still missing.
 
 Close any workbook in Excel before running the tool. Excel locks files it has
 open, and the tool cannot write to a locked file. It will tell you which one.

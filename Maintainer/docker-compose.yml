@@ -1,0 +1,38 @@
+# Reproducible runs of the classification engine.
+#
+#   docker compose -f Maintainer/docker-compose.yml build
+#   docker compose -f Maintainer/docker-compose.yml run --rm ecf              (the numbered menu, same as RUN.bat)
+#   docker compose -f Maintainer/docker-compose.yml run --rm ecf help
+#   docker compose -f Maintainer/docker-compose.yml run --rm ecf classify
+#   docker compose -f Maintainer/docker-compose.yml run --rm ecf preview
+#   docker compose -f Maintainer/docker-compose.yml run --rm -e ECF_DATASET=2023_24 ecf dashboard
+#
+# Non-technical staff should use "RUN (Docker).bat" / run-docker.sh instead of
+# this file directly -- they wrap `docker run` with the same menu and don't
+# require knowing where the workspace folder is. This file is for whoever
+# maintains the tool, or anyone already comfortable on a command line.
+#
+# The workbooks are NOT in the image. Set ECF_WORKSPACE_HOST to the folder
+# holding your "Data Sheets" / "Taxonomy" / "Final Review" folders (defaults to
+# the repo root, one level up from this file) and it's bind-mounted at /data,
+# so the container reads and writes the same files you see in Explorer.
+#
+# Close the workbooks in Excel before running anything that writes. Excel holds
+# an exclusive lock and the container cannot save past it.
+
+services:
+  ecf:
+    build:
+      context: ..
+      dockerfile: Maintainer/Dockerfile
+    image: ecf-discretionary-fr:latest
+    environment:
+      ECF_DATASET: "${ECF_DATASET:-2025}"
+    stdin_open: true   # needed for the menu's input() prompts
+    tty: true
+    volumes:
+      # The whole workspace, one bind mount, so a fresh install (which puts
+      # its folders on the Desktop, not next to this file) works the same way
+      # as an existing one. Defaults to the repo root (".." from this file,
+      # which now lives in Maintainer/) for existing installs.
+      - "${ECF_WORKSPACE_HOST:-..}:/data"

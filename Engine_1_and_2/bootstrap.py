@@ -22,6 +22,10 @@ class Dataset:
     raw_file: Path
     output_file: Path
     gold_file: Optional[Path]
+    # The audited copy that apply_review_corrections.py writes into: engine
+    # output PLUS the reviewer's applied edits. This, not gold_file, is the
+    # finished picture of a dataset.
+    final_review_file: Optional[Path]
     data_sheet: str
     taxonomy_file: Path
     taxonomy_sheet: str
@@ -37,6 +41,8 @@ def dataset():
         raw_file=PROJECT_ROOT / cfg["raw_file"],
         output_file=PROJECT_ROOT / cfg["output_file"],
         gold_file=(PROJECT_ROOT / gold) if gold else None,
+        final_review_file=((PROJECT_ROOT / cfg["final_review_file"])
+                           if cfg.get("final_review_file") else None),
         data_sheet=cfg["data_sheet"],
         taxonomy_file=PROJECT_ROOT / cfg["taxonomy_file"],
         taxonomy_sheet=cfg["taxonomy_sheet"],

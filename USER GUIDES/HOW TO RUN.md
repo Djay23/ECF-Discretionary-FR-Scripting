@@ -73,7 +73,8 @@ Your READMEs are never overwritten, so any notes you add to them are safe.
 
 ## What you provide, and what the tool creates
 
-Only **two** files are ever created that you didn't supply. Everything else is
+Only a few files are ever created that you didn't supply — the review
+workbook, the Final Review copy, and the dashboard. Everything else is
 written *into* workbooks you provided — which is why the tool asks you to close
 Excel first.
 
@@ -132,6 +133,7 @@ you which file to close. Just close it and try again.
 | **4. Build stakeholder dashboard** | Produces the dashboard `.html` file in `Data Sheets`. Open it in a browser. |
 | **D. Switch dataset** | Cycles through the datasets found in `Data Sheets`. The header always shows which one you're on. |
 | **C. Check everything is set up** | Confirms the required files are present and nothing is open in Excel. Run this first if something seems wrong. |
+| **0. Exit** | Closes the tool. |
 
 ## The normal working order
 

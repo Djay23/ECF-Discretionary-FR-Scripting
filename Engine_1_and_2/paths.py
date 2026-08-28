@@ -200,7 +200,7 @@ PUT HERE: the funding request workbooks you want classified.
 
 NAME THEM: Discretionary Funding Requests - 2026.xlsx
            ^ the year matters. The tool reads it from the filename and uses
-             it to match this workbook to its GOLD copy in the Taxonomy
+             it to match this workbook to its GOLD copy in the Gold
              folder and its copy in the Final Review folder.
 
 Each workbook needs a sheet named:  Discretionary Funding Requests
@@ -272,7 +272,7 @@ you to confirm before writing anything. Press Enter to cancel.
 Corrections are matched to rows by funding request ID, never by row position,
 so sorting or inserting rows cannot put a correction on the wrong row.
 
-The GOLD files in the Taxonomy folder are never written to. Only the files in
+The GOLD files in the Gold folder are never written to. Only the files in
 this folder are updated.
 """
 

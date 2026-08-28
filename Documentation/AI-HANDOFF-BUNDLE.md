@@ -814,6 +814,7 @@ The ML training/calibration scripts have been archived (`Auditing/archive/`). Re
 The repo root was reorganized so a non-technical staff member never has to look past the top:
 ```
 ECF Classification.exe      # what staff double-click (built by Maintainer/build-exe.bat)
+READ ME FIRST.txt           # root-level pointer into USER GUIDES/
 USER GUIDES/                # staff-facing documentation
     HOW TO RUN.md           # run instructions (three ways to run, folders, stages)
     START HERE.txt          # first-run orientation

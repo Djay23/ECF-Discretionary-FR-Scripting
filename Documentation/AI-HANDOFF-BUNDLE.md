@@ -34,7 +34,7 @@ bundled for an assistant that cannot open files on your computer.
 | Section | Source file | Why it is here |
 |---|---|---|
 | 1 | `Documentation/AI-HANDOFF.md` | The brief. What this project is, how it runs, and the rules an AI must not break. |
-| 2 | `HOW TO RUN.md` | The current end-user instructions. The guide you are asked to write replaces or extends this, so read it before writing anything. |
+| 2 | `USER GUIDES/HOW TO RUN.md` | The current end-user instructions. The guide you are asked to write replaces or extends this, so read it before writing anything. |
 | 3 | `README.md` | Developer documentation: the classification method, the module map (what every file does), and the execution guide. |
 | 4 | `Documentation/PROCESS.md` | Reference only. The classification rules case by case, with examples. Use it to understand behaviour -- do NOT restate it in a user guide. |
 | 5 | `Engine_1_and_2/paths.py` | Source code, included because it defines the folder and filename convention everything else depends on. |
@@ -78,7 +78,7 @@ Read these before asking questions the docs already answer:
 | `README.md` sections 1–6 | The classification method: architecture, the three-layer pipeline, the case-by-case logic (Cases 1–13), audit-flag rules, the gender/sexual-identity engines, and why the ML layer is hibernated. |
 | `README.md` section 7 | Full module map — every file's purpose — plus the file-discovery convention and how to extend a rule. |
 | `README.md` section 8 | Technical execution guide: exact commands, what each script does, which columns get written. |
-| `HOW TO RUN.md` | End-user instructions (the three ways to run it, the four folders, the menu, the stages, troubleshooting) and a maintainer section at the bottom (build/Docker/rebuild details). |
+| `USER GUIDES/HOW TO RUN.md` | End-user instructions (the three ways to run it, the four folders, the menu, the stages, troubleshooting) and a maintainer section at the bottom (build/Docker/rebuild details). |
 | `Documentation/PROCESS.md` | Informal, evolving case-by-case classification notes and examples — the working notes behind the rules in `README.md` section 3. Treat `README.md` as the authoritative current description; `PROCESS.md` is background/history. |
 | `Engine_1_and_2/paths.py` | The file-discovery convention, in code, with a docstring explaining *why*: filenames are not code, and renaming a workbook must never require a code edit. Read this before touching anything path-related. |
 
@@ -240,7 +240,7 @@ These are the same prompts offered to end users in `HOW TO RUN.md`'s
 file is self-contained.
 
 ```
-Run the classification on my data. First read HOW TO RUN.md and
+Run the classification on my data. First read "USER GUIDES/HOW TO RUN.md" and
 Documentation/AI-HANDOFF.md so you understand the tool. Confirm with me
 which dataset to use, make sure I've closed the workbook in Excel, then run
 the classification step (menu option 1 / Engine_1_and_2/run_all.py) and
@@ -274,7 +274,7 @@ change any code.
 
 ---
 
-# 2. HOW TO RUN.md
+# 2. USER GUIDES/HOW TO RUN.md
 
 # How to run this tool
 
@@ -814,8 +814,10 @@ The ML training/calibration scripts have been archived (`Auditing/archive/`). Re
 The repo root was reorganized so a non-technical staff member never has to look past the top:
 ```
 ECF Classification.exe      # what staff double-click (built by Maintainer/build-exe.bat)
-START HERE.txt              # first-run orientation, auto-created in the workspace
-HOW TO RUN.md               # staff-facing run instructions
+USER GUIDES/                # staff-facing documentation
+    HOW TO RUN.md           # run instructions (three ways to run, folders, stages)
+    START HERE.txt          # first-run orientation
+    ...User_Guide_v1.pdf    # the printed guide handed to staff
 Data Sheets/                # funding-request workbooks to classify (see "How Files Are Found" below)
 Taxonomy/                   # the taxonomy definitions workbook only
 Gold/                       # audited GOLD snapshots (optional; was Taxonomy/)

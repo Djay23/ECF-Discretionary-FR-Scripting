@@ -32,7 +32,7 @@ Read these before asking questions the docs already answer:
 | `README.md` sections 1–6 | The classification method: architecture, the three-layer pipeline, the case-by-case logic (Cases 1–13), audit-flag rules, the gender/sexual-identity engines, and why the ML layer is hibernated. |
 | `README.md` section 7 | Full module map — every file's purpose — plus the file-discovery convention and how to extend a rule. |
 | `README.md` section 8 | Technical execution guide: exact commands, what each script does, which columns get written. |
-| `HOW TO RUN.md` | End-user instructions (the three ways to run it, the four folders, the menu, the stages, troubleshooting) and a maintainer section at the bottom (build/Docker/rebuild details). |
+| `USER GUIDES/HOW TO RUN.md` | End-user instructions (the three ways to run it, the four folders, the menu, the stages, troubleshooting) and a maintainer section at the bottom (build/Docker/rebuild details). |
 | `Documentation/PROCESS.md` | Informal, evolving case-by-case classification notes and examples — the working notes behind the rules in `README.md` section 3. Treat `README.md` as the authoritative current description; `PROCESS.md` is background/history. |
 | `Engine_1_and_2/paths.py` | The file-discovery convention, in code, with a docstring explaining *why*: filenames are not code, and renaming a workbook must never require a code edit. Read this before touching anything path-related. |
 
@@ -194,7 +194,7 @@ These are the same prompts offered to end users in `HOW TO RUN.md`'s
 file is self-contained.
 
 ```
-Run the classification on my data. First read HOW TO RUN.md and
+Run the classification on my data. First read "USER GUIDES/HOW TO RUN.md" and
 Documentation/AI-HANDOFF.md so you understand the tool. Confirm with me
 which dataset to use, make sure I've closed the workbook in Excel, then run
 the classification step (menu option 1 / Engine_1_and_2/run_all.py) and

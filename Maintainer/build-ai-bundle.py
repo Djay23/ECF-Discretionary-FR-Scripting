@@ -25,7 +25,7 @@ OUT = ROOT / "Documentation" / "AI-HANDOFF-BUNDLE.md"
 PARTS = [
     ("Documentation/AI-HANDOFF.md",
      "The brief. What this project is, how it runs, and the rules an AI must not break."),
-    ("HOW TO RUN.md",
+    ("USER GUIDES/HOW TO RUN.md",
      "The current end-user instructions. The guide you are asked to write replaces "
      "or extends this, so read it before writing anything."),
     ("README.md",

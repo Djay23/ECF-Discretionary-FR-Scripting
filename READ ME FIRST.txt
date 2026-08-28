@@ -1,0 +1,41 @@
+ECF DISCRETIONARY FUNDING REQUESTS - CLASSIFICATION
+===================================================
+
+New here? You only need two things from this folder.
+
+
+TO RUN THE TOOL
+---------------
+Double-click:   ECF Classification.exe
+
+Nothing to install. A window opens with a numbered menu. If Windows shows a
+blue "Windows protected your PC" box the first time, click "More info", then
+"Run anyway" - that is expected for a new in-house program.
+
+
+TO LEARN HOW IT WORKS
+---------------------
+Open the USER GUIDES folder. It has:
+
+    Discretionary_FR_Classification_User_Guide_v1.pdf   the full guide
+    HOW TO RUN.md                                       the same, in text form
+    START HERE.txt                                      the short version
+
+Read the PDF if you are new. It explains what the tool does, which files you
+provide, which ones it creates, and the order to do things in.
+
+
+EVERYTHING ELSE IN THIS FOLDER
+------------------------------
+    Data Sheets      the funding request workbooks being classified
+    Taxonomy         the taxonomy definitions workbook
+    Gold             audited snapshots of past years (optional)
+    Final Review     the audited copies your corrections are written into
+
+    Engine_1_and_2   the classification code itself
+    Documentation    technical notes, and a briefing file for AI assistants
+    Maintainer       build and container tooling - not needed to run the tool
+    README.md        developer documentation
+
+Close any workbook in Excel before running the tool. Excel locks files it has
+open, and the tool cannot write to a locked file. It will tell you which one.

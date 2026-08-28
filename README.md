@@ -183,7 +183,8 @@ ECF Classification.exe      # what staff double-click (built by Maintainer/build
 START HERE.txt              # first-run orientation, auto-created in the workspace
 HOW TO RUN.md               # staff-facing run instructions
 Data Sheets/                # funding-request workbooks to classify (see "How Files Are Found" below)
-Taxonomy/                   # taxonomy definitions + GOLD snapshots
+Taxonomy/                   # the taxonomy definitions workbook only
+Gold/                       # audited GOLD snapshots (optional; was Taxonomy/)
 Final Review/                # hand-audited copies corrections are written into
 Engine_1_and_2/              # the classification engine (this section)
 Documentation/, Plan Files/  # project notes, unrelated to runtime
@@ -234,10 +235,10 @@ Maintainer/Tools/
 ```
 
 ### Dataset Switching
-`paths.discover()` in `paths.py` is the single source of truth for which workbooks exist — it scans `Data Sheets/`, `Taxonomy/`, and `Final Review/` and matches partners by the year in their filenames (see "How Files Are Found" below). `dataset_config.py` does not discover anything itself; it just reshapes what `paths.discover()` found into the `{name: config_dict}` shape the engines expect, and resolves which one is *active* — `ACTIVE_DATASET` in `dataset_config.py`, or the `ECF_DATASET` environment variable for a one-off run, or the first dataset found alphabetically if neither is set. Datasets are not hardcoded anywhere: drop a new workbook in `Data Sheets/` and it becomes a new dataset with no code change.
+`paths.discover()` in `paths.py` is the single source of truth for which workbooks exist — it scans `Data Sheets/`, `Taxonomy/`, `Gold/` and `Final Review/` and matches partners by the year in their filenames (see "How Files Are Found" below). `dataset_config.py` does not discover anything itself; it just reshapes what `paths.discover()` found into the `{name: config_dict}` shape the engines expect, and resolves which one is *active* — `ACTIVE_DATASET` in `dataset_config.py`, or the `ECF_DATASET` environment variable for a one-off run, or the first dataset found alphabetically if neither is set. Datasets are not hardcoded anywhere: drop a new workbook in `Data Sheets/` and it becomes a new dataset with no code change.
 
 ### How Files Are Found
-`paths.py` governs where the tool looks for its three working folders — `Data Sheets/`, `Taxonomy/`, `Final Review/` — and how workbooks inside them are matched into a dataset.
+`paths.py` governs where the tool looks for its working folders — `Data Sheets/`, `Taxonomy/`, `Gold/`, `Final Review/` — and how workbooks inside them are matched into a dataset.
 
 **Workspace resolution** (`resolve_workspace()`): checked in order —
 1. the `ECF_WORKSPACE` environment variable, if set;
@@ -246,7 +247,7 @@ Maintainer/Tools/
 
 `tool_dir()` normally returns the repo root, but when frozen into the `.exe` (PyInstaller), the unpacked project lives in a throwaway temp extraction dir — so `tool_dir()` instead returns the folder the `.exe` itself is sitting in, which is where a real installation's data actually lives.
 
-**Dataset matching** (`discover()`): every `.xlsx` in `Data Sheets/` (other than `Classification Review.xlsx` and generated artifacts) is a dataset, named from its filename via `dataset_name_from()` — e.g. `"Discretionary Funding Requests - 2026.xlsx"` → `"2026"`, `"FR_Engine - 2023-2024.xlsx"` → `"2023_24"`. Its GOLD copy (in `Taxonomy/`) and Final Review copy (in `Final Review/`) are matched by deriving the same name from their own filenames — no other link between the files is needed. Pre-convention filenames that are deliberately not being renamed are covered by a `LEGACY_NAMES` map (e.g. `"fr testing"` → `"2025"`).
+**Dataset matching** (`discover()`): every `.xlsx` in `Data Sheets/` (other than `Classification Review.xlsx` and generated artifacts) is a dataset, named from its filename via `dataset_name_from()` — e.g. `"Discretionary Funding Requests - 2026.xlsx"` → `"2026"`, `"FR_Engine - 2023-2024.xlsx"` → `"2023_24"`. Its GOLD copy (in `Gold/`, or `Taxonomy/` for installations not yet rearranged) and Final Review copy (in `Final Review/`) are matched by deriving the same name from their own filenames — no other link between the files is needed. Pre-convention filenames that are deliberately not being renamed are covered by a `LEGACY_NAMES` map (e.g. `"fr testing"` → `"2025"`).
 
 ### How to Extend
 

@@ -2,11 +2,12 @@ ECF DISCRETIONARY FUNDING REQUESTS - CLASSIFICATION
 ===================================================
 
 This folder holds the files the classification tool reads and writes.
-There are three folders, and each one has a README.txt explaining exactly
+There are four folders, and each one has a README.txt explaining exactly
 what belongs in it. Open those if you are unsure.
 
     Data Sheets     the funding request workbooks to be classified
-    Taxonomy        the taxonomy definitions, and audited GOLD copies
+    Taxonomy        the taxonomy definitions workbook, and nothing else
+    Gold            audited snapshots of past years, if you have any
     Final Review    the audited copies your corrections are written into
 
 THE ONE RULE

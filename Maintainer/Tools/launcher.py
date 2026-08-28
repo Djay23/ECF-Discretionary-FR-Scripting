@@ -237,7 +237,8 @@ def do_healthcheck():
         print(f"\n  Working folders are in:\n     {paths.WORKSPACE}")
 
     print("\n  Folders:")
-    for folder in (paths.DATA_DIR, paths.TAXONOMY_DIR, paths.FINAL_REVIEW_DIR):
+    for folder in (paths.DATA_DIR, paths.TAXONOMY_DIR, paths.GOLD_DIR,
+                   paths.FINAL_REVIEW_DIR):
         if folder.exists():
             print(f"     OK       {folder.name}")
         else:

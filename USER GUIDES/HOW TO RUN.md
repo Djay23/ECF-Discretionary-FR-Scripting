@@ -21,7 +21,7 @@ one of the alternatives further down.
 ## Where the files go — the tool creates these for you
 
 **The first time you run it, it creates a folder called `ECF Classification`
-on your Desktop**, containing the three folders it needs and a
+on your Desktop**, containing the four folders it needs and a
 `START HERE.txt`:
 
 ```
@@ -29,6 +29,7 @@ Desktop/ECF Classification/
     START HERE.txt
     Data Sheets/     README.txt
     Taxonomy/        README.txt
+    Gold/            README.txt
     Final Review/    README.txt
 ```
 
@@ -42,7 +43,8 @@ In short:
 | Folder | What belongs in it |
 |---|---|
 | **Data Sheets** | The funding-request workbooks to classify. One per year. |
-| **Taxonomy** | `Taxonomy - Definitions.xlsx`, and the hand-audited GOLD copies. |
+| **Taxonomy** | `Taxonomy - Definitions.xlsx`. Just that one file. |
+| **Gold** | Hand-audited snapshots of past years, if you have any. Optional. |
 | **Final Review** | The audited copies your corrections get written into. |
 
 The tool tells you where these folders are when it makes them, and option **C**
@@ -56,17 +58,63 @@ Discretionary Funding Requests - 2026.xlsx
 
 That's the only rule. The tool reads the year from the filename, calls that
 dataset `2026`, and automatically pairs it with anything else carrying 2026 —
-its GOLD file in `Taxonomy`, its copy in `Final Review`. Next year, drop in
+its GOLD file in `Gold`, its copy in `Final Review`. Next year, drop in
 `... - 2027.xlsx` and it appears in the menu on its own.
 
-A dataset works fine before its GOLD and Final Review files exist; the health
-check (option C) shows `(none yet)` for whatever is still missing.
+A dataset works fine before its GOLD and Final Review files exist — you do not
+need to create either by hand. The health check (option C) shows `(none yet)`
+for whatever is still missing.
 
 Your READMEs are never overwritten, so any notes you add to them are safe.
 
 > **Already set up?** If the tool folder itself already contains a `Data Sheets`
 > folder with workbooks in it, the tool keeps using those and does **not** create
 > anything on your Desktop. Existing installations carry on unchanged.
+
+## What you provide, and what the tool creates
+
+Only **two** files are ever created that you didn't supply. Everything else is
+written *into* workbooks you provided — which is why the tool asks you to close
+Excel first.
+
+**You provide:**
+
+| File | Goes in | Needed |
+|---|---|---|
+| `Discretionary Funding Requests - 2026.xlsx` | `Data Sheets/` | Always — this is the workbook being classified |
+| `Taxonomy - Definitions.xlsx` | `Taxonomy/` | Always — nothing runs without it |
+| `FR - 2026 (GOLD-AUDIT).xlsx` | `Gold/` | Optional. Only if you already have a hand-audited snapshot of that year |
+
+**The tool creates:**
+
+| File | Made by | Where |
+|---|---|---|
+| `Classification Review.xlsx` | Option 2 | `Data Sheets/` |
+| `...2026... (GOLD) Final review.xlsx` | Option 3, the first time | `Final Review/` |
+| `stakeholder_dashboard_2026.html` | Option 4 | `Data Sheets/` |
+
+### The stages, in order
+
+1. **Put your workbook in `Data Sheets/`** with the year in its name, and make
+   sure `Taxonomy - Definitions.xlsx` is in `Taxonomy/`.
+2. **Option 1 — Run classification.** Fills the ethnic, gender and sexual
+   columns **into your workbook**. Nothing new appears.
+3. **Option 2 — Build review workbook.** Creates
+   `Data Sheets/Classification Review.xlsx`, containing the rows the engine
+   flagged. Built from that year's GOLD file if you have one; otherwise from the
+   workbook you just classified.
+4. **You review.** Open `Classification Review.xlsx`, type your corrections into
+   the classification columns, save and close it.
+5. **Option 3 — Apply my review corrections.** Shows every cell it would change
+   and waits for you to type `YES`. It writes into that year's file in
+   `Final Review/`, **creating it for you** the first time. Your original
+   workbook is left exactly as the engine wrote it.
+6. **Option 4 — Build stakeholder dashboard.** Reads the `Final Review/` copy,
+   so the dashboard reflects your corrections.
+
+Steps 2 to 6 can be repeated as often as you like. Re-running step 1 is always
+safe: it only ever touches the workbook in `Data Sheets/`, never your
+corrections in `Final Review/`.
 
 ## Before you run anything: close Excel
 
@@ -94,6 +142,81 @@ you which file to close. Just close it and try again.
 4. **Option 3** — apply those corrections. Read the list it shows you, then type
    `YES` to write them.
 5. **Option 4** — build the dashboard, if you need it.
+
+## Letting an AI assistant run it for you
+
+Everything above works fine with just the `.exe` and a mouse — this section
+is for people who'd rather type what they want in plain language than click
+through the menu. It's an **alternative**, not a requirement.
+
+### What you need first
+
+1. **Get this whole folder onto your computer** — the same one you'd use to
+   run `ECF Classification.exe`. Nothing in it needs to change.
+2. **Install Claude Code**: <https://claude.com/claude-code>. Claude Code is
+   a separate paid tool from Anthropic, run from a terminal (or from inside
+   VS Code) — it is not part of this project and isn't required to use the
+   `.exe`. Follow Anthropic's install instructions for your computer.
+
+### How to start it
+
+Open a terminal (or VS Code's terminal panel) **in this folder** and run:
+
+```
+claude
+```
+
+That drops you into a conversation. From there, describe what you want, or
+paste one of the prompts below.
+
+### Ready-to-paste prompts
+
+Copy one of these into the terminal exactly as written.
+
+**Run the classification:**
+```
+Run the classification on my data. First read HOW TO RUN.md and
+Documentation/AI-HANDOFF.md so you understand the tool. Confirm with me
+which dataset to use, make sure I've closed the workbook in Excel, then run
+the classification step (menu option 1 / Engine_1_and_2/run_all.py) and
+show me the summary counts afterwards. Don't change any code.
+```
+
+**Take me through the whole review cycle:**
+```
+Take me through the whole review cycle: run classification, build the
+review workbook, tell me where to make my corrections, then apply them and
+build the dashboard. Stop and explain each stage before moving to the next.
+Don't change any code.
+```
+
+**Build the dashboard:**
+```
+Build or refresh the stakeholder dashboard for my current dataset. Tell me
+where the HTML file ends up. Don't change any code.
+```
+
+**Explain a specific request:**
+```
+Explain what the engine did with a specific funding request — [describe or
+paste the row]. Walk me through which text triggered which rule, and
+whether it was flagged for review. Don't change any code.
+```
+
+**Write or refresh the user guide:**
+```
+Write or refresh the user guide for this tool, using
+Documentation/AI-HANDOFF.md as the spec for what it must cover. Don't
+change any code.
+```
+
+### A safety note
+
+An AI assistant can read and write files just like you can, so the same
+rules from earlier in this document still apply: **close Excel first**, and
+remember that applying your review corrections (option 3) writes into the
+`Final Review/` copies — read what the assistant proposes to change before
+you approve it, the same way you'd read option 3's own confirmation list.
 
 ## If something goes wrong
 

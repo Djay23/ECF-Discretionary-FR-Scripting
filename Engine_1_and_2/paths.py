@@ -4,7 +4,7 @@ paths.py
 Where the project's files live, and how they are found.
 
 The whole point of this module is that FILENAMES ARE NOT CODE. Someone sets up
-three folders next to this project, drops their workbooks in, and everything
+the working folders next to this project, drops their workbooks in, and everything
 downstream discovers them. Renaming a workbook must never require a code edit --
 that mistake has already cost this project a silent no-op run.
 
@@ -37,7 +37,7 @@ from typing import Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# Folder on the Desktop that holds the three working folders for a fresh install.
+# Folder on the Desktop that holds the working folders for a fresh install.
 WORKSPACE_NAME = "ECF Classification"
 
 
@@ -81,7 +81,7 @@ def _looks_populated(root: Path) -> bool:
 
 
 def resolve_workspace() -> Path:
-    """Where the three working folders live.
+    """Where the working folders live.
 
     Order matters. An existing installation must keep working untouched, so a
     project folder that already holds data always wins -- repointing it at an
@@ -100,6 +100,11 @@ WORKSPACE = resolve_workspace()
 DATA_DIR = WORKSPACE / "Data Sheets"
 TAXONOMY_DIR = WORKSPACE / "Taxonomy"
 FINAL_REVIEW_DIR = WORKSPACE / "Final Review"
+# Audited GOLD snapshots. Their own folder so Taxonomy/ holds only the
+# definitions workbook -- one folder, one job. Gold copies used to live in
+# Taxonomy/, so that is still searched as a fallback and an installation that
+# has not been rearranged keeps working untouched.
+GOLD_DIR = WORKSPACE / "Gold"
 
 # Older checkouts called it "Post Review". Accept it so a half-renamed folder
 # doesn't silently produce zero datasets.
@@ -128,16 +133,41 @@ LEGACY_NAMES = {
 }
 
 
+README_GOLD = """
+GOLD - what goes in this folder
+===============================
+
+PUT HERE: The audited GOLD copies, if you have any.
+
+          Name them with the year and the word GOLD, for example:
+              FR - 2026 (GOLD-AUDIT).xlsx
+
+          A GOLD file is a hand-checked snapshot of a year's classifications,
+          kept as a record of what was decided. You do NOT need one to use the
+          tool. A year without a GOLD file works perfectly well: the review
+          workbook is built from the classified workbook instead.
+
+          Where a GOLD file does exist, menu option 2 builds that year's review
+          sheet from it, so reviewers see the decisions already made.
+
+NOTHING IN THIS FOLDER IS EVER MODIFIED BY THE TOOL. It only reads from here.
+
+Older setups kept these files in the Taxonomy folder. That still works, so
+there is no rush to move them.
+"""
+
+
 README_START = f"""
 ECF DISCRETIONARY FUNDING REQUESTS - CLASSIFICATION
 ===================================================
 
 This folder holds the files the classification tool reads and writes.
-There are three folders, and each one has a README.txt explaining exactly
+There are four folders, and each one has a README.txt explaining exactly
 what belongs in it. Open those if you are unsure.
 
     Data Sheets     the funding request workbooks to be classified
-    Taxonomy        the taxonomy definitions, and audited GOLD copies
+    Taxonomy        the taxonomy definitions workbook, and nothing else
+    Gold            audited snapshots of past years, if you have any
     Final Review    the audited copies your corrections are written into
 
 THE ONE RULE
@@ -196,25 +226,18 @@ README_TAXONOMY = """
 TAXONOMY - what goes in this folder
 ===================================
 
-PUT HERE: 1. The taxonomy definitions workbook. Exactly one.
+PUT HERE: The taxonomy definitions workbook. Exactly one. Nothing else.
 
-             Name it so it contains the word "Definitions", for example:
-                 Taxonomy - Definitions.xlsx
+          Name it so it contains the word "Definitions", for example:
+              Taxonomy - Definitions.xlsx
 
-             It needs a sheet named:  Ethnic and Cultural Origins
+          It needs a sheet named:  Ethnic and Cultural Origins
 
-             This file tells the tool which terms map to which ethnic and
-             cultural categories. The classification cannot run without it.
+          This file tells the tool which terms map to which ethnic and
+          cultural categories. The classification cannot run without it.
 
-          2. The audited GOLD copies, if you have them.
-
-             Name them with the year and the word GOLD, for example:
-                 FR - 2026 (GOLD-AUDIT).xlsx
-
-             A GOLD file is a hand-checked snapshot of a year's
-             classifications. Menu option 2 builds the review workbook FROM
-             these files. If a year has no GOLD file yet, that is fine, that
-             year is simply skipped when the review workbook is built.
+The audited GOLD copies belong in the Gold folder, not here. (If yours are
+still in this folder they will keep working, so there is no rush to move them.)
 
 NOTHING IN THIS FOLDER IS EVER MODIFIED BY THE TOOL. It only reads from here.
 
@@ -352,7 +375,8 @@ def discover():
         found[name] = Discovered(
             name=name,
             source=src,
-            gold=_match_by_name(TAXONOMY_DIR, name, marker="gold"),
+            gold=(_match_by_name(GOLD_DIR, name, marker="gold")
+                  or _match_by_name(TAXONOMY_DIR, name, marker="gold")),
             final_review=_match_by_name(FINAL_REVIEW_DIR, name),
             taxonomy=tax,
         )
@@ -360,7 +384,7 @@ def discover():
 
 
 def ensure_workspace():
-    """Create the three working folders and their READMEs if missing.
+    """Create the working folders and their READMEs if missing.
 
     Safe to call on every start: existing folders are left alone, and an
     existing README is never overwritten so notes someone added to one
@@ -368,6 +392,7 @@ def ensure_workspace():
     created = []
     for folder, text in ((DATA_DIR, README_DATA),
                          (TAXONOMY_DIR, README_TAXONOMY),
+                         (GOLD_DIR, README_GOLD),
                          (FINAL_REVIEW_DIR, README_FINAL)):
         if not folder.exists():
             folder.mkdir(parents=True, exist_ok=True)
@@ -388,6 +413,7 @@ def describe():
     lines = [f"workspace      {WORKSPACE}", ""]
     for folder, label in ((DATA_DIR, "Data Sheets"),
                           (TAXONOMY_DIR, "Taxonomy"),
+                          (GOLD_DIR, "Gold"),
                           (FINAL_REVIEW_DIR, "Final Review")):
         lines.append(f"{label:<14} {'OK  ' if folder.exists() else 'MISSING'}  {folder}")
     tax = taxonomy_file()
